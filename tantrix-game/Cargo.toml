@@ -1,0 +1,10 @@
+[package]
+name = "tantrix-game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+enum-map = "2"
+enum-iterator = "2.3"
+rand = "0.10"
+arrayvec = "0.7"

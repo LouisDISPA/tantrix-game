@@ -1,13 +1,3 @@
-[package]
-name = "tantrix-game"
-version = "0.1.0"
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-enum-map = "1"
-enum-iterator = "0.7"
-rand = "0.8"
-arrayvec = { git = "https://github.com/pYtoner/arrayvec", features = ["copy"]}
-variant_count = "1"
+[workspace]
+members = ["tantrix-game", "tantrix-tui"]
+resolver = "2"

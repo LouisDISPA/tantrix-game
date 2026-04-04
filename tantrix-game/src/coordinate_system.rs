@@ -3,9 +3,8 @@ use std::{
     ops::{Add, Neg, Sub},
 };
 
-use enum_iterator::IntoEnumIterator;
+use enum_iterator::Sequence;
 use enum_map::Enum;
-use variant_count::VariantCount;
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub struct Position {
@@ -46,16 +45,16 @@ impl Sub<Position> for Position {
 impl Position {
     pub fn around(self) -> impl Iterator<Item = (Position, Direction)> {
         repeat(self)
-            .zip(Direction::into_enum_iter())
-            .map(|(pos, dir)| (pos.neighbord(dir), dir))
+            .zip(enum_iterator::all::<Direction>())
+            .map(|(pos, dir)| (pos.neighbor(dir), dir))
     }
 
-    fn neighbord(self, dir: Direction) -> Self {
+    pub fn neighbor(self, dir: Direction) -> Self {
         self + dir.delta()
     }
 }
 
-#[derive(Enum, IntoEnumIterator, VariantCount, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i8)]
 pub enum Rotation {
     None = 0,
@@ -67,10 +66,10 @@ pub enum Rotation {
 }
 
 impl Rotation {
-    const COUNT: i8 = Self::VARIANT_COUNT as i8;
+    const COUNT: i8 = enum_iterator::cardinality::<Self>() as i8;
 }
 
-#[derive(Enum, IntoEnumIterator, VariantCount, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i8)]
 pub enum Direction {
     Left = 0,
@@ -102,7 +101,7 @@ impl From<Direction> for i8 {
 }
 
 impl Direction {
-    const COUNT: i8 = Self::VARIANT_COUNT as i8;
+    const COUNT: i8 = enum_iterator::cardinality::<Self>() as i8;
 
     fn delta(self) -> Position {
         match self {
@@ -166,4 +165,12 @@ impl Sub<Rotation> for Direction {
 
 impl Position {
     pub const CENTER: Position = Position { x: 0, y: 0 };
+
+    pub fn x(self) -> i8 {
+        self.x
+    }
+
+    pub fn y(self) -> i8 {
+        self.y
+    }
 }

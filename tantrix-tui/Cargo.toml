@@ -1,0 +1,10 @@
+[package]
+name = "tantrix-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tantrix-game = { path = "../tantrix-game" }
+ratatui = "0.30.0-alpha"
+ratatui-macros = "0.7.0-alpha"
+crossterm = "0.29.0"
