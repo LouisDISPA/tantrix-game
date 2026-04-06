@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt;
 
 use arrayvec::ArrayVec;
 use enum_map::{enum_map, EnumMap};
@@ -9,6 +10,26 @@ pub use coordinate_system::*;
 
 mod tiles;
 pub use tiles::*;
+
+// --- AI trait ---
+
+pub trait TantrixAi: Send + Sync {
+    fn name(&self) -> &str;
+    fn clone_box(&self) -> Box<dyn TantrixAi>;
+    fn choose_move(
+        &self,
+        board: &Board,
+        hands: EnumMap<Color, &[Tile]>,
+        current_player: Color,
+        possible_moves: &[Move],
+    ) -> Move;
+}
+
+impl Clone for Box<dyn TantrixAi> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PlayerScore {
@@ -68,13 +89,13 @@ impl Board {
         self.moves.is_empty()
     }
 
-    fn is_available(&self, pos: &Position) -> bool {
+    pub fn is_available(&self, pos: &Position) -> bool {
         self.moves
             .binary_search_by(|m| m.position.cmp(pos))
             .is_err()
     }
 
-    fn insert_move(&mut self, m: Move) -> Result<(), String> {
+    pub fn insert_move(&mut self, m: Move) -> Result<(), String> {
         let index = match self.moves.binary_search_by(|i| i.position.cmp(&m.position)) {
             Ok(_) => return Err("Position unavailable".to_string()),
             Err(i) => i,
@@ -270,7 +291,11 @@ impl Board {
                     if score > best[color].score {
                         let mut positions = vec![m.position];
                         positions.extend(fwd_positions);
-                        best[color] = ScoringPath { positions, is_loop: true, score };
+                        best[color] = ScoringPath {
+                            positions,
+                            is_loop: true,
+                            score,
+                        };
                     }
                     continue;
                 }
@@ -283,7 +308,11 @@ impl Board {
                     let mut positions: Vec<Position> = bwd_positions.into_iter().rev().collect();
                     positions.push(m.position);
                     positions.extend(fwd_positions);
-                    best[color] = ScoringPath { positions, is_loop: false, score: total };
+                    best[color] = ScoringPath {
+                        positions,
+                        is_loop: false,
+                        score: total,
+                    };
                 }
             }
         }
@@ -317,8 +346,7 @@ impl Board {
                     continue;
                 }
 
-                let (bwd_count, _) =
-                    self.trace(color, m.position, dir_b, &mut visited[color]);
+                let (bwd_count, _) = self.trace(color, m.position, dir_b, &mut visited[color]);
                 let total = fwd_count + bwd_count + 1;
                 best_line[color] = best_line[color].max(total);
             }
@@ -333,7 +361,7 @@ impl Board {
         }
     }
 
-    fn countour_positions(&self) -> BTreeSet<Position> {
+    pub fn countour_positions(&self) -> BTreeSet<Position> {
         if self.is_empty() {
             BTreeSet::from([Position::CENTER])
         } else {
@@ -346,7 +374,11 @@ impl Board {
         }
     }
 
-    fn get_possible_move(&self, tile: Tile, position: Position) -> impl Iterator<Item = Move> + '_ {
+    pub fn get_possible_move(
+        &self,
+        tile: Tile,
+        position: Position,
+    ) -> impl Iterator<Item = Move> + '_ {
         let mut rotation_possible: EnumMap<Rotation, bool> = enum_map! {_ => true};
 
         let around_colors = position
@@ -375,11 +407,43 @@ impl Board {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Player {
     Someone,
-    Ai,
+    Ai(Box<dyn TantrixAi>),
     None,
+}
+
+impl Clone for Player {
+    fn clone(&self) -> Self {
+        match self {
+            Player::Someone => Player::Someone,
+            Player::Ai(ai) => Player::Ai(ai.clone_box()),
+            Player::None => Player::None,
+        }
+    }
+}
+
+impl PartialEq for Player {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Player::Someone, Player::Someone)
+                | (Player::Ai(_), Player::Ai(_))
+                | (Player::None, Player::None)
+        )
+    }
+}
+
+impl Eq for Player {}
+
+impl fmt::Debug for Player {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Player::Someone => write!(f, "Someone"),
+            Player::Ai(ai) => write!(f, "Ai({})", ai.name()),
+            Player::None => write!(f, "None"),
+        }
+    }
 }
 
 const TILES_IN_HAND: usize = 6;
@@ -418,7 +482,7 @@ impl Game {
 
         let mut color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = players
             .iter()
-            .filter(|(_, p)| **p != Player::None)
+            .filter(|(_, p)| *p != &Player::None)
             .map(|(c, _)| c)
             .collect();
 
@@ -449,6 +513,10 @@ impl Game {
 
     pub fn currently_playing(&self) -> Color {
         self.color_cycle[self.currently_playing]
+    }
+
+    pub fn get_player(&self, color: Color) -> &Player {
+        &self.players[color]
     }
 
     pub fn get_hand(&self, color: Color) -> &[Tile] {
@@ -512,8 +580,8 @@ impl Game {
 
         let tile = m.tile;
         self.board.insert_move(m)?;
-        self.remove_tile(tile);
-        self.draw_tiles();
+        let removed_idx = self.remove_tile(tile);
+        self.draw_tiles(removed_idx);
         if !move_is_forced {
             self.next_player();
         }
@@ -521,7 +589,7 @@ impl Game {
         Ok(())
     }
 
-    fn remove_tile(&mut self, tile: Tile) {
+    fn remove_tile(&mut self, tile: Tile) -> usize {
         let color = self.currently_playing();
         let hand = &mut self.hands[color];
         let index = hand
@@ -529,17 +597,19 @@ impl Game {
             .position(|t| t == &tile)
             .expect("Can't remove tile not in hand");
         hand.remove(index);
+        index
     }
 
-    fn draw_tiles(&mut self) {
+    fn draw_tiles(&mut self, insert_at: usize) {
         if !self.bag_of_tile.is_empty() {
             let color = self.currently_playing();
             let hand = &mut self.hands[color];
             let number_to_draw = TILES_IN_HAND - hand.len();
 
-            for _ in 0..number_to_draw.min(self.bag_of_tile.len()) {
+            for i in 0..number_to_draw.min(self.bag_of_tile.len()) {
                 let tile = self.bag_of_tile.pop().unwrap();
-                hand.push(tile);
+                let idx = (insert_at + i).min(hand.len());
+                hand.insert(idx, tile);
             }
         }
     }
@@ -587,6 +657,54 @@ impl Game {
             .iter()
             .map(|&c| (c, scores[c]))
             .max_by_key(|(_, s)| s.score)
+    }
+
+    /// If the current player is AI, compute and return its chosen move without playing it.
+    /// Returns None if the current player is human, has no moves, or the game is over.
+    pub fn ai_choose(&mut self) -> Option<Move> {
+        if self.is_game_over() {
+            return None;
+        }
+        let possible = self.get_possible_moves().to_vec();
+        if possible.is_empty() {
+            return None;
+        }
+        let current = self.currently_playing();
+        if let Player::Ai(ref ai) = self.players[current] {
+            let board = self.board.clone();
+            let hands_owned: EnumMap<Color, Vec<Tile>> = enum_map! {
+                color => self.get_hand(color).to_vec()
+            };
+            let hands: EnumMap<Color, &[Tile]> = enum_map! {
+                color => hands_owned[color].as_slice()
+            };
+            Some(ai.choose_move(&board, hands, current, &possible))
+        } else {
+            None
+        }
+    }
+
+    /// Play all AI turns and skip players with no valid moves.
+    /// Returns when it is a human player's turn or the game is over.
+    pub fn advance(&mut self) {
+        let num_players = self.color_cycle.len();
+        let mut consecutive_skips = 0;
+
+        loop {
+            if self.is_game_over() || consecutive_skips >= num_players {
+                return;
+            }
+
+            if let Some(m) = self.ai_choose() {
+                consecutive_skips = 0;
+                self.play_move(m).expect("AI chose invalid move");
+            } else if !self.get_possible_moves().is_empty() {
+                return; // Human player with moves
+            } else {
+                self.skip_turn();
+                consecutive_skips += 1;
+            }
+        }
     }
 }
 
@@ -974,62 +1092,74 @@ mod tests {
         let mut board = Board::default();
 
         let pos = [
-            neighbor(Position::CENTER, Direction::Left),        // (-1,0)
-            neighbor(Position::CENTER, Direction::TopLeft),      // (0,1)
-            neighbor(Position::CENTER, Direction::TopRight),     // (1,1)
-            neighbor(Position::CENTER, Direction::Right),        // (1,0)
-            neighbor(Position::CENTER, Direction::BottomRight),  // (0,-1)
-            neighbor(Position::CENTER, Direction::BottomLeft),   // (-1,-1)
+            neighbor(Position::CENTER, Direction::Left),     // (-1,0)
+            neighbor(Position::CENTER, Direction::TopLeft),  // (0,1)
+            neighbor(Position::CENTER, Direction::TopRight), // (1,1)
+            neighbor(Position::CENTER, Direction::Right),    // (1,0)
+            neighbor(Position::CENTER, Direction::BottomRight), // (0,-1)
+            neighbor(Position::CENTER, Direction::BottomLeft), // (-1,-1)
         ];
 
         // Each tile placed so Red edges connect to its ring neighbors:
         // (-1,0): Red at TopRight & BottomRight
-        board.insert_move(Move {
-            tile: Tile::BYRBRY, // [B,Y,R,B,R,Y] → R at 2,4
-            position: pos[0],
-            rotation: Rotation::None,
-            forced: false,
-        }).unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::BYRBRY, // [B,Y,R,B,R,Y] → R at 2,4
+                position: pos[0],
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
 
         // (0,1): Red at BottomLeft & Right
-        board.insert_move(Move {
-            tile: Tile::YBBRYR, // [Y,B,B,R,Y,R] → R at 3,5
-            position: pos[1],
-            rotation: Rotation::None,
-            forced: false,
-        }).unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::YBBRYR, // [Y,B,B,R,Y,R] → R at 3,5
+                position: pos[1],
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
 
         // (1,1): Red at Left & BottomRight
-        board.insert_move(Move {
-            tile: Tile::RYYBRB, // [R,Y,Y,B,R,B] → R at 0,4
-            position: pos[2],
-            rotation: Rotation::None,
-            forced: false,
-        }).unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::RYYBRB, // [R,Y,Y,B,R,B] → R at 0,4
+                position: pos[2],
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
 
         // (1,0): Red at TopLeft & BottomLeft
-        board.insert_move(Move {
-            tile: Tile::YRBYBR, // [Y,R,B,Y,B,R] → R at 1,5
-            position: pos[3],
-            rotation: Rotation::None,
-            forced: false,
-        }).unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::YRBYBR, // [Y,R,B,Y,B,R] → R at 1,5
+                position: pos[3],
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
 
         // (0,-1): Red at Left & TopRight. YGRYRG [Y,G,R,Y,R,G] R at 2,4 + R240 → (0,2)
-        board.insert_move(Move {
-            tile: Tile::YGRYRG,
-            position: pos[4],
-            rotation: Rotation::R240,
-            forced: false,
-        }).unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::YGRYRG,
+                position: pos[4],
+                rotation: Rotation::R240,
+                forced: false,
+            })
+            .unwrap();
 
         // (-1,-1): Red at TopLeft & Right. GYYRGR [G,Y,Y,R,G,R] R at 3,5 + R240 → (1,3)
-        board.insert_move(Move {
-            tile: Tile::GYYRGR,
-            position: pos[5],
-            rotation: Rotation::R240,
-            forced: false,
-        }).unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::GYYRGR,
+                position: pos[5],
+                rotation: Rotation::R240,
+                forced: false,
+            })
+            .unwrap();
 
         let red_score = board.scores()[Color::Red];
         assert_eq!(red_score.longest_loop, 6);

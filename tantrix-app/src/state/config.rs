@@ -1,36 +1,66 @@
+use tantrix_ai::SmartAi;
 use tantrix_game::{Color, Player};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PlayerKind {
+    Off,
+    Human,
+    Ai,
+}
+
+impl PlayerKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            PlayerKind::Off => "Off",
+            PlayerKind::Human => "Player",
+            PlayerKind::Ai => "AI",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            PlayerKind::Off => PlayerKind::Human,
+            PlayerKind::Human => PlayerKind::Ai,
+            PlayerKind::Ai => PlayerKind::Off,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct GameConfig {
-    pub players: Vec<(Color, Player)>,
+    pub players: [(Color, PlayerKind); 4],
 }
 
 impl GameConfig {
-    pub fn new(player_count: usize) -> Self {
-        let colors = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
-        let players = colors
-            .iter()
-            .enumerate()
-            .map(|(i, &color)| {
-                if i < player_count {
-                    (color, Player::Someone)
-                } else {
-                    (color, Player::None)
-                }
-            })
-            .collect();
-        GameConfig { players }
+    pub fn new() -> Self {
+        GameConfig {
+            players: [
+                (Color::Red, PlayerKind::Human),
+                (Color::Blue, PlayerKind::Human),
+                (Color::Yellow, PlayerKind::Off),
+                (Color::Green, PlayerKind::Off),
+            ],
+        }
     }
 
     pub fn player_for(&self, color: Color) -> Player {
-        self.players
-            .iter()
-            .find(|(c, _)| *c == color)
-            .map(|(_, p)| *p)
-            .unwrap_or(Player::None)
+        match self.players.iter().find(|(c, _)| *c == color) {
+            Some((_, PlayerKind::Human)) => Player::Someone,
+            Some((_, PlayerKind::Ai)) => Player::Ai(Box::new(SmartAi)),
+            _ => Player::None,
+        }
     }
 
     pub fn active_count(&self) -> usize {
-        self.players.iter().filter(|(_, p)| *p != Player::None).count()
+        self.players
+            .iter()
+            .filter(|(_, k)| *k != PlayerKind::Off)
+            .count()
+    }
+
+    pub fn cycle_player(&mut self, color: Color) {
+        if let Some((_, kind)) = self.players.iter_mut().find(|(c, _)| *c == color) {
+            *kind = kind.next();
+        }
     }
 }

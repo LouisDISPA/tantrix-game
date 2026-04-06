@@ -45,13 +45,7 @@ pub fn find_color_pairs(m: &Move) -> [(Direction, Direction, Color); 3] {
 }
 
 /// Generate an SVG path `d` attribute for a color link curve between two same-colored edges.
-pub fn color_link_path(
-    cx: f64,
-    cy: f64,
-    d1: Direction,
-    d2: Direction,
-    size: f64,
-) -> String {
+pub fn color_link_path(cx: f64, cy: f64, d1: Direction, d2: Direction, size: f64) -> String {
     let verts = hex_vertices(cx, cy, size);
     let m1 = edge_midpoint(&verts, d1);
     let m2 = edge_midpoint(&verts, d2);
@@ -111,15 +105,5 @@ pub fn color_css_var(color: Color) -> &'static str {
         Color::Blue => "var(--color-blue)",
         Color::Yellow => "var(--color-yellow)",
         Color::Green => "var(--color-green)",
-    }
-}
-
-/// Lighter CSS color variable for a game color.
-pub fn color_css_var_light(color: Color) -> &'static str {
-    match color {
-        Color::Red => "var(--color-red-light)",
-        Color::Blue => "var(--color-blue-light)",
-        Color::Yellow => "var(--color-yellow-light)",
-        Color::Green => "var(--color-green-light)",
     }
 }

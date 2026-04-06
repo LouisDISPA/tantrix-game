@@ -24,15 +24,12 @@ pub fn HexTile(
     rsx! {
         g { class: "{class}",
             polygon { points: "{points}" }
-            for (d1, d2, color) in pairs {
+            for (d1 , d2 , color) in pairs {
                 {
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let css_class = color_css_class(color);
                     rsx! {
-                        path {
-                            d: "{path_d}",
-                            class: "hex-curve {css_class}",
-                        }
+                        path { d: "{path_d}", class: "hex-curve {css_class}" }
                     }
                 }
             }
@@ -55,15 +52,12 @@ pub fn HexTileAtPixel(
     rsx! {
         g { class: "hex-tile {extra_class}",
             polygon { points: "{points}" }
-            for (d1, d2, color) in pairs {
+            for (d1 , d2 , color) in pairs {
                 {
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let css_class = color_css_class(color);
                     rsx! {
-                        path {
-                            d: "{path_d}",
-                            class: "hex-curve {css_class}",
-                        }
+                        path { d: "{path_d}", class: "hex-curve {css_class}" }
                     }
                 }
             }

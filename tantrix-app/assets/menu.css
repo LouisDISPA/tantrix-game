@@ -563,6 +563,10 @@
   overflow: hidden;
 }
 
+.player-slot.active {
+  opacity: 1;
+}
+
 .player-slot .color-swatch {
   width: 28px;
   height: 28px;
@@ -579,12 +583,48 @@
   letter-spacing: 1px;
 }
 
-.player-slot .player-status {
+.player-toggle {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 8px;
   font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 72px;
+  text-align: center;
+}
+
+.player-toggle.off {
+  background: var(--surface-secondary);
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.player-toggle.human {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
+.player-toggle.ai {
+  background: oklch(0.55 0.2 250);
+  color: #fff;
+}
+
+.player-toggle:hover {
+  filter: brightness(1.15);
+}
+
+.setup-start-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: none;
+}
+
+.setup-start-btn.disabled:hover {
+  filter: none;
 }
 
 .setup-start-btn {

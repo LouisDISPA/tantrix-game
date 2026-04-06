@@ -43,18 +43,14 @@ pub fn GameOverOverlay() -> Element {
                     if is_tie {
                         div { class: "results-winner-label", "Tie" }
                         div { class: "results-tie-names",
-                            for (i, &color) in winners.iter().enumerate() {
+                            for (i , & color) in winners.iter().enumerate() {
                                 {
                                     let cv = color_css_var(color);
                                     rsx! {
                                         if i > 0 {
                                             span { class: "results-tie-separator", " & " }
                                         }
-                                        span {
-                                            class: "results-winner-name",
-                                            style: "color: {cv}; --glow-color: {cv}",
-                                            "{color}"
-                                        }
+                                        span { class: "results-winner-name", style: "color: {cv}; --glow-color: {cv}", "{color}" }
                                     }
                                 }
                             }
@@ -110,10 +106,7 @@ pub fn GameOverOverlay() -> Element {
                                         ui_state.write().hovered_scoring_color = None;
                                     },
                                     div { class: "results-player",
-                                        div {
-                                            class: "results-color-swatch",
-                                            style: "background-color: {cv}",
-                                        }
+                                        div { class: "results-color-swatch", style: "background-color: {cv}" }
                                         span { class: "results-name", "{c}" }
                                     }
                                     span {

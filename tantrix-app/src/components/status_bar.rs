@@ -25,6 +25,7 @@ pub fn StatusBar() -> Element {
         }
         TurnPhase::SelectPosition => "Click a position on the board".to_string(),
         TurnPhase::SelectRotation => "Choose a rotation".to_string(),
+        TurnPhase::WaitingForAi => format!("{} is thinking...", current_color),
         TurnPhase::GameOver => "Game Over!".to_string(),
     };
 

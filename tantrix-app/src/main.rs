@@ -5,6 +5,7 @@ mod pages;
 mod route;
 mod state;
 mod svg;
+mod util;
 
 use route::Route;
 use state::theme::THEME;
@@ -29,10 +30,6 @@ fn app() -> Element {
         document::Stylesheet { href: MENU_CSS }
         document::Stylesheet { href: ANIMATIONS_CSS }
 
-        div {
-            class: "app-root",
-            "data-theme": "{theme.as_str()}",
-            Router::<Route> {}
-        }
+        div { class: "app-root", "data-theme": "{theme.as_str()}", Router::<Route> {} }
     }
 }

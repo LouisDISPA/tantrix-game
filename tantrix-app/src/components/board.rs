@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use dioxus::prelude::*;
 use tantrix_game::{Color, Move, Position, Rotation, ScoringPath};
 
@@ -37,15 +39,14 @@ pub fn Board() -> Element {
     };
 
     let padding = HEX_SIZE * 3.0;
-    let (vb_x, vb_y, vb_w, vb_h) = if let Some((min_x, min_y, max_x, max_y)) =
-        board_bounding_box(&all_positions, HEX_SIZE)
-    {
-        let w = max_x - min_x + 2.0 * padding;
-        let h = max_y - min_y + 2.0 * padding;
-        (min_x - padding, min_y - padding, w, h)
-    } else {
-        (-100.0, -100.0, 200.0, 200.0)
-    };
+    let (vb_x, vb_y, vb_w, vb_h) =
+        if let Some((min_x, min_y, max_x, max_y)) = board_bounding_box(&all_positions, HEX_SIZE) {
+            let w = max_x - min_x + 2.0 * padding;
+            let h = max_y - min_y + 2.0 * padding;
+            (min_x - padding, min_y - padding, w, h)
+        } else {
+            (-100.0, -100.0, 200.0, 200.0)
+        };
 
     let zoom = ui.zoom;
     let pan_x = ui.pan_x;
@@ -202,7 +203,7 @@ pub fn Board() -> Element {
                         }
                     }
 
-                    for (pos, forced, faint) in visible_positions.iter() {
+                    for (pos , forced , faint) in visible_positions.iter() {
                         HexEmpty {
                             key: "e{pos.x()},{pos.y()}",
                             position: *pos,
@@ -222,16 +223,13 @@ pub fn Board() -> Element {
                     }
 
                     if let Some(preview) = preview_move {
-                        TilePreview {
-                            m: preview,
-                            hex_size: HEX_SIZE,
-                        }
+                        TilePreview { m: preview, hex_size: HEX_SIZE }
                     }
 
                     // Scoring path highlight overlay
                     if let Some(ref paths_vec) = scoring_data {
                         g { class: "scoring-overlay",
-                            for (color, path) in paths_vec.iter() {
+                            for (color , path) in paths_vec.iter() {
                                 {
                                     let show = highlighted_color.is_none() || highlighted_color == Some(*color);
                                     if show && !path.positions.is_empty() {
@@ -250,7 +248,10 @@ pub fn Board() -> Element {
                                                             if let Some((d1, d2, _)) = matching_pair {
                                                                 {
                                                                     let path_d = color_link_path(cx, cy, *d1, *d2, HEX_SIZE);
-                                                                    let curve_class = format!("scoring-curve scoring-curve-{}", color_css_class(color).strip_prefix("hex-curve-").unwrap_or("red"));
+                                                                    let curve_class = format!(
+                                                                        "scoring-curve scoring-curve-{}",
+                                                                        color_css_class(color).strip_prefix("hex-curve-").unwrap_or("red"),
+                                                                    );
                                                                     rsx! {
                                                                         path {
                                                                             key: "curve-{color:?}-{pos.x()},{pos.y()}",
@@ -324,7 +325,7 @@ fn get_visible_positions(gs: &GameState, ui: &UiState) -> Vec<(Position, bool, b
             }
             Vec::new()
         }
-        TurnPhase::GameOver => Vec::new(),
+        TurnPhase::WaitingForAi | TurnPhase::GameOver => Vec::new(),
     }
 }
 
@@ -339,7 +340,12 @@ fn build_preview_move(gs: &GameState, ui: &UiState) -> Option<Move> {
             if info.positions.len() == 1 {
                 let (&position, rots) = info.positions.iter().next()?;
                 if rots.len() == 1 {
-                    return Some(Move { tile, position, rotation: rots[0], forced: false });
+                    return Some(Move {
+                        tile,
+                        position,
+                        rotation: rots[0],
+                        forced: false,
+                    });
                 }
             }
             None
@@ -352,7 +358,12 @@ fn build_preview_move(gs: &GameState, ui: &UiState) -> Option<Move> {
             let info = gs.hand_info.get(tile_idx)?;
             let rotations = info.positions.get(&position)?;
             let rotation = ui.selected_rotation.unwrap_or(*rotations.first()?);
-            Some(Move { tile, position, rotation, forced: false })
+            Some(Move {
+                tile,
+                position,
+                rotation,
+                forced: false,
+            })
         }
         TurnPhase::SelectRotation => {
             let tile_idx = ui.selected_tile?;
@@ -362,7 +373,12 @@ fn build_preview_move(gs: &GameState, ui: &UiState) -> Option<Move> {
             let info = gs.hand_info.get(tile_idx)?;
             let rotations = info.positions.get(&position)?;
             let rotation = ui.hovered_rotation.unwrap_or(*rotations.first()?);
-            Some(Move { tile, position, rotation, forced: false })
+            Some(Move {
+                tile,
+                position,
+                rotation,
+                forced: false,
+            })
         }
         _ => None,
     }
@@ -410,12 +426,13 @@ pub fn execute_move(
         return;
     }
 
-    // --- Phase 3: smooth recenter after placing ---
+    // --- Phase 3: smooth recenter + mark new tile for animation ---
     {
         let mut ui = ui_state.write();
         ui.animating = true;
         ui.pan_x = 0.0;
         ui.pan_y = 0.0;
+        ui.new_tile_index = Some(tile_idx);
     }
 
     // --- Phase 4: advance the turn with clean read→write cycles ---
@@ -486,67 +503,108 @@ fn handle_rotation_select(
     execute_move(tile_idx, pos, rotation, game_state, ui_state);
 }
 
-/// After a successful move, determine the next game state:
-/// forced move, normal turn, skip players, or game over.
-/// Uses a read-then-write pattern — never holds both borrows at once.
-fn advance_turn(mut game_state: Signal<GameState>, mut ui_state: Signal<UiState>) {
-    // Read all the info we need in one go.
-    let (is_over, has_forced, has_moves, num_players) = {
+/// After a successful move, check if AI should play next.
+/// Steps through each AI move with delays so the player can see what's happening:
+/// 1. "thinking" pause → 2. highlight chosen tile → 3. pause → 4. play it → repeat
+pub fn advance_turn(game_state: Signal<GameState>, mut ui_state: Signal<UiState>) {
+    let needs_ai = {
         let gs = game_state.read();
-        (
-            gs.is_game_over(),
-            gs.has_forced_moves(),
-            gs.has_any_moves(),
-            gs.playing_colors().len(),
-        )
+        !gs.is_game_over()
+            && matches!(
+                gs.game.get_player(gs.currently_playing()),
+                tantrix_game::Player::Ai(_)
+            )
     };
 
-    if is_over {
-        let mut ui = ui_state.write();
-        ui.phase = TurnPhase::GameOver;
-        ui.message = "Game Over!".to_string();
-        return;
+    if needs_ai {
+        ui_state.write().phase = TurnPhase::WaitingForAi;
+        spawn(async move {
+            ai_step_loop(game_state, ui_state).await;
+            settle_turn(game_state, ui_state);
+        });
+    } else {
+        settle_turn(game_state, ui_state);
     }
+}
 
-    if has_forced {
-        let mut ui = ui_state.write();
-        ui.reset_selection();
-        ui.message = "Forced move! You must fill a forced space.".to_string();
-        return;
-    }
+async fn ai_step_loop(mut game_state: Signal<GameState>, mut ui_state: Signal<UiState>) {
+    use crate::util::sleep;
 
-    if has_moves {
-        ui_state.write().reset_selection();
-        return;
-    }
-
-    // Current player has no moves — try skipping through all players.
-    for _ in 0..num_players {
-        // Read current player state.
-        let (can_move, color, is_over) = {
+    loop {
+        let (is_ai, has_moves) = {
             let gs = game_state.read();
-            (gs.has_any_moves(), gs.currently_playing(), gs.is_game_over())
+            let is_ai = !gs.is_game_over()
+                && matches!(
+                    gs.game.get_player(gs.currently_playing()),
+                    tantrix_game::Player::Ai(_)
+                );
+            (is_ai, gs.has_any_moves())
         };
+        if !is_ai {
+            break;
+        }
+        if !has_moves {
+            game_state.write().skip_turn();
+            continue;
+        }
 
-        if is_over {
+        // Step 1: Compute AI's chosen move
+        let chosen = game_state.write().ai_choose();
+        let Some(chosen) = chosen else { break };
+
+        // Step 2: Highlight the chosen tile in the hand
+        let tile_idx = game_state.read().tile_index(chosen.tile);
+        if let Some(idx) = tile_idx {
             let mut ui = ui_state.write();
-            ui.phase = TurnPhase::GameOver;
-            ui.message = "Game Over!".to_string();
-            return;
+            ui.selected_tile = Some(idx);
+            ui.phase = TurnPhase::WaitingForAi;
         }
 
-        if can_move {
-            ui_state.write().reset_selection();
-            return;
+        sleep(Duration::from_millis(500)).await;
+
+        // Step 4: Show the position
+        {
+            let mut ui = ui_state.write();
+            ui.selected_position = Some(chosen.position);
+        }
+        sleep(Duration::from_millis(400)).await;
+
+        // Step 5: Play the move
+        {
+            let mut gs = game_state.write();
+            let _ = gs.play_move(chosen);
+        }
+        {
+            let mut ui = ui_state.write();
+            ui.new_tile_index = tile_idx;
+            ui.selected_tile = None;
+            ui.selected_position = None;
+            ui.animating = true;
+            ui.pan_x = 0.0;
+            ui.pan_y = 0.0;
         }
 
-        ui_state.write().message = format!("{} has no valid moves, skipping.", color);
-
-        // Single write to advance the turn.
-        game_state.write().skip_turn();
+        sleep(Duration::from_millis(300)).await;
     }
+}
+
+fn settle_turn(mut game_state: Signal<GameState>, mut ui_state: Signal<UiState>) {
+    game_state.write().skip_stuck_players();
+
+    let (is_over, has_forced, has_moves) = {
+        let gs = game_state.read();
+        (gs.is_game_over(), gs.has_forced_moves(), gs.has_any_moves())
+    };
 
     let mut ui = ui_state.write();
-    ui.phase = TurnPhase::GameOver;
-    ui.message = "Game Over! No player can move.".to_string();
+    if is_over || !has_moves {
+        ui.phase = TurnPhase::GameOver;
+        ui.message = "Game Over!".to_string();
+        ui.new_tile_index = None;
+    } else if has_forced {
+        ui.reset_selection();
+        ui.message = "Forced move! You must fill a forced space.".to_string();
+    } else {
+        ui.reset_selection();
+    }
 }

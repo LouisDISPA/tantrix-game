@@ -1,0 +1,9 @@
+[package]
+name = "tantrix-ai"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tantrix-game = { path = "../tantrix-game" }
+enum-map = "2"
+rand = "0.10"

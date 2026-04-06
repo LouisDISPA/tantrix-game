@@ -86,6 +86,31 @@ impl GameState {
         self.refresh_hand_info();
     }
 
+    /// Skip past any players with no valid moves. Stops at a player who can act or game over.
+    pub fn skip_stuck_players(&mut self) {
+        let num_players = self.game.playing_colors().len();
+        for _ in 0..num_players {
+            if self.game.is_game_over() || self.has_any_moves() {
+                return;
+            }
+            self.game.skip_turn();
+            self.refresh_hand_info();
+        }
+    }
+
+    /// If the current player is AI, compute its chosen move.
+    pub fn ai_choose(&mut self) -> Option<Move> {
+        self.game.ai_choose()
+    }
+
+    /// Find the index of a tile in the current player's hand.
+    pub fn tile_index(&self, tile: Tile) -> Option<usize> {
+        self.game
+            .get_hand(self.game.currently_playing())
+            .iter()
+            .position(|t| *t == tile)
+    }
+
     pub fn is_game_over(&self) -> bool {
         self.game.is_game_over()
     }

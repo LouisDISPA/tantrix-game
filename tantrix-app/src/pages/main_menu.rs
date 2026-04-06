@@ -37,22 +37,12 @@ pub fn MainMenu() -> Element {
                 div { class: "title-buttons",
                     button {
                         class: "title-btn title-btn-primary",
-                        onclick: move |_| { let _ = nav.push(Route::LocalGame {}); },
-                        div { class: "title-btn-inner",
-                            "Local Game"
-                        }
+                        onclick: move |_| {
+                            let _ = nav.push(Route::LocalGame {});
+                        },
+                        div { class: "title-btn-inner", "Local Game" }
                     }
-                    button {
-                        class: "title-btn title-btn-disabled",
-                        disabled: true,
-                        div { class: "title-btn-inner",
-                            "vs AI"
-                            span { class: "title-coming-soon", "Coming soon" }
-                        }
-                    }
-                    button {
-                        class: "title-btn title-btn-disabled",
-                        disabled: true,
+                    button { class: "title-btn title-btn-disabled", disabled: true,
                         div { class: "title-btn-inner",
                             "Online"
                             span { class: "title-coming-soon", "Coming soon" }

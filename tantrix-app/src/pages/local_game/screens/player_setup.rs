@@ -2,20 +2,19 @@ use dioxus::prelude::*;
 
 use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
-use crate::state::config::GameConfig;
+use crate::state::config::{GameConfig, PlayerKind};
 use crate::state::game_state::GameState;
 use crate::state::ui_state::UiState;
 use crate::svg::paths::color_css_var;
-use tantrix_game::Color;
 
 #[component]
 pub fn PlayerSetup() -> Element {
-    let mut player_count = use_signal(|| 2usize);
+    let mut config = use_signal(GameConfig::new);
     let nav = navigator();
     let mut ctx = use_context::<LocalGameContext>();
 
-    let colors = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
-    let count = *player_count.read();
+    let cfg = config.read().clone();
+    let can_start = cfg.active_count() >= 2;
 
     rsx! {
         div { class: "title-screen",
@@ -42,50 +41,47 @@ pub fn PlayerSetup() -> Element {
                     div { class: "setup-hex-frame" }
                     button {
                         class: "setup-back-btn",
-                        onclick: move |_| { let _ = nav.push(Route::MainMenu {}); },
+                        onclick: move |_| {
+                            let _ = nav.push(Route::MainMenu {});
+                        },
                         "\u{2190} Back"
                     }
                     div { class: "setup-title", "New Game" }
-                    div { class: "setup-subtitle", "Choose number of players" }
-
-                    div { class: "player-count-selector",
-                        for n in 2..=4 {
-                            button {
-                                class: if n == count { "count-btn active" } else { "count-btn" },
-                                onclick: move |_| player_count.set(n),
-                                "{n}"
-                            }
-                        }
-                    }
+                    div { class: "setup-subtitle", "Set up players" }
 
                     div { class: "player-slots",
-                        for (i, color) in colors.iter().enumerate() {
+                        for & (color , kind) in cfg.players.iter() {
                             {
-                                let is_active = i < count;
-                                let color_var = color_css_var(*color);
+                                let is_active = kind != PlayerKind::Off;
+                                let color_var = color_css_var(color);
+                                let toggle_class = match kind {
+                                    PlayerKind::Off => "player-toggle off",
+                                    PlayerKind::Human => "player-toggle human",
+                                    PlayerKind::Ai => "player-toggle ai",
+                                };
                                 rsx! {
-                                    div {
-                                        class: "player-slot",
-                                        style: if is_active { "opacity: 1;" },
-                                        div {
-                                            class: "color-swatch",
-                                            style: "background-color: {color_var}",
-                                        }
+                                    div { class: if is_active { "player-slot active" } else { "player-slot" },
+                                        div { class: "color-swatch", style: "background-color: {color_var}" }
                                         div { class: "player-label", "{color}" }
-                                        div { class: "player-status",
-                                            if is_active { "Player" } else { "Empty" }
+                                        button {
+                                            class: "{toggle_class}",
+                                            onclick: move |_| {
+                                                config.write().cycle_player(color);
+                                            },
+                                            "{kind.label()}"
                                         }
                                     }
                                 }
                             }
                         }
                     }
-
                     button {
-                        class: "setup-start-btn",
+                        class: if can_start { "setup-start-btn" } else { "setup-start-btn disabled" },
+                        disabled: !can_start,
                         onclick: move |_| {
-                            let config = GameConfig::new(count);
-                            ctx.game_state.set(GameState::new(&config));
+                            let cfg = config.read();
+                            let gs = GameState::new(&cfg);
+                            ctx.game_state.set(gs);
                             ctx.ui_state.set(UiState::default());
                             ctx.screen.set(Screen::Playing);
                         },

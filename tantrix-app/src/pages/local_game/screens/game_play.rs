@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::components::board::Board;
+use crate::components::board::{advance_turn, Board};
 use crate::components::player_hand::{HandPosition, PlayerHand};
 use crate::pages::local_game::LocalGameContext;
+use crate::state::game_state::GameContext;
 use crate::state::ui_state::TurnPhase;
 use tantrix_game::Color;
 
@@ -52,7 +53,13 @@ fn grid_template(player_count: usize) -> (&'static str, &'static str, &'static s
 #[component]
 pub fn GamePlay() -> Element {
     let mut ctx = use_context::<LocalGameContext>();
+    let game_ctx = use_context::<GameContext>();
     let ui_state = ctx.ui_state;
+
+    // On mount, kick off AI turns if the AI plays first.
+    use_hook(|| {
+        advance_turn(game_ctx.game_state, game_ctx.ui_state);
+    });
 
     let is_game_over = ui_state.read().phase == TurnPhase::GameOver;
 
@@ -82,13 +89,10 @@ pub fn GamePlay() -> Element {
                 }
             },
 
-            div {
-                style: "grid-area: board; min-width: 0; min-height: 0;",
-                Board {}
-            }
+            div { style: "grid-area: board; min-width: 0; min-height: 0;", Board {} }
 
             if !is_game_over {
-                for (color, position) in hand_assignments.iter() {
+                for (color , position) in hand_assignments.iter() {
                     PlayerHand {
                         key: "{color:?}",
                         color: *color,

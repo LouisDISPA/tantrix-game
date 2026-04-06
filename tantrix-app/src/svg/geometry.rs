@@ -1,7 +1,6 @@
 use tantrix_game::{Direction, Position};
 
 pub const HEX_SIZE: f64 = 30.0;
-pub const HAND_HEX_SIZE: f64 = 22.0;
 const SQRT3: f64 = 1.732_050_808;
 
 /// Convert axial hex coordinates to pixel coordinates.
@@ -63,10 +62,7 @@ pub fn edge_separation(d1: Direction, d2: Direction) -> usize {
 
 /// Compute the bounding box of all placed tiles in pixel coordinates.
 /// Returns (min_x, min_y, max_x, max_y) or None if no tiles.
-pub fn board_bounding_box(
-    positions: &[Position],
-    hex_size: f64,
-) -> Option<(f64, f64, f64, f64)> {
+pub fn board_bounding_box(positions: &[Position], hex_size: f64) -> Option<(f64, f64, f64, f64)> {
     if positions.is_empty() {
         return None;
     }

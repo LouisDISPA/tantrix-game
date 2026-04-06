@@ -11,6 +11,7 @@ use ratatui::widgets::canvas::{Canvas, Context, Line as CanvasLine};
 use ratatui::widgets::{Block, Paragraph, Widget, Wrap};
 use ratatui::DefaultTerminal;
 use ratatui_macros::line;
+use tantrix_ai::RandomAi;
 use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile};
 
 // Hex geometry constants for Canvas rendering
@@ -21,7 +22,12 @@ const HEX_HORIZ: f64 = SQRT3 * HEX_RADIUS; // horizontal center-to-center for Ri
 const HEX_VERT: f64 = 1.5 * HEX_RADIUS; // vertical center-to-center for diagonal neighbors
 
 fn main() -> io::Result<()> {
-    let game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+    let game = Game::new(
+        Player::Someone,
+        Player::Ai(Box::new(RandomAi)),
+        Player::None,
+        Player::None,
+    );
     let app = App::new(game);
     ratatui::run(|terminal| app.run(terminal))
 }
@@ -245,7 +251,6 @@ enum TurnPhase {
     GameOver,
 }
 
-#[derive(Debug)]
 struct App {
     game: Game,
     phase: TurnPhase,
@@ -279,8 +284,8 @@ impl App {
 
     fn run(mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         self.running = true;
+        self.game.advance();
         self.refresh_hand_info();
-        self.check_moves_available();
         while self.running {
             terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
             self.handle_events()?;
@@ -471,6 +476,8 @@ impl App {
     }
 
     fn after_move(&mut self) {
+        self.game.advance();
+
         if self.game.is_game_over() {
             self.phase = TurnPhase::GameOver;
             self.message = "Game Over!".to_string();
@@ -483,34 +490,7 @@ impl App {
         let has_forced = self.hand_info.iter().any(|info| info.has_forced);
         if has_forced {
             self.message = "Forced move! You must fill a forced space.".to_string();
-        } else {
-            self.message = String::new();
         }
-
-        self.check_moves_available();
-    }
-
-    fn check_moves_available(&mut self) {
-        let num_players = self.game.playing_colors().len();
-        for _ in 0..num_players {
-            let has_any_moves = self.hand_info.iter().any(|info| info.has_moves());
-            if has_any_moves {
-                return;
-            }
-            self.message = format!(
-                "{} has no valid moves, skipping.",
-                self.game.currently_playing()
-            );
-            self.game.skip_turn();
-            if self.game.is_game_over() {
-                self.phase = TurnPhase::GameOver;
-                self.message = "Game Over!".to_string();
-                return;
-            }
-            self.refresh_hand_info();
-        }
-        self.phase = TurnPhase::GameOver;
-        self.message = "Game Over! No player can move.".to_string();
     }
 
     fn refresh_hand_info(&mut self) {

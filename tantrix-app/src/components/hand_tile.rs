@@ -17,6 +17,7 @@ pub fn HandTile(
     #[props(default = false)] selected: bool,
     #[props(default = false)] disabled: bool,
     #[props(default = false)] forced: bool,
+    #[props(default = false)] is_new: bool,
     onclick: Option<EventHandler<usize>>,
     onmouseenter: Option<EventHandler<usize>>,
     onmouseleave: Option<EventHandler<usize>>,
@@ -53,6 +54,9 @@ pub fn HandTile(
         if forced {
             c.push_str(" forced");
         }
+        if is_new {
+            c.push_str(" new-tile");
+        }
         c
     };
 
@@ -76,30 +80,20 @@ pub fn HandTile(
                     handler.call(index);
                 }
             },
-            svg {
-                view_box: "0 0 {TILE_VB:.0} {TILE_VB:.0}",
+            svg { view_box: "0 0 {TILE_VB:.0} {TILE_VB:.0}",
                 // Hex-shaped selection / forced ring (behind the tile)
                 if show_outline {
-                    polygon {
-                        points: "{outline_points}",
-                        class: "{outline_class}",
-                    }
+                    polygon { points: "{outline_points}", class: "{outline_class}" }
                 }
                 // Tile polygon — uses shared .hex-tile-fill class
-                polygon {
-                    points: "{points}",
-                    class: "hex-tile-fill",
-                }
+                polygon { points: "{points}", class: "hex-tile-fill" }
                 // Colored curves — identical to board tiles
-                for (d1, d2, color) in pairs {
+                for (d1 , d2 , color) in pairs {
                     {
                         let path_d = color_link_path(cx, cy, d1, d2, TILE_HEX);
                         let css_class = color_css_class(color);
                         rsx! {
-                            path {
-                                d: "{path_d}",
-                                class: "hex-curve {css_class}",
-                            }
+                            path { d: "{path_d}", class: "hex-curve {css_class}" }
                         }
                     }
                 }

@@ -5,16 +5,19 @@ edition = "2021"
 
 [dependencies]
 tantrix-game = { path = "../tantrix-game" }
+tantrix-ai = { path = "../tantrix-ai" }
 dioxus = { version = "0.7", features = ["router"] }
 rand = "0.10"
+tokio = { version = "1", default-features = false, features = ["time"], optional = true }
+gloo-timers = { version = "0.3", features = ["futures"], optional = true }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [features]
 default = ["web"]
-web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
-native = ["dioxus/native"]
-mobile = ["dioxus/mobile"]
+web = ["dioxus/web", "dep:gloo-timers"]
+desktop = ["dioxus/desktop", "dep:tokio"]
+native = ["dioxus/native", "dep:tokio"]
+mobile = ["dioxus/mobile", "dep:tokio"]
 
 # Cargo.toml
 [profile.release]

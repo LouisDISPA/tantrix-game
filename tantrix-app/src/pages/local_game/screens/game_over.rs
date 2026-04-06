@@ -72,10 +72,7 @@ pub fn GameOver() -> Element {
                                         class: "{row_class}",
                                         style: if is_winner { format!("--player-color: {cv}") } else { String::new() },
                                         div { class: "stat-player",
-                                            div {
-                                                class: "stat-color",
-                                                style: "background-color: {cv}",
-                                            }
+                                            div { class: "stat-color", style: "background-color: {cv}" }
                                             span { class: "stat-name", "{color}" }
                                         }
                                         div { class: "stat-score",

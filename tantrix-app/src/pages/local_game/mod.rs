@@ -27,7 +27,7 @@ pub struct LocalGameContext {
 #[component]
 pub fn LocalGame() -> Element {
     let screen = use_signal(|| Screen::Setup);
-    let game_state = use_signal(|| GameState::new(&GameConfig::new(2)));
+    let game_state = use_signal(|| GameState::new(&GameConfig::new()));
     let ui_state = use_signal(UiState::default);
 
     use_context_provider(|| LocalGameContext {
@@ -45,7 +45,11 @@ pub fn LocalGame() -> Element {
 
     let current_screen = *screen.read();
     match current_screen {
-        Screen::Setup => rsx! { PlayerSetup {} },
-        Screen::Playing => rsx! { GamePlay {} },
+        Screen::Setup => rsx! {
+            PlayerSetup {}
+        },
+        Screen::Playing => rsx! {
+            GamePlay {}
+        },
     }
 }

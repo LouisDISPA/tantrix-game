@@ -51,19 +51,13 @@ pub fn RotationWheel(
                             svg {
                                 view_box: "0 0 {SVG_SIZE:.0} {SVG_SIZE:.0}",
                                 class: "rotation-bar-svg",
-                                polygon {
-                                    points: "{points}",
-                                    class: "hex-tile-fill",
-                                }
-                                for (d1, d2, color) in pairs {
+                                polygon { points: "{points}", class: "hex-tile-fill" }
+                                for (d1 , d2 , color) in pairs {
                                     {
                                         let path_d = color_link_path(cx, cy, d1, d2, HEX_SIZE);
                                         let css_class = color_css_class(color);
                                         rsx! {
-                                            path {
-                                                d: "{path_d}",
-                                                class: "hex-curve {css_class}",
-                                            }
+                                            path { d: "{path_d}", class: "hex-curve {css_class}" }
                                         }
                                     }
                                 }

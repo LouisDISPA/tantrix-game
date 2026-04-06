@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 tantrix-game = { path = "../tantrix-game" }
+tantrix-ai = { path = "../tantrix-ai" }
 ratatui = "0.30.0-alpha"
 ratatui-macros = "0.7.0-alpha"
 crossterm = "0.29.0"

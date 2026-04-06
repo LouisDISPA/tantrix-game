@@ -5,6 +5,7 @@ pub enum TurnPhase {
     SelectTile,
     SelectPosition,
     SelectRotation,
+    WaitingForAi,
     GameOver,
 }
 
@@ -26,6 +27,9 @@ pub struct UiState {
     pub last_drag_y: f64,
     /// When true, the board SVG group animates its transform (smooth recenter).
     pub animating: bool,
+    /// Index of the most recently drawn tile in the current player's hand.
+    /// Used to animate only the new tile entering.
+    pub new_tile_index: Option<usize>,
     /// When Some, only this color's scoring path is highlighted on the board.
     pub highlighted_color: Option<Color>,
     /// Transiently highlights a color's path on hover.
@@ -50,6 +54,7 @@ impl Default for UiState {
             last_drag_x: 0.0,
             last_drag_y: 0.0,
             animating: false,
+            new_tile_index: None,
             highlighted_color: None,
             hovered_scoring_color: None,
         }
@@ -66,6 +71,7 @@ impl UiState {
         self.hovered_rotation = None;
         self.phase = TurnPhase::SelectTile;
         self.message.clear();
+        self.new_tile_index = None;
     }
 
     pub fn go_back(&mut self) {

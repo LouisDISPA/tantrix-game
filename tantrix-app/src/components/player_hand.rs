@@ -2,8 +2,8 @@ use dioxus::prelude::*;
 use tantrix_game::Color;
 
 use crate::components::board::execute_move;
-use crate::state::game_state::GameContext;
 use crate::components::hand_tile::HandTile;
+use crate::state::game_state::GameContext;
 use crate::state::ui_state::TurnPhase;
 use crate::svg::paths::color_css_var;
 
@@ -78,28 +78,32 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                 div { class: "hand-empty", "No tiles" }
             } else {
                 div { class: "{tiles_class}",
-                    for (i, tile) in hand.iter().enumerate() {
+                    for (i , tile) in hand.iter().enumerate() {
                         {
                             let is_selected = is_current && ui.selected_tile == Some(i);
-                            let is_disabled = is_current && {
-                                let has_moves = gs.hand_info.get(i)
-                                    .map(|info| info.has_moves())
-                                    .unwrap_or(false);
-                                let is_forced_tile = gs.hand_info.get(i)
-                                    .map(|info| info.has_forced)
-                                    .unwrap_or(false);
-                                !has_moves || (any_forced && !is_forced_tile)
-                            };
+                            let is_disabled = is_current
+                                && {
+                                    let has_moves = gs
+                                        .hand_info
+                                        .get(i)
+                                        .map(|info| info.has_moves())
+                                        .unwrap_or(false);
+                                    let is_forced_tile = gs
+                                        .hand_info
+                                        .get(i)
+                                        .map(|info| info.has_forced)
+                                        .unwrap_or(false);
+                                    !has_moves || (any_forced && !is_forced_tile)
+                                };
                             let is_forced = is_current
-                                && gs.hand_info.get(i)
-                                    .map(|info| info.has_forced)
-                                    .unwrap_or(false);
-
+                                && gs.hand_info.get(i).map(|info| info.has_forced).unwrap_or(false);
+                            let is_new = is_current && ui.new_tile_index == Some(i);
                             rsx! {
                                 HandTile {
-                                    key: "{i}",
+                                    key: "{tile:?}",
                                     tile: *tile,
                                     index: i,
+                                    is_new,
                                     selected: is_selected,
                                     disabled: if is_current { is_disabled } else { false },
                                     forced: is_forced,
@@ -128,20 +132,21 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                                         let auto = {
                                             let gs = game_state.read();
                                             let board_empty = gs.board_moves().is_empty();
-                                            gs.hand_info.get(idx).and_then(|info| {
-                                                if info.positions.len() == 1 {
-                                                    let (&pos, rots) = info.positions.iter().next().unwrap();
-                                                    if rots.len() == 1 || board_empty {
-                                                        Some((pos, rots[0]))
+                                            gs.hand_info
+                                                .get(idx)
+                                                .and_then(|info| {
+                                                    if info.positions.len() == 1 {
+                                                        let (&pos, rots) = info.positions.iter().next().unwrap();
+                                                        if rots.len() == 1 || board_empty {
+                                                            Some((pos, rots[0]))
+                                                        } else {
+                                                            None
+                                                        }
                                                     } else {
                                                         None
                                                     }
-                                                } else {
-                                                    None
-                                                }
-                                            })
+                                                })
                                         };
-
                                         if let Some((pos, rot)) = auto {
                                             execute_move(idx, pos, rot, game_state, ui_state);
                                         } else {
