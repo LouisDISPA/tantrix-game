@@ -1,7 +1,6 @@
 use dioxus::prelude::*;
 
 use crate::route::Route;
-use crate::state::theme::{toggle_theme, THEME};
 
 #[component]
 pub fn MainMenu() -> Element {
@@ -10,13 +9,9 @@ pub fn MainMenu() -> Element {
     rsx! {
         div { class: "title-screen",
 
-            // Layer 1: Hex grid background
             div { class: "title-bg" }
-
-            // Layer 2: Radial warm glow
             div { class: "title-glow" }
 
-            // Layer 3: Floating decorative hexagons (one per player color)
             div { class: "floating-hexes",
                 div { class: "floating-hex hex-red",
                     div { class: "floating-hex-inner" }
@@ -32,7 +27,6 @@ pub fn MainMenu() -> Element {
                 }
             }
 
-            // Layer 4: Main content
             div { class: "title-content",
                 div { class: "title-logo-area",
                     div { class: "title-hex-frame" }
@@ -43,7 +37,7 @@ pub fn MainMenu() -> Element {
                 div { class: "title-buttons",
                     button {
                         class: "title-btn title-btn-primary",
-                        onclick: move |_| { let _ = nav.push(Route::PlayerSetup {}); },
+                        onclick: move |_| { let _ = nav.push(Route::LocalGame {}); },
                         div { class: "title-btn-inner",
                             "Local Game"
                         }
@@ -65,13 +59,6 @@ pub fn MainMenu() -> Element {
                         }
                     }
                 }
-            }
-
-            // Theme toggle
-            button {
-                class: "theme-toggle",
-                onclick: move |_| toggle_theme(),
-                "{THEME.read().icon()}"
             }
         }
     }

@@ -1,23 +1,25 @@
 use dioxus::prelude::*;
 
-use crate::components::{game_over::GameOver, game_screen::GameScreen, main_menu::MainMenu, player_setup::PlayerSetup};
+use crate::pages::{local_game::LocalGame, main_menu::MainMenu};
+use crate::state::theme::{toggle_theme, THEME};
 
 #[derive(Routable, Clone, PartialEq)]
 pub enum Route {
     #[layout(AppLayout)]
     #[route("/")]
     MainMenu {},
-    #[route("/setup")]
-    PlayerSetup {},
     #[route("/game")]
-    GameScreen {},
-    #[route("/gameover")]
-    GameOver {},
+    LocalGame {},
 }
 
 #[component]
 fn AppLayout() -> Element {
     rsx! {
         Outlet::<Route> {}
+        button {
+            class: "theme-toggle",
+            onclick: move |_| toggle_theme(),
+            "{THEME.read().icon()}"
+        }
     }
 }

@@ -1,26 +1,21 @@
 use dioxus::prelude::*;
 use rand::prelude::IndexedRandom;
 
+use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
-use crate::state::config::GAME_CONFIG;
-use crate::state::theme::{toggle_theme, THEME};
+use crate::state::ui_state::UiState;
 use crate::svg::paths::color_css_var;
 
 #[component]
 pub fn GameOver() -> Element {
     let nav = navigator();
+    let mut ctx = use_context::<LocalGameContext>();
 
-    let config = GAME_CONFIG.read();
-    let active_players: Vec<tantrix_game::Color> = config
-        .as_ref()
-        .map(|c| {
-            c.players
-                .iter()
-                .filter(|(_, p)| *p != tantrix_game::Player::None)
-                .map(|(c, _)| *c)
-                .collect()
-        })
-        .unwrap_or_default();
+    let active_players: Vec<tantrix_game::Color> = ctx
+        .game_state
+        .read()
+        .playing_colors()
+        .to_vec();
 
     // Pick random winner
     let winner = use_signal(|| {
@@ -91,7 +86,8 @@ pub fn GameOver() -> Element {
                         button {
                             class: "game-over-btn game-over-btn-primary",
                             onclick: move |_| {
-                                let _ = nav.push(Route::PlayerSetup {});
+                                ctx.ui_state.set(UiState::default());
+                                ctx.screen.set(Screen::Setup);
                             },
                             "Play Again"
                         }
@@ -104,12 +100,6 @@ pub fn GameOver() -> Element {
                         }
                     }
                 }
-            }
-
-            button {
-                class: "theme-toggle",
-                onclick: move |_| toggle_theme(),
-                "{THEME.read().icon()}"
             }
         }
     }

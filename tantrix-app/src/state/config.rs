@@ -1,4 +1,3 @@
-use dioxus::prelude::*;
 use tantrix_game::{Color, Player};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,5 +34,3 @@ impl GameConfig {
         self.players.iter().filter(|(_, p)| *p != Player::None).count()
     }
 }
-
-pub static GAME_CONFIG: GlobalSignal<Option<GameConfig>> = Signal::global(|| None);

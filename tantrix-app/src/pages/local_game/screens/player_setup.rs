@@ -1,8 +1,10 @@
 use dioxus::prelude::*;
 
+use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
-use crate::state::config::{GameConfig, GAME_CONFIG};
-use crate::state::theme::{toggle_theme, THEME};
+use crate::state::config::GameConfig;
+use crate::state::game_state::GameState;
+use crate::state::ui_state::UiState;
 use crate::svg::paths::color_css_var;
 use tantrix_game::Color;
 
@@ -10,6 +12,7 @@ use tantrix_game::Color;
 pub fn PlayerSetup() -> Element {
     let mut player_count = use_signal(|| 2usize);
     let nav = navigator();
+    let mut ctx = use_context::<LocalGameContext>();
 
     let colors = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
     let count = *player_count.read();
@@ -81,18 +84,14 @@ pub fn PlayerSetup() -> Element {
                     button {
                         class: "setup-start-btn",
                         onclick: move |_| {
-                            *GAME_CONFIG.write() = Some(GameConfig::new(count));
-                            let _ = nav.push(Route::GameScreen {});
+                            let config = GameConfig::new(count);
+                            ctx.game_state.set(GameState::new(&config));
+                            ctx.ui_state.set(UiState::default());
+                            ctx.screen.set(Screen::Playing);
                         },
                         "Start Game"
                     }
                 }
-            }
-
-            button {
-                class: "theme-toggle",
-                onclick: move |_| toggle_theme(),
-                "{THEME.read().icon()}"
             }
         }
     }

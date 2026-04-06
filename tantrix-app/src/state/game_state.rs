@@ -1,8 +1,18 @@
 use std::collections::BTreeMap;
 
-use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile};
+use dioxus::prelude::*;
+use tantrix_game::{Color, Game, Move, Position, Rotation, Tile};
 
 use super::config::GameConfig;
+use super::ui_state::UiState;
+
+/// Context struct holding the game's reactive state.
+/// Uses Signal fields so child components get fine-grained reactivity.
+#[derive(Clone, Copy)]
+pub struct GameContext {
+    pub game_state: Signal<GameState>,
+    pub ui_state: Signal<UiState>,
+}
 
 #[derive(Debug, Clone)]
 pub struct TileMoveInfo {

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::components::game_screen::GameContext;
+use crate::state::game_state::GameContext;
 use crate::state::ui_state::TurnPhase;
 use crate::svg::paths::color_css_var;
 

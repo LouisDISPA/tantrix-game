@@ -2,11 +2,8 @@ use dioxus::prelude::*;
 
 use crate::components::board::Board;
 use crate::components::player_hand::{HandPosition, PlayerHand};
-use crate::route::Route;
-use crate::state::config::GAME_CONFIG;
-use crate::state::game_state::GameState;
-use crate::state::theme::{toggle_theme, THEME};
-use crate::state::ui_state::{TurnPhase, UiState};
+use crate::pages::local_game::{LocalGameContext, Screen};
+use crate::state::ui_state::TurnPhase;
 use tantrix_game::Color;
 
 /// Determine hand positions based on player count.
@@ -52,52 +49,20 @@ fn grid_template(player_count: usize) -> (&'static str, &'static str, &'static s
     }
 }
 
-/// Context struct holding the game's reactive state.
-/// Uses Signal fields so child components get fine-grained reactivity.
-#[derive(Clone, Copy)]
-pub struct GameContext {
-    pub game_state: Signal<GameState>,
-    pub ui_state: Signal<UiState>,
-}
-
 #[component]
-pub fn GameScreen() -> Element {
-    // All hooks MUST be called unconditionally and in the same order.
-    // Read config with peek() to avoid subscribing to future changes.
-    let mut game_state = use_signal(|| {
-        let config = GAME_CONFIG.peek();
-        match config.as_ref() {
-            Some(c) => GameState::new(c),
-            // Fallback: 2-player game (will redirect below)
-            None => GameState::new(&crate::state::config::GameConfig::new(2)),
-        }
-    });
-    let mut ui_state = use_signal(UiState::default);
-
-    // Provide context so all children can access game state without prop drilling.
-    use_context_provider(|| GameContext {
-        game_state,
-        ui_state,
-    });
-
-    // Redirect if no config was set (after hooks are established).
-    let has_config = GAME_CONFIG.peek().is_some();
-    if !has_config {
-        let nav = navigator();
-        let _ = nav.push(Route::MainMenu {});
-        return rsx! { div { "Redirecting..." } };
-    }
+pub fn GamePlay() -> Element {
+    let mut ctx = use_context::<LocalGameContext>();
+    let ui_state = ctx.ui_state;
 
     // Navigate to game over screen when the phase changes to GameOver.
     let is_game_over = ui_state.read().phase == TurnPhase::GameOver;
     if is_game_over {
-        let nav = navigator();
-        let _ = nav.push(Route::GameOver {});
+        ctx.screen.set(Screen::GameOver);
         return rsx! { div { "Game over..." } };
     }
 
     // Derive layout from game state.
-    let gs = game_state.read();
+    let gs = ctx.game_state.read();
     let colors = gs.playing_colors().to_vec();
     let player_count = colors.len();
     let hand_assignments = assign_hand_positions(&colors);
@@ -113,15 +78,9 @@ pub fn GameScreen() -> Element {
             autofocus: true,
             onkeydown: move |evt: KeyboardEvent| {
                 if evt.key() == Key::Escape {
-                    ui_state.write().go_back();
+                    ctx.ui_state.write().go_back();
                 }
             },
-
-            button {
-                class: "theme-toggle",
-                onclick: move |_| toggle_theme(),
-                "{THEME.read().icon()}"
-            }
 
             div {
                 style: "grid-area: board; min-width: 0; min-height: 0;",

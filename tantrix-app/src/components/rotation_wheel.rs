@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation, Tile};
 
-use crate::components::game_screen::GameContext;
+use crate::state::game_state::GameContext;
 use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs, hex_polygon_points};
 
 const HEX_SIZE: f64 = 28.0;

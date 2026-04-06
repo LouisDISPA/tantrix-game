@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use tantrix_game::Color;
 
 use crate::components::board::execute_move;
-use crate::components::game_screen::GameContext;
+use crate::state::game_state::GameContext;
 use crate::components::hand_tile::HandTile;
 use crate::state::ui_state::TurnPhase;
 use crate::svg::paths::color_css_var;

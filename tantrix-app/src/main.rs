@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 mod components;
+mod pages;
 mod route;
 mod state;
 mod svg;

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation};
 
-use crate::components::game_screen::GameContext;
+use crate::state::game_state::GameContext;
 use crate::components::hex_empty::HexEmpty;
 use crate::components::hex_tile::HexTile;
 use crate::components::rotation_wheel::RotationWheel;
@@ -14,7 +14,7 @@ use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 #[component]
 pub fn Board() -> Element {
     let ctx = use_context::<GameContext>();
-    let mut game_state = ctx.game_state;
+    let game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 
     let gs = game_state.read();
@@ -357,7 +357,7 @@ pub fn execute_move(
 
 fn handle_position_click(
     pos: Position,
-    mut game_state: Signal<GameState>,
+    game_state: Signal<GameState>,
     mut ui_state: Signal<UiState>,
 ) {
     // Read everything we need into locals, then drop the borrows.
@@ -399,8 +399,8 @@ fn handle_position_click(
 
 fn handle_rotation_select(
     rotation: Rotation,
-    mut game_state: Signal<GameState>,
-    mut ui_state: Signal<UiState>,
+    game_state: Signal<GameState>,
+    ui_state: Signal<UiState>,
 ) {
     // Read tile_idx and pos from ui, then drop the borrow.
     let (tile_idx, pos) = {
