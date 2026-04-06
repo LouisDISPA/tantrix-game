@@ -8,34 +8,70 @@ pub fn MainMenu() -> Element {
     let nav = navigator();
 
     rsx! {
-        div { class: "screen",
+        div { class: "title-screen",
+
+            // Layer 1: Hex grid background
+            div { class: "title-bg" }
+
+            // Layer 2: Radial warm glow
+            div { class: "title-glow" }
+
+            // Layer 3: Floating decorative hexagons (one per player color)
+            div { class: "floating-hexes",
+                div { class: "floating-hex hex-red",
+                    div { class: "floating-hex-inner" }
+                }
+                div { class: "floating-hex hex-blue",
+                    div { class: "floating-hex-inner" }
+                }
+                div { class: "floating-hex hex-yellow",
+                    div { class: "floating-hex-inner" }
+                }
+                div { class: "floating-hex hex-green",
+                    div { class: "floating-hex-inner" }
+                }
+            }
+
+            // Layer 4: Main content
+            div { class: "title-content",
+                div { class: "title-logo-area",
+                    div { class: "title-hex-frame" }
+                    h1 { class: "title-logo", "TANTRIX" }
+                    p { class: "title-subtitle", "Hexagonal Tile Strategy" }
+                }
+
+                div { class: "title-buttons",
+                    button {
+                        class: "title-btn title-btn-primary",
+                        onclick: move |_| { let _ = nav.push(Route::PlayerSetup {}); },
+                        div { class: "title-btn-inner",
+                            "Local Game"
+                        }
+                    }
+                    button {
+                        class: "title-btn title-btn-disabled",
+                        disabled: true,
+                        div { class: "title-btn-inner",
+                            "vs AI"
+                            span { class: "title-coming-soon", "Coming soon" }
+                        }
+                    }
+                    button {
+                        class: "title-btn title-btn-disabled",
+                        disabled: true,
+                        div { class: "title-btn-inner",
+                            "Online"
+                            span { class: "title-coming-soon", "Coming soon" }
+                        }
+                    }
+                }
+            }
+
+            // Theme toggle
             button {
                 class: "theme-toggle",
                 onclick: move |_| toggle_theme(),
                 "{THEME.read().icon()}"
-            }
-            div { class: "card",
-                div { class: "menu-logo", "Tantrix" }
-                div { class: "card-subtitle", "Hexagonal tile strategy game" }
-                div { class: "menu-buttons",
-                    button {
-                        class: "btn btn-primary btn-large",
-                        onclick: move |_| { let _ = nav.push(Route::PlayerSetup {}); },
-                        "Local Game"
-                    }
-                    button {
-                        class: "btn btn-disabled btn-large",
-                        disabled: true,
-                        "vs AI"
-                        div { class: "coming-soon", "Coming soon" }
-                    }
-                    button {
-                        class: "btn btn-disabled btn-large",
-                        disabled: true,
-                        "Online"
-                        div { class: "coming-soon", "Coming soon" }
-                    }
-                }
             }
         }
     }

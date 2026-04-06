@@ -36,15 +36,30 @@ pub fn GameOver() -> Element {
     let color_var = color_css_var(winner_color);
 
     rsx! {
-        div { class: "screen",
-            button {
-                class: "theme-toggle",
-                onclick: move |_| toggle_theme(),
-                "{THEME.read().icon()}"
+        div { class: "title-screen",
+            div { class: "title-bg" }
+            div { class: "title-glow" }
+
+            div { class: "floating-hexes",
+                div { class: "floating-hex hex-red",
+                    div { class: "floating-hex-inner" }
+                }
+                div { class: "floating-hex hex-blue",
+                    div { class: "floating-hex-inner" }
+                }
+                div { class: "floating-hex hex-yellow",
+                    div { class: "floating-hex-inner" }
+                }
+                div { class: "floating-hex hex-green",
+                    div { class: "floating-hex-inner" }
+                }
             }
+
             div { class: "game-over-overlay",
+                div { class: "game-over-backdrop" }
                 div { class: "game-over-card",
-                    div { class: "winner-title", "Winner!" }
+                    div { class: "game-over-hex-frame" }
+                    div { class: "winner-title", "Winner" }
                     div {
                         class: "winner-name",
                         style: "color: {color_var}; --glow-color: {color_var}",
@@ -74,14 +89,14 @@ pub fn GameOver() -> Element {
                     }
                     div { class: "game-over-buttons",
                         button {
-                            class: "btn btn-primary",
+                            class: "game-over-btn game-over-btn-primary",
                             onclick: move |_| {
                                 let _ = nav.push(Route::PlayerSetup {});
                             },
                             "Play Again"
                         }
                         button {
-                            class: "btn btn-secondary",
+                            class: "game-over-btn game-over-btn-secondary",
                             onclick: move |_| {
                                 let _ = nav.push(Route::MainMenu {});
                             },
@@ -89,6 +104,12 @@ pub fn GameOver() -> Element {
                         }
                     }
                 }
+            }
+
+            button {
+                class: "theme-toggle",
+                onclick: move |_| toggle_theme(),
+                "{THEME.read().icon()}"
             }
         }
     }

@@ -16,6 +16,7 @@ pub struct UiState {
     pub selected_position: Option<Position>,
     pub hovered_position: Option<Position>,
     pub selected_rotation: Option<Rotation>,
+    pub hovered_rotation: Option<Rotation>,
     pub message: String,
     pub zoom: f64,
     pub pan_x: f64,
@@ -36,6 +37,7 @@ impl Default for UiState {
             selected_position: None,
             hovered_position: None,
             selected_rotation: None,
+            hovered_rotation: None,
             message: String::new(),
             zoom: 1.0,
             pan_x: 0.0,
@@ -55,6 +57,7 @@ impl UiState {
         self.selected_position = None;
         self.hovered_position = None;
         self.selected_rotation = None;
+        self.hovered_rotation = None;
         self.phase = TurnPhase::SelectTile;
         self.message.clear();
     }
@@ -63,6 +66,7 @@ impl UiState {
         match self.phase {
             TurnPhase::SelectRotation => {
                 self.selected_rotation = None;
+                self.hovered_rotation = None;
                 self.selected_position = None;
                 self.phase = TurnPhase::SelectPosition;
             }

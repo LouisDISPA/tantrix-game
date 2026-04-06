@@ -35,18 +35,18 @@ fn grid_template(player_count: usize) -> (&'static str, &'static str, &'static s
     match player_count {
         2 => (
             "0px 1fr 0px",
-            "180px 1fr 180px",
+            "140px 1fr 140px",
             "\". board .\" \"left board right\" \". board .\"",
         ),
         3 => (
-            "0px 1fr 120px",
-            "180px 1fr 180px",
-            "\". board .\" \"left board right\" \". bottom .\"",
+            "0px 1fr 140px",
+            "140px 1fr 140px",
+            "\"left board right\" \"left board right\" \"left bottom right\"",
         ),
         4 => (
-            "120px 1fr 120px",
-            "180px 1fr 180px",
-            "\". top .\" \"left board right\" \". bottom .\"",
+            "140px 1fr 140px",
+            "140px 1fr 140px",
+            "\"left top right\" \"left board right\" \"left bottom right\"",
         ),
         _ => ("1fr", "1fr", "\"board\""),
     }
@@ -108,7 +108,7 @@ pub fn GameScreen() -> Element {
     rsx! {
         div {
             class: "game-layout",
-            style: "display: grid; grid-template-rows: {grid_rows}; grid-template-columns: {grid_cols}; grid-template-areas: {grid_areas}; height: 100vh; width: 100vw; gap: 0;",
+            style: "display: grid; grid-template-rows: {grid_rows}; grid-template-columns: {grid_cols}; grid-template-areas: {grid_areas}; height: 100vh; width: 100vw; gap: 2px; background: var(--border-subtle);",
             tabindex: "0",
             autofocus: true,
             onkeydown: move |evt: KeyboardEvent| {

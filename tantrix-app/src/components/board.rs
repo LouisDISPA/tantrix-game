@@ -277,7 +277,7 @@ fn build_preview_move(gs: &GameState, ui: &UiState) -> Option<Move> {
             }
             None
         }
-        TurnPhase::SelectPosition | TurnPhase::SelectRotation => {
+        TurnPhase::SelectPosition => {
             let tile_idx = ui.selected_tile?;
             let position = ui.hovered_position.or(ui.selected_position)?;
             let hand = gs.get_hand(gs.currently_playing());
@@ -285,6 +285,16 @@ fn build_preview_move(gs: &GameState, ui: &UiState) -> Option<Move> {
             let info = gs.hand_info.get(tile_idx)?;
             let rotations = info.positions.get(&position)?;
             let rotation = ui.selected_rotation.unwrap_or(*rotations.first()?);
+            Some(Move { tile, position, rotation, forced: false })
+        }
+        TurnPhase::SelectRotation => {
+            let tile_idx = ui.selected_tile?;
+            let position = ui.selected_position?;
+            let hand = gs.get_hand(gs.currently_playing());
+            let tile = *hand.get(tile_idx)?;
+            let info = gs.hand_info.get(tile_idx)?;
+            let rotations = info.positions.get(&position)?;
+            let rotation = ui.hovered_rotation.unwrap_or(*rotations.first()?);
             Some(Move { tile, position, rotation, forced: false })
         }
         _ => None,

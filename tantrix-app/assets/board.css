@@ -6,7 +6,8 @@
     height: 100%;
     overflow: hidden;
     background-color: var(--bg-board);
-    border-radius: 8px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230'%3E%3Cpolygon points='100,0 173.2,37.5 173.2,112.5 100,150 26.8,112.5 26.8,37.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.12'/%3E%3Cpolygon points='200,115 273.2,152.5 273.2,227.5 200,265 126.8,227.5 126.8,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.12'/%3E%3Cpolygon points='0,115 73.2,152.5 73.2,227.5 0,265 -73.2,227.5 -73.2,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.12'/%3E%3C/svg%3E");
+    background-repeat: repeat;
 }
 
 .board-svg {
@@ -94,7 +95,7 @@
     stroke-dasharray: 6 4;
 }
 
-/* ===== Board Controls — convex neumorphic ===== */
+/* ===== Board Controls ===== */
 
 .board-controls {
     position: absolute;
@@ -105,28 +106,32 @@
 
 .board-ctrl-btn {
     padding: 6px 14px;
-    border: none;
-    border-radius: 10px;
-    background: var(--convex-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--surface-elevated);
     color: var(--text-secondary);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
     cursor: pointer;
-    box-shadow: var(--neu-shadow-sm);
+    box-shadow: var(--shadow-sm);
     transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .board-ctrl-btn:hover {
     background: var(--color-red);
     color: white;
-    box-shadow: var(--neu-shadow);
+    border-color: transparent;
+    box-shadow: var(--shadow-md);
 }
 
 .board-ctrl-btn:active {
-    box-shadow: var(--neu-inset);
+    transform: translateY(1px);
+    box-shadow: none;
 }
 
-/* ===== Zoom Controls — convex neumorphic ===== */
+/* ===== Zoom Controls ===== */
 
 .zoom-controls {
     position: absolute;
@@ -136,10 +141,10 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    background: var(--convex-bg);
-    border: none;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
     border-radius: 12px;
-    box-shadow: var(--neu-shadow-sm);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
 }
 
@@ -159,11 +164,11 @@
 }
 
 .zoom-btn:hover {
-    background: rgba(128, 128, 128, 0.2);
+    background: rgba(128, 128, 128, 0.15);
 }
 
 .zoom-btn:active {
-    background: rgba(128, 128, 128, 0.35);
+    background: rgba(128, 128, 128, 0.25);
 }
 
 .zoom-btn.zoom-label {
@@ -211,7 +216,7 @@
     pointer-events: auto;
 }
 
-/* ===== Turn Banner — bold colored strip ===== */
+/* ===== Turn Banner ===== */
 
 .turn-banner {
     display: flex;
@@ -223,13 +228,15 @@
     color: white;
     font-size: 14px;
     transition: background 0.3s ease;
+    backdrop-filter: blur(8px);
+    clip-path: polygon(0 50%, 1.5% 0, 98.5% 0, 100% 50%, 98.5% 100%, 1.5% 100%);
 }
 
 .turn-banner .turn-banner-name {
-    font-weight: 800;
+    font-weight: 900;
     font-size: 16px;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
 }
 
 .turn-banner .turn-banner-phase {
@@ -254,7 +261,7 @@
     justify-content: center;
     gap: 8px;
     padding: 6px 16px;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.15), transparent);
+    background: linear-gradient(to bottom, rgba(0,0,0,0.08), transparent);
     pointer-events: none;
 }
 
@@ -264,86 +271,67 @@
 
 .status-item {
     padding: 3px 10px;
-    border-radius: 8px;
-    background: var(--convex-bg);
-    box-shadow: var(--neu-shadow-sm);
-    font-size: 12px;
-    font-weight: 500;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
     color: var(--text-primary);
     white-space: nowrap;
 }
 
 .status-message {
     padding: 3px 10px;
-    border-radius: 8px;
+    border-radius: 6px;
     background: var(--color-red);
     color: white;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
+    letter-spacing: 0.5px;
 }
 
-/* ===== Rotation Wheel — convex neumorphic slots ===== */
+/* ===== Rotation Bar (top of board) ===== */
 
-.rotation-overlay {
+.rotation-bar {
     position: absolute;
-    inset: 0;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 20;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    animation: fadeIn 0.5s ease;
 }
 
-.rotation-backdrop {
-    position: absolute;
-    inset: 0;
-    background: var(--overlay);
-    animation: fadeIn 0.15s ease;
-}
-
-.rotation-wheel {
-    position: relative;
-    animation: scale-in 0.2s ease;
-}
-
-.rotation-slot {
-    position: absolute;
-    transform: translate(-50%, -50%);
-    cursor: pointer;
-    border-radius: 50%;
+.rotation-bar-slot {
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    background: var(--convex-bg);
-    box-shadow: var(--neu-shadow);
-    border: none;
-    padding: 8px;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 8px;
+    transition: background 0.12s ease, transform 0.12s ease;
 }
 
-.rotation-slot:hover {
-    transform: translate(-50%, -50%) scale(1.12);
-    box-shadow: var(--shadow-lg);
+.rotation-bar-slot:hover {
+    background: var(--hand-active-glow);
+    transform: scale(1.08);
 }
 
-.rotation-slot:active {
-    box-shadow: var(--neu-inset);
-    background: var(--bg-primary);
+.rotation-bar-slot:active {
+    transform: scale(0.97);
 }
 
-.rotation-slot-svg {
-    width: 100%;
-    height: 100%;
+.rotation-bar-svg {
+    width: 66px;
+    height: 66px;
     display: block;
-}
-
-.rotation-label {
-    position: absolute;
-    bottom: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    white-space: nowrap;
 }

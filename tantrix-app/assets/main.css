@@ -18,36 +18,42 @@ html, body {
 }
 
 /* ===== Theme Variables ===== */
-/* Neutral gray palette — no color shift between themes */
 
 [data-theme="light"] {
-    --bg-primary: #e0e0e0;
-    --bg-secondary: #d8d8d8;
-    --bg-board: #cacaca;
-    --bg-card: #e8e8e8;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-board: #fafafa;
+    --bg-card: #ffffff;
     --text-primary: #1a1a1a;
     --text-secondary: #666666;
     --text-muted: #999999;
-    --border-color: #c0c0c0;
-    --border-light: #d4d4d4;
+    --border-color: #e0e0e0;
+    --border-light: #eeeeee;
+    --border-subtle: rgba(0, 0, 0, 0.08);
     --hex-outline: #555555;
-    --hex-outline-light: #888888;
-    --hex-empty: rgba(0, 0, 0, 0.08);
+    --hex-outline-light: #aaaaaa;
+    --hex-empty: rgba(0, 0, 0, 0.04);
     --overlay: rgba(0, 0, 0, 0.45);
 
-    /* Neumorphism shadows */
-    --neu-shadow: 5px 5px 10px #bebebe, -5px -5px 10px #ffffff;
-    --neu-shadow-sm: 3px 3px 6px #bebebe, -3px -3px 6px #ffffff;
-    --neu-inset: inset 3px 3px 6px #bebebe, inset -3px -3px 6px #ffffff;
-    --shadow-sm: 2px 2px 4px #bebebe, -2px -2px 4px #ffffff;
-    --shadow-md: 4px 4px 8px #bebebe, -4px -4px 8px #ffffff;
-    --shadow-lg: 8px 8px 16px #bebebe, -8px -8px 16px #ffffff;
+    /* Flat shadows */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.10);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
 
-    /* Convex gradients */
-    --convex-bg: linear-gradient(145deg, #f0f0f0, #cacaca);
-    --convex-btn-primary: linear-gradient(145deg, #5e5e5e, #4a4a4a);
-    --convex-btn-secondary: linear-gradient(145deg, #e0e0e0, #c0c0c0);
-    --convex-btn-disabled: linear-gradient(145deg, #dcdcdc, #c8c8c8);
+    /* Surfaces */
+    --surface-primary: #ffffff;
+    --surface-secondary: #f5f5f5;
+    --surface-elevated: #ffffff;
+
+    /* Buttons */
+    --btn-primary-bg: #333333;
+    --btn-primary-hover: #444444;
+    --btn-primary-text: #ffffff;
+    --btn-secondary-bg: #f0f0f0;
+    --btn-secondary-hover: #e4e4e4;
+    --btn-secondary-text: #1a1a1a;
+    --btn-disabled-bg: #f0f0f0;
+    --btn-disabled-text: #aaaaaa;
 
     /* Tile — black with lighter border for separation */
     --tile-fill: #1a1a1a;
@@ -55,54 +61,52 @@ html, body {
     --tile-fill-dark: #0e0e0e;
     --tile-stroke: #3a3a3a;
 
-    /* Game colors — identical across themes */
-    --color-red: #e63946;
-    --color-blue: #4a90d9;
-    --color-yellow: #f0c040;
-    --color-green: #2eaa8a;
+    /* Game colors — oklch with matched perceptual luminance & chroma */
+    --color-red:    oklch(0.65 0.22 25);
+    --color-blue:   oklch(0.65 0.22 250);
+    --color-yellow: oklch(0.80 0.18 90);
+    --color-green:  oklch(0.65 0.22 160);
 
-    --hand-bg: #d8d8d8;
-    --hand-active-glow: rgba(0,0,0,0.12);
+    --hand-bg: #f5f5f5;
+    --hand-active-glow: rgba(0, 0, 0, 0.06);
     --hand-header-text: #ffffff;
-
-    --btn-primary-bg: #555555;
-    --btn-primary-hover: #444444;
-    --btn-primary-text: #ffffff;
-    --btn-secondary-bg: #d0d0d0;
-    --btn-secondary-hover: #c0c0c0;
-    --btn-secondary-text: #1a1a1a;
-    --btn-disabled-bg: #d8d8d8;
-    --btn-disabled-text: #999999;
 }
 
 [data-theme="dark"] {
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #262626;
-    --bg-board: #1a1a1a;
-    --bg-card: #282828;
+    --bg-primary: #121212;
+    --bg-secondary: #1a1a1a;
+    --bg-board: #161616;
+    --bg-card: #1e1e1e;
     --text-primary: #e0e0e0;
     --text-secondary: #909090;
     --text-muted: #585858;
-    --border-color: #3a3a3a;
-    --border-light: #444444;
+    --border-color: #2a2a2a;
+    --border-light: #333333;
+    --border-subtle: rgba(255, 255, 255, 0.08);
     --hex-outline: #555555;
-    --hex-outline-light: #4a4a4a;
-    --hex-empty: rgba(255, 255, 255, 0.06);
+    --hex-outline-light: #444444;
+    --hex-empty: rgba(255, 255, 255, 0.04);
     --overlay: rgba(0, 0, 0, 0.65);
 
-    /* Neumorphism shadows */
-    --neu-shadow: 5px 5px 10px #141414, -5px -5px 10px #282828;
-    --neu-shadow-sm: 3px 3px 6px #141414, -3px -3px 6px #282828;
-    --neu-inset: inset 3px 3px 6px #141414, inset -3px -3px 6px #282828;
-    --shadow-sm: 2px 2px 4px #141414, -2px -2px 4px #282828;
-    --shadow-md: 4px 4px 8px #141414, -4px -4px 8px #282828;
-    --shadow-lg: 8px 8px 16px #141414, -8px -8px 16px #282828;
+    /* Flat shadows */
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
 
-    /* Convex gradients */
-    --convex-bg: linear-gradient(145deg, #2e2e2e, #1a1a1a);
-    --convex-btn-primary: linear-gradient(145deg, #555555, #3e3e3e);
-    --convex-btn-secondary: linear-gradient(145deg, #3a3a3a, #262626);
-    --convex-btn-disabled: linear-gradient(145deg, #2e2e2e, #1e1e1e);
+    /* Surfaces */
+    --surface-primary: #141414;
+    --surface-secondary: #1c1c1c;
+    --surface-elevated: #222222;
+
+    /* Buttons */
+    --btn-primary-bg: #e0e0e0;
+    --btn-primary-hover: #ffffff;
+    --btn-primary-text: #121212;
+    --btn-secondary-bg: #2a2a2a;
+    --btn-secondary-hover: #333333;
+    --btn-secondary-text: #e0e0e0;
+    --btn-disabled-bg: #1e1e1e;
+    --btn-disabled-text: #4a4a4a;
 
     /* Tile — black with lighter border for separation */
     --tile-fill: #141414;
@@ -110,24 +114,15 @@ html, body {
     --tile-fill-dark: #0a0a0a;
     --tile-stroke: #333333;
 
-    /* Game colors — identical across themes */
-    --color-red: #e63946;
-    --color-blue: #4a90d9;
-    --color-yellow: #f0c040;
-    --color-green: #2eaa8a;
+    /* Game colors — oklch with matched perceptual luminance & chroma */
+    --color-red:    oklch(0.65 0.22 25);
+    --color-blue:   oklch(0.65 0.22 250);
+    --color-yellow: oklch(0.80 0.18 90);
+    --color-green:  oklch(0.65 0.22 160);
 
-    --hand-bg: #222222;
-    --hand-active-glow: rgba(255,255,255,0.06);
+    --hand-bg: #1a1a1a;
+    --hand-active-glow: rgba(255, 255, 255, 0.04);
     --hand-header-text: #ffffff;
-
-    --btn-primary-bg: #4a4a4a;
-    --btn-primary-hover: #5a5a5a;
-    --btn-primary-text: #e0e0e0;
-    --btn-secondary-bg: #333333;
-    --btn-secondary-hover: #404040;
-    --btn-secondary-text: #e0e0e0;
-    --btn-disabled-bg: #2a2a2a;
-    --btn-disabled-text: #4a4a4a;
 }
 
 /* ===== Base Typography ===== */
@@ -148,7 +143,7 @@ body {
     position: relative;
 }
 
-/* Theme toggle — convex neumorphic */
+/* Theme toggle */
 .theme-toggle {
     position: fixed;
     top: 12px;
@@ -157,67 +152,71 @@ body {
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    border: none;
-    background: var(--convex-bg);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-elevated);
     color: var(--text-primary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
-    box-shadow: var(--neu-shadow-sm);
+    box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .theme-toggle:hover {
     transform: scale(1.1);
+    box-shadow: var(--shadow-md);
 }
 
 .theme-toggle:active {
-    box-shadow: var(--neu-inset);
-    background: var(--bg-primary);
+    transform: scale(0.95);
 }
 
-/* Buttons — convex neumorphic */
+/* Buttons — flat */
 .btn {
     padding: 12px 24px;
     border-radius: 12px;
-    border: none;
+    border: 1px solid var(--border-subtle);
     cursor: pointer;
     font-size: 16px;
     font-weight: 500;
-    box-shadow: var(--neu-shadow-sm);
-    transition: box-shadow 0.15s ease, transform 0.1s ease;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.15s ease, transform 0.1s ease, background 0.15s ease;
 }
 
 .btn:active {
-    transform: scale(0.97);
-    box-shadow: var(--neu-inset);
+    transform: translateY(1px);
+    box-shadow: none;
 }
 
 .btn-primary {
-    background: var(--convex-btn-primary);
+    background: var(--btn-primary-bg);
     color: var(--btn-primary-text);
+    border-color: transparent;
 }
 
 .btn-primary:hover {
-    box-shadow: var(--neu-shadow);
+    background: var(--btn-primary-hover);
+    box-shadow: var(--shadow-md);
 }
 
 .btn-secondary {
-    background: var(--convex-btn-secondary);
+    background: var(--btn-secondary-bg);
     color: var(--btn-secondary-text);
 }
 
 .btn-secondary:hover {
-    box-shadow: var(--neu-shadow);
+    background: var(--btn-secondary-hover);
+    box-shadow: var(--shadow-md);
 }
 
 .btn-disabled {
-    background: var(--convex-btn-disabled);
+    background: var(--btn-disabled-bg);
     color: var(--btn-disabled-text);
     cursor: not-allowed;
     box-shadow: none;
+    border-color: transparent;
 }
 
 .btn-disabled:hover {

@@ -34,10 +34,15 @@ pub fn StatusBar() -> Element {
         div { class: "status-bar",
             // Turn banner — full-width colored strip
             div {
-                class: if is_forced { "turn-banner forced" } else { "turn-banner" },
-                style: "--turn-color: {color_var}",
-                span { class: "turn-banner-name", "{current_color}" }
-                span { class: "turn-banner-phase", "{phase_text}" }
+                display: "flex",
+                align_items: "center",
+                justify_content: "center",
+                div {
+                    class: if is_forced { "turn-banner forced" } else { "turn-banner" },
+                    style: "--turn-color: {color_var}",
+                    span { class: "turn-banner-name", "{current_color}" }
+                    span { class: "turn-banner-phase", "{phase_text}" }
+                }
             }
             // Info pills
             div { class: "status-pills",
