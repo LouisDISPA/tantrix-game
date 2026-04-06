@@ -702,28 +702,65 @@
   margin-bottom: 32px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .stat-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 10px 16px;
   color: var(--text-secondary);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-secondary);
-  letter-spacing: 0.5px;
+  transition: background 0.2s ease;
+}
+
+.stat-row-winner {
+  background: color-mix(in oklch, var(--player-color) 10%, var(--bg-secondary));
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--player-color) 30%, transparent);
+}
+
+.stat-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stat-color {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+}
+
+.stat-name {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
   text-transform: uppercase;
 }
 
-.stat-row .stat-color {
-  width: 16px;
-  height: 16px;
-  margin-right: 8px;
-  clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+.stat-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.stat-points {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.stat-detail {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.6;
 }
 
 .game-over-buttons {

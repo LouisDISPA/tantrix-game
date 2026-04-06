@@ -7,10 +7,7 @@ edition = "2021"
 tantrix-game = { path = "../tantrix-game" }
 dioxus = { version = "0.7", features = ["router"] }
 rand = "0.10"
-getrandom = { version = "0.3", features = ["wasm_js"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom_0_4 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
 [features]
 default = ["web"]
@@ -18,3 +15,11 @@ web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 native = ["dioxus/native"]
 mobile = ["dioxus/mobile"]
+
+# Cargo.toml
+[profile.release]
+opt-level = "z" # Optimize for size
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

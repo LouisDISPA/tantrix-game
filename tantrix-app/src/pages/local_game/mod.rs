@@ -6,7 +6,6 @@ use crate::state::config::GameConfig;
 use crate::state::game_state::{GameContext, GameState};
 use crate::state::ui_state::UiState;
 
-pub use screens::game_over::GameOver;
 pub use screens::game_play::GamePlay;
 pub use screens::player_setup::PlayerSetup;
 
@@ -14,7 +13,6 @@ pub use screens::player_setup::PlayerSetup;
 pub enum Screen {
     Setup,
     Playing,
-    GameOver,
 }
 
 /// Context shared across all screens within the local game page.
@@ -49,6 +47,5 @@ pub fn LocalGame() -> Element {
     match current_screen {
         Screen::Setup => rsx! { PlayerSetup {} },
         Screen::Playing => rsx! { GamePlay {} },
-        Screen::GameOver => rsx! { GameOver {} },
     }
 }

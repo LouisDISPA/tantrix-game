@@ -17,6 +17,13 @@ pub struct PlayerScore {
     pub score: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ScoringPath {
+    pub positions: Vec<Position>,
+    pub is_loop: bool,
+    pub score: usize,
+}
+
 /// Find the two directions of a given color on a placed tile.
 /// Returns `None` if the tile doesn't have that color.
 fn color_link(m: &Move, color: Color) -> Option<(Direction, Direction)> {
@@ -196,6 +203,93 @@ impl Board {
             current_pos = next_pos;
             current_exit = next_exit;
         }
+    }
+
+    /// Trace a color path, collecting positions along the way.
+    /// Returns (positions beyond start in traversal order, is_loop).
+    fn trace_with_positions(
+        &self,
+        color: Color,
+        start_pos: Position,
+        exit_dir: Direction,
+        visited: &mut BTreeSet<Position>,
+    ) -> (Vec<Position>, bool) {
+        let mut positions = Vec::new();
+        let mut current_pos = start_pos;
+        let mut current_exit = exit_dir;
+
+        loop {
+            let next_pos = current_pos.neighbor(current_exit);
+            if next_pos == start_pos {
+                return (positions, true);
+            }
+            let Some(next_move) = self.get_move(&next_pos) else {
+                return (positions, false);
+            };
+            let Some((da, db)) = color_link(&next_move, color) else {
+                return (positions, false);
+            };
+            let arrival = current_exit.oposite();
+            let next_exit = if da == arrival {
+                db
+            } else if db == arrival {
+                da
+            } else {
+                return (positions, false);
+            };
+
+            visited.insert(next_pos);
+            positions.push(next_pos);
+            current_pos = next_pos;
+            current_exit = next_exit;
+        }
+    }
+
+    /// Compute the best scoring path for each color, including positions.
+    pub fn scoring_paths(&self) -> EnumMap<Color, ScoringPath> {
+        let mut visited: EnumMap<Color, BTreeSet<Position>> = enum_map! { _ => BTreeSet::new() };
+        let mut best: EnumMap<Color, ScoringPath> = enum_map! { _ => ScoringPath::default() };
+
+        for m in self.moves.iter() {
+            for color in enum_iterator::all::<Color>() {
+                if visited[color].contains(&m.position) {
+                    continue;
+                }
+                let Some((dir_a, dir_b)) = color_link(m, color) else {
+                    continue;
+                };
+
+                visited[color].insert(m.position);
+
+                let (fwd_positions, is_loop) =
+                    self.trace_with_positions(color, m.position, dir_a, &mut visited[color]);
+
+                if is_loop {
+                    let count = fwd_positions.len() + 1;
+                    let score = count * 2;
+                    if score > best[color].score {
+                        let mut positions = vec![m.position];
+                        positions.extend(fwd_positions);
+                        best[color] = ScoringPath { positions, is_loop: true, score };
+                    }
+                    continue;
+                }
+
+                let (bwd_positions, _) =
+                    self.trace_with_positions(color, m.position, dir_b, &mut visited[color]);
+
+                let total = fwd_positions.len() + bwd_positions.len() + 1;
+                if total > best[color].score {
+                    let mut positions: Vec<Position> = bwd_positions.into_iter().rev().collect();
+                    positions.push(m.position);
+                    positions.extend(fwd_positions);
+                    best[color] = ScoringPath { positions, is_loop: false, score: total };
+                }
+            }
+        }
+
+        // Final score: max(line, loop*2) — but we already stored the best path by score
+        best
     }
 
     /// Compute scores for all 4 colors in a single pass over the board.
@@ -478,6 +572,10 @@ impl Game {
 
     pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
         self.board.scores()
+    }
+
+    pub fn scoring_paths(&self) -> EnumMap<Color, ScoringPath> {
+        self.board.scoring_paths()
     }
 
     pub fn winner(&self) -> Option<(Color, PlayerScore)> {

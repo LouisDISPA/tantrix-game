@@ -58,28 +58,35 @@ pub fn GameOver() -> Element {
                             {
                                 let cv = color_css_var(*color);
                                 let ps = scores[*color];
-                                let score_text = if ps.longest_loop > 0 && ps.longest_loop * 2 >= ps.longest_line {
-                                    format!("{} pts (loop: {})", ps.score, ps.longest_loop)
-                                } else if ps.longest_line > 0 {
-                                    format!("{} pts (line: {})", ps.score, ps.longest_line)
-                                } else {
-                                    "0 pts".to_string()
-                                };
                                 let is_winner = *color == winner_color;
+                                let row_class = if is_winner { "stat-row stat-row-winner" } else { "stat-row" };
+                                let detail = if ps.longest_loop > 0 && ps.longest_loop * 2 >= ps.longest_line {
+                                    format!("loop of {}", ps.longest_loop)
+                                } else if ps.longest_line > 0 {
+                                    format!("line of {}", ps.longest_line)
+                                } else {
+                                    String::new()
+                                };
                                 rsx! {
-                                    div { class: "stat-row",
-                                        div {
-                                            style: "display: flex; align-items: center; gap: 8px;",
+                                    div {
+                                        class: "{row_class}",
+                                        style: if is_winner { format!("--player-color: {cv}") } else { String::new() },
+                                        div { class: "stat-player",
                                             div {
                                                 class: "stat-color",
                                                 style: "background-color: {cv}",
                                             }
-                                            "{color}"
+                                            span { class: "stat-name", "{color}" }
                                         }
-                                        if is_winner {
-                                            span { style: "font-weight: 700; color: {cv};", "{score_text}" }
-                                        } else {
-                                            span { "{score_text}" }
+                                        div { class: "stat-score",
+                                            span {
+                                                class: "stat-points",
+                                                style: if is_winner { format!("color: {cv}") } else { String::new() },
+                                                "{ps.score}"
+                                            }
+                                            if !detail.is_empty() {
+                                                span { class: "stat-detail", "{detail}" }
+                                            }
                                         }
                                     }
                                 }

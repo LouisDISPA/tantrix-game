@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::components::board::Board;
 use crate::components::player_hand::{HandPosition, PlayerHand};
-use crate::pages::local_game::{LocalGameContext, Screen};
+use crate::pages::local_game::LocalGameContext;
 use crate::state::ui_state::TurnPhase;
 use tantrix_game::Color;
 
@@ -54,12 +54,7 @@ pub fn GamePlay() -> Element {
     let mut ctx = use_context::<LocalGameContext>();
     let ui_state = ctx.ui_state;
 
-    // Navigate to game over screen when the phase changes to GameOver.
     let is_game_over = ui_state.read().phase == TurnPhase::GameOver;
-    if is_game_over {
-        ctx.screen.set(Screen::GameOver);
-        return rsx! { div { "Game over..." } };
-    }
 
     // Derive layout from game state.
     let gs = ctx.game_state.read();
@@ -68,7 +63,12 @@ pub fn GamePlay() -> Element {
     let hand_assignments = assign_hand_positions(&colors);
     drop(gs);
 
-    let (grid_rows, grid_cols, grid_areas) = grid_template(player_count);
+    // When game is over, give the board the full viewport (hide hands).
+    let (grid_rows, grid_cols, grid_areas) = if is_game_over {
+        ("1fr", "1fr", "\"board\"")
+    } else {
+        grid_template(player_count)
+    };
 
     rsx! {
         div {
@@ -87,11 +87,13 @@ pub fn GamePlay() -> Element {
                 Board {}
             }
 
-            for (color, position) in hand_assignments.iter() {
-                PlayerHand {
-                    key: "{color:?}",
-                    color: *color,
-                    position: *position,
+            if !is_game_over {
+                for (color, position) in hand_assignments.iter() {
+                    PlayerHand {
+                        key: "{color:?}",
+                        color: *color,
+                        position: *position,
+                    }
                 }
             }
         }

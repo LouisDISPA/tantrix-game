@@ -1,15 +1,16 @@
 use dioxus::prelude::*;
-use tantrix_game::{Move, Position, Rotation};
+use tantrix_game::{Color, Move, Position, Rotation, ScoringPath};
 
-use crate::state::game_state::GameContext;
+use crate::components::game_over_overlay::GameOverOverlay;
 use crate::components::hex_empty::HexEmpty;
 use crate::components::hex_tile::HexTile;
 use crate::components::rotation_wheel::RotationWheel;
 use crate::components::status_bar::StatusBar;
 use crate::components::tile_preview::TilePreview;
-use crate::state::game_state::GameState;
+use crate::state::game_state::{GameContext, GameState};
 use crate::state::ui_state::{TurnPhase, UiState};
-use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
+use crate::svg::geometry::{axial_to_pixel, board_bounding_box, HEX_SIZE};
+use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs};
 
 #[component]
 pub fn Board() -> Element {
@@ -20,8 +21,20 @@ pub fn Board() -> Element {
     let gs = game_state.read();
     let ui = ui_state.read();
 
+    let is_game_over = ui.phase == TurnPhase::GameOver;
+    let highlighted_color = ui.hovered_scoring_color.or(ui.highlighted_color);
+
     let placed_moves: Vec<Move> = gs.board_moves().to_vec();
     let all_positions: Vec<Position> = placed_moves.iter().map(|m| m.position).collect();
+
+    // Compute scoring paths for game over overlay.
+    let scoring_data: Option<Vec<(Color, ScoringPath)>> = if is_game_over {
+        let paths = gs.game.scoring_paths();
+        let playing = gs.playing_colors().to_vec();
+        Some(playing.iter().map(|&c| (c, paths[c].clone())).collect())
+    } else {
+        None
+    };
 
     let padding = HEX_SIZE * 3.0;
     let (vb_x, vb_y, vb_w, vb_h) = if let Some((min_x, min_y, max_x, max_y)) =
@@ -75,16 +88,18 @@ pub fn Board() -> Element {
             StatusBar {}
 
             // Board controls
-            div { class: "board-controls",
-                button {
-                    class: "board-ctrl-btn end-game-btn",
-                    title: "End game",
-                    onclick: move |_| {
-                        let mut ui = ui_state.write();
-                        ui.phase = TurnPhase::GameOver;
-                        ui.message = "Game ended early.".to_string();
-                    },
-                    "End Game"
+            if !is_game_over {
+                div { class: "board-controls",
+                    button {
+                        class: "board-ctrl-btn end-game-btn",
+                        title: "End game",
+                        onclick: move |_| {
+                            let mut ui = ui_state.write();
+                            ui.phase = TurnPhase::GameOver;
+                            ui.message = "Game ended early.".to_string();
+                        },
+                        "End Game"
+                    }
                 }
             }
 
@@ -183,6 +198,7 @@ pub fn Board() -> Element {
                             key: "{m.position.x()},{m.position.y()}",
                             m: *m,
                             hex_size: HEX_SIZE,
+                            extra_class: if is_game_over { "dimmed-tile".to_string() } else { String::new() },
                         }
                     }
 
@@ -211,6 +227,53 @@ pub fn Board() -> Element {
                             hex_size: HEX_SIZE,
                         }
                     }
+
+                    // Scoring path highlight overlay
+                    if let Some(ref paths_vec) = scoring_data {
+                        g { class: "scoring-overlay",
+                            for (color, path) in paths_vec.iter() {
+                                {
+                                    let show = highlighted_color.is_none() || highlighted_color == Some(*color);
+                                    if show && !path.positions.is_empty() {
+                                        let color = *color;
+                                        rsx! {
+                                            for pos in path.positions.iter() {
+                                                {
+                                                    let pos = *pos;
+                                                    // Find the placed move at this position.
+                                                    let tile_move = placed_moves.iter().find(|m| m.position == pos);
+                                                    if let Some(tile_move) = tile_move {
+                                                        let (cx, cy) = axial_to_pixel(pos, HEX_SIZE);
+                                                        let pairs = find_color_pairs(tile_move);
+                                                        let matching_pair = pairs.iter().find(|(_, _, c)| *c == color);
+                                                        rsx! {
+                                                            if let Some((d1, d2, _)) = matching_pair {
+                                                                {
+                                                                    let path_d = color_link_path(cx, cy, *d1, *d2, HEX_SIZE);
+                                                                    let curve_class = format!("scoring-curve scoring-curve-{}", color_css_class(color).strip_prefix("hex-curve-").unwrap_or("red"));
+                                                                    rsx! {
+                                                                        path {
+                                                                            key: "curve-{color:?}-{pos.x()},{pos.y()}",
+                                                                            d: "{path_d}",
+                                                                            class: "{curve_class}",
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        rsx! {}
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        rsx! {}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -226,6 +289,10 @@ pub fn Board() -> Element {
                         ui_state.write().go_back();
                     },
                 }
+            }
+
+            if is_game_over {
+                GameOverOverlay {}
             }
         }
     }

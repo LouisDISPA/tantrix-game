@@ -1,4 +1,4 @@
-use tantrix_game::{Position, Rotation};
+use tantrix_game::{Color, Position, Rotation};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnPhase {
@@ -26,6 +26,10 @@ pub struct UiState {
     pub last_drag_y: f64,
     /// When true, the board SVG group animates its transform (smooth recenter).
     pub animating: bool,
+    /// When Some, only this color's scoring path is highlighted on the board.
+    pub highlighted_color: Option<Color>,
+    /// Transiently highlights a color's path on hover.
+    pub hovered_scoring_color: Option<Color>,
 }
 
 impl Default for UiState {
@@ -46,6 +50,8 @@ impl Default for UiState {
             last_drag_x: 0.0,
             last_drag_y: 0.0,
             animating: false,
+            highlighted_color: None,
+            hovered_scoring_color: None,
         }
     }
 }

@@ -1,4 +1,5 @@
 pub mod board;
+pub mod game_over_overlay;
 pub mod hand_tile;
 pub mod hex_empty;
 pub mod hex_tile;

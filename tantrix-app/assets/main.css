@@ -62,10 +62,10 @@ html, body {
     --tile-stroke: #3a3a3a;
 
     /* Game colors — oklch with matched perceptual luminance & chroma */
-    --color-red:    oklch(0.65 0.22 25);
-    --color-blue:   oklch(0.65 0.22 250);
-    --color-yellow: oklch(0.80 0.18 90);
-    --color-green:  oklch(0.65 0.22 160);
+    --color-red:    oklch(0.65 0.26 25);
+    --color-blue:   oklch(0.65 0.26 250);
+    --color-yellow: oklch(0.83 0.26 80);
+    --color-green:  oklch(0.65 0.26 160);
 
     --hand-bg: #f5f5f5;
     --hand-active-glow: rgba(0, 0, 0, 0.06);
@@ -115,10 +115,10 @@ html, body {
     --tile-stroke: #333333;
 
     /* Game colors — oklch with matched perceptual luminance & chroma */
-    --color-red:    oklch(0.65 0.22 25);
-    --color-blue:   oklch(0.65 0.22 250);
-    --color-yellow: oklch(0.80 0.18 90);
-    --color-green:  oklch(0.65 0.22 160);
+    --color-red:    oklch(0.65 0.26 25);
+    --color-blue:   oklch(0.65 0.26 250);
+    --color-yellow: oklch(0.83 0.26 80);
+    --color-green:  oklch(0.65 0.26 160);
 
     --hand-bg: #1a1a1a;
     --hand-active-glow: rgba(255, 255, 255, 0.04);
