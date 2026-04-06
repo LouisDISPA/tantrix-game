@@ -10,6 +10,29 @@ pub use coordinate_system::*;
 mod tiles;
 pub use tiles::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlayerScore {
+    pub longest_line: usize,
+    pub longest_loop: usize,
+    pub score: usize,
+}
+
+/// Find the two directions of a given color on a placed tile.
+/// Returns `None` if the tile doesn't have that color.
+fn color_link(m: &Move, color: Color) -> Option<(Direction, Direction)> {
+    let mut dirs: ArrayVec<Direction, 2> = ArrayVec::new();
+    for dir in enum_iterator::all::<Direction>() {
+        if m.color(dir) == color {
+            dirs.push(dir);
+        }
+    }
+    if dirs.len() == 2 {
+        Some((dirs[0], dirs[1]))
+    } else {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Move {
     pub tile: Tile,
@@ -132,6 +155,87 @@ impl Board {
         match self.moves.binary_search_by(|m| m.position.cmp(pos)) {
             Ok(index) => Some(self.moves[index]),
             Err(_) => None,
+        }
+    }
+
+    /// Trace a color path starting from `start_pos`, exiting through `exit_dir`.
+    /// Returns (count of additional tiles beyond start, whether it looped back to start).
+    fn trace(
+        &self,
+        color: Color,
+        start_pos: Position,
+        exit_dir: Direction,
+        visited: &mut BTreeSet<Position>,
+    ) -> (usize, bool) {
+        let mut count = 0;
+        let mut current_pos = start_pos;
+        let mut current_exit = exit_dir;
+
+        loop {
+            let next_pos = current_pos.neighbor(current_exit);
+            if next_pos == start_pos {
+                return (count, true);
+            }
+            let Some(next_move) = self.get_move(&next_pos) else {
+                return (count, false);
+            };
+            let Some((da, db)) = color_link(&next_move, color) else {
+                return (count, false);
+            };
+            let arrival = current_exit.oposite();
+            let next_exit = if da == arrival {
+                db
+            } else if db == arrival {
+                da
+            } else {
+                return (count, false);
+            };
+
+            visited.insert(next_pos);
+            count += 1;
+            current_pos = next_pos;
+            current_exit = next_exit;
+        }
+    }
+
+    /// Compute scores for all 4 colors in a single pass over the board.
+    pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
+        let mut visited: EnumMap<Color, BTreeSet<Position>> = enum_map! { _ => BTreeSet::new() };
+        let mut best_line: EnumMap<Color, usize> = enum_map! { _ => 0 };
+        let mut best_loop: EnumMap<Color, usize> = enum_map! { _ => 0 };
+
+        for m in self.moves.iter() {
+            // Each tile has 3 colors; process all of them
+            for color in enum_iterator::all::<Color>() {
+                if visited[color].contains(&m.position) {
+                    continue;
+                }
+                let Some((dir_a, dir_b)) = color_link(m, color) else {
+                    continue;
+                };
+
+                visited[color].insert(m.position);
+
+                let (fwd_count, is_loop) =
+                    self.trace(color, m.position, dir_a, &mut visited[color]);
+                if is_loop {
+                    best_loop[color] = best_loop[color].max(fwd_count + 1);
+                    continue;
+                }
+
+                let (bwd_count, _) =
+                    self.trace(color, m.position, dir_b, &mut visited[color]);
+                let total = fwd_count + bwd_count + 1;
+                best_line[color] = best_line[color].max(total);
+            }
+        }
+
+        enum_map! { color =>
+            PlayerScore {
+                longest_line: best_line[color],
+                longest_loop: best_loop[color],
+                score: best_line[color].max(best_loop[color] * 2),
+            }
         }
     }
 
@@ -370,6 +474,21 @@ impl Game {
     pub fn skip_turn(&mut self) {
         self.next_player();
         self.current_moves = None;
+    }
+
+    pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
+        self.board.scores()
+    }
+
+    pub fn winner(&self) -> Option<(Color, PlayerScore)> {
+        if !self.is_game_over() {
+            return None;
+        }
+        let scores = self.scores();
+        self.playing_colors()
+            .iter()
+            .map(|&c| (c, scores[c]))
+            .max_by_key(|(_, s)| s.score)
     }
 }
 
@@ -622,5 +741,207 @@ mod tests {
             !controlled.contains(&Position::CENTER),
             "filling the forced space itself should be allowed"
         );
+    }
+
+    #[test]
+    fn test_color_link() {
+        use crate::color_link;
+
+        // BYYBRR = [B, Y, Y, B, R, R], no rotation
+        let m = Move {
+            tile: Tile::BYYBRR,
+            position: Position::CENTER,
+            rotation: Rotation::None,
+            forced: false,
+        };
+        // Blue at Left(0) and Right(3)
+        assert_eq!(
+            color_link(&m, Color::Blue),
+            Some((Direction::Left, Direction::Right))
+        );
+        // Yellow at TopLeft(1) and TopRight(2)
+        assert_eq!(
+            color_link(&m, Color::Yellow),
+            Some((Direction::TopLeft, Direction::TopRight))
+        );
+        // Red at BottomRight(4) and BottomLeft(5)
+        assert_eq!(
+            color_link(&m, Color::Red),
+            Some((Direction::BottomRight, Direction::BottomLeft))
+        );
+        // Green not present
+        assert_eq!(color_link(&m, Color::Green), None);
+    }
+
+    #[test]
+    fn test_single_tile_score() {
+        // One tile on the board: line of 1 for each of its colors
+        let mut board = Board::default();
+        board
+            .insert_move(Move {
+                tile: Tile::BYYBRR,
+                position: Position::CENTER,
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
+
+        let blue_score = board.scores()[Color::Blue];
+        assert_eq!(blue_score.longest_line, 1);
+        assert_eq!(blue_score.longest_loop, 0);
+        assert_eq!(blue_score.score, 1);
+
+        // Green not on this tile
+        let green_score = board.scores()[Color::Green];
+        assert_eq!(green_score.longest_line, 0);
+        assert_eq!(green_score.score, 0);
+    }
+
+    #[test]
+    fn test_two_tile_line() {
+        // BYYBRR at CENTER: [B,Y,Y,B,R,R] → Right=Blue
+        // BYRBRY at Right(1,0): [B,Y,R,B,R,Y] → Left=Blue
+        // Blue connects through Right↔Left edge
+        let mut board = Board::default();
+        let right = neighbor(Position::CENTER, Direction::Right);
+
+        board
+            .insert_move(Move {
+                tile: Tile::BYYBRR,
+                position: Position::CENTER,
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::BYRBRY,
+                position: right,
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
+
+        let blue_score = board.scores()[Color::Blue];
+        assert_eq!(blue_score.longest_line, 2);
+        assert_eq!(blue_score.longest_loop, 0);
+        assert_eq!(blue_score.score, 2);
+    }
+
+    #[test]
+    fn test_three_tile_line() {
+        // RYYBRB at (-1,0): [R,Y,Y,B,R,B] → Right=Blue
+        // BYYBRR at (0,0): [B,Y,Y,B,R,R] → Left=Blue, Right=Blue
+        // BYRBRY at (1,0): [B,Y,R,B,R,Y] → Left=Blue
+        // Blue line: RYYBRB → BYYBRR → BYRBRY = 3 tiles
+        let mut board = Board::default();
+        let left = neighbor(Position::CENTER, Direction::Left);
+        let right = neighbor(Position::CENTER, Direction::Right);
+
+        board
+            .insert_move(Move {
+                tile: Tile::RYYBRB,
+                position: left,
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::BYYBRR,
+                position: Position::CENTER,
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
+        board
+            .insert_move(Move {
+                tile: Tile::BYRBRY,
+                position: right,
+                rotation: Rotation::None,
+                forced: false,
+            })
+            .unwrap();
+
+        let blue_score = board.scores()[Color::Blue];
+        assert_eq!(blue_score.longest_line, 3);
+        assert_eq!(blue_score.longest_loop, 0);
+        assert_eq!(blue_score.score, 3);
+    }
+
+    #[test]
+    fn test_loop_detection() {
+        // 6 tiles forming a Red loop around CENTER (CENTER is empty).
+        // Ring: (-1,0) → (0,1) → (1,1) → (1,0) → (0,-1) → (-1,-1) → back
+        let mut board = Board::default();
+
+        let pos = [
+            neighbor(Position::CENTER, Direction::Left),        // (-1,0)
+            neighbor(Position::CENTER, Direction::TopLeft),      // (0,1)
+            neighbor(Position::CENTER, Direction::TopRight),     // (1,1)
+            neighbor(Position::CENTER, Direction::Right),        // (1,0)
+            neighbor(Position::CENTER, Direction::BottomRight),  // (0,-1)
+            neighbor(Position::CENTER, Direction::BottomLeft),   // (-1,-1)
+        ];
+
+        // Each tile placed so Red edges connect to its ring neighbors:
+        // (-1,0): Red at TopRight & BottomRight
+        board.insert_move(Move {
+            tile: Tile::BYRBRY, // [B,Y,R,B,R,Y] → R at 2,4
+            position: pos[0],
+            rotation: Rotation::None,
+            forced: false,
+        }).unwrap();
+
+        // (0,1): Red at BottomLeft & Right
+        board.insert_move(Move {
+            tile: Tile::YBBRYR, // [Y,B,B,R,Y,R] → R at 3,5
+            position: pos[1],
+            rotation: Rotation::None,
+            forced: false,
+        }).unwrap();
+
+        // (1,1): Red at Left & BottomRight
+        board.insert_move(Move {
+            tile: Tile::RYYBRB, // [R,Y,Y,B,R,B] → R at 0,4
+            position: pos[2],
+            rotation: Rotation::None,
+            forced: false,
+        }).unwrap();
+
+        // (1,0): Red at TopLeft & BottomLeft
+        board.insert_move(Move {
+            tile: Tile::YRBYBR, // [Y,R,B,Y,B,R] → R at 1,5
+            position: pos[3],
+            rotation: Rotation::None,
+            forced: false,
+        }).unwrap();
+
+        // (0,-1): Red at Left & TopRight. YGRYRG [Y,G,R,Y,R,G] R at 2,4 + R240 → (0,2)
+        board.insert_move(Move {
+            tile: Tile::YGRYRG,
+            position: pos[4],
+            rotation: Rotation::R240,
+            forced: false,
+        }).unwrap();
+
+        // (-1,-1): Red at TopLeft & Right. GYYRGR [G,Y,Y,R,G,R] R at 3,5 + R240 → (1,3)
+        board.insert_move(Move {
+            tile: Tile::GYYRGR,
+            position: pos[5],
+            rotation: Rotation::R240,
+            forced: false,
+        }).unwrap();
+
+        let red_score = board.scores()[Color::Red];
+        assert_eq!(red_score.longest_loop, 6);
+        assert_eq!(red_score.longest_line, 0);
+        assert_eq!(red_score.score, 12); // 6 * 2
+    }
+
+    #[test]
+    fn test_winner_not_over() {
+        let game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        assert_eq!(game.winner(), None);
     }
 }

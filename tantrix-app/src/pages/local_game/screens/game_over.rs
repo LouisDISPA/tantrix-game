@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use rand::prelude::IndexedRandom;
 
 use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
@@ -11,23 +10,17 @@ pub fn GameOver() -> Element {
     let nav = navigator();
     let mut ctx = use_context::<LocalGameContext>();
 
-    let active_players: Vec<tantrix_game::Color> = ctx
-        .game_state
-        .read()
-        .playing_colors()
-        .to_vec();
+    let gs = ctx.game_state.read();
+    let active_players: Vec<tantrix_game::Color> = gs.playing_colors().to_vec();
+    let scores = gs.game.scores();
 
-    // Pick random winner
-    let winner = use_signal(|| {
-        let mut rng = rand::rng();
-        active_players
-            .as_slice()
-            .choose(&mut rng)
-            .copied()
-            .unwrap_or(tantrix_game::Color::Red)
-    });
+    let winner_color = active_players
+        .iter()
+        .copied()
+        .max_by_key(|&c| scores[c].score)
+        .unwrap_or(tantrix_game::Color::Red);
+    drop(gs);
 
-    let winner_color = *winner.read();
     let color_var = color_css_var(winner_color);
 
     rsx! {
@@ -64,6 +57,15 @@ pub fn GameOver() -> Element {
                         for color in active_players.iter() {
                             {
                                 let cv = color_css_var(*color);
+                                let ps = scores[*color];
+                                let score_text = if ps.longest_loop > 0 && ps.longest_loop * 2 >= ps.longest_line {
+                                    format!("{} pts (loop: {})", ps.score, ps.longest_loop)
+                                } else if ps.longest_line > 0 {
+                                    format!("{} pts (line: {})", ps.score, ps.longest_line)
+                                } else {
+                                    "0 pts".to_string()
+                                };
+                                let is_winner = *color == winner_color;
                                 rsx! {
                                     div { class: "stat-row",
                                         div {
@@ -74,8 +76,10 @@ pub fn GameOver() -> Element {
                                             }
                                             "{color}"
                                         }
-                                        if *color == winner_color {
-                                            span { style: "font-weight: 700; color: {cv};", "Winner!" }
+                                        if is_winner {
+                                            span { style: "font-weight: 700; color: {cv};", "{score_text}" }
+                                        } else {
+                                            span { "{score_text}" }
                                         }
                                     }
                                 }
