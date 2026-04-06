@@ -1,7 +1,8 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use dioxus::prelude::*;
-use tantrix_game::{Color, Move, Position, Rotation, ScoringPath};
+use tantrix_game::{Color, Move, Position, Rotation};
 
 use crate::components::game_over_overlay::GameOverOverlay;
 use crate::components::hex_empty::HexEmpty;
@@ -11,8 +12,7 @@ use crate::components::status_bar::StatusBar;
 use crate::components::tile_preview::TilePreview;
 use crate::state::game_state::{GameContext, GameState};
 use crate::state::ui_state::{TurnPhase, UiState};
-use crate::svg::geometry::{axial_to_pixel, board_bounding_box, HEX_SIZE};
-use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs};
+use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 
 #[component]
 pub fn Board() -> Element {
@@ -27,37 +27,40 @@ pub fn Board() -> Element {
     let highlighted_color = ui.hovered_scoring_color.or(ui.highlighted_color);
 
     let placed_moves: Vec<Move> = gs.board_moves().to_vec();
-    let all_positions: Vec<Position> = placed_moves.iter().map(|m| m.position).collect();
+    let last_placed = ui.last_placed_position;
 
-    // Compute scoring paths for game over overlay.
-    let scoring_data: Option<Vec<(Color, ScoringPath)>> = if is_game_over {
-        let paths = gs.game.scoring_paths();
-        let playing = gs.playing_colors().to_vec();
-        Some(playing.iter().map(|&c| (c, paths[c].clone())).collect())
+    // Center the tiles layer on the bounding box of placed tiles.
+    let all_positions: Vec<Position> = placed_moves.iter().map(|m| m.position).collect();
+    let (center_x, center_y) = if let Some((min_x, min_y, max_x, max_y)) =
+        board_bounding_box(&all_positions, HEX_SIZE)
+    {
+        ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
     } else {
-        None
+        (0.0, 0.0)
     };
 
-    let padding = HEX_SIZE * 3.0;
-    let (vb_x, vb_y, vb_w, vb_h) =
-        if let Some((min_x, min_y, max_x, max_y)) = board_bounding_box(&all_positions, HEX_SIZE) {
-            let w = max_x - min_x + 2.0 * padding;
-            let h = max_y - min_y + 2.0 * padding;
-            (min_x - padding, min_y - padding, w, h)
-        } else {
-            (-100.0, -100.0, 200.0, 200.0)
-        };
+    // Build per-tile highlight colors for game over overlay.
+    let highlight_map: BTreeMap<Position, Vec<Color>> = if is_game_over {
+        let paths = gs.game.scoring_paths();
+        let mut map = BTreeMap::<Position, Vec<Color>>::new();
+        for &color in gs.playing_colors() {
+            let show = highlighted_color.is_none() || highlighted_color == Some(color);
+            if show && !paths[color].positions.is_empty() {
+                for &pos in &paths[color].positions {
+                    map.entry(pos).or_default().push(color);
+                }
+            }
+        }
+        map
+    } else {
+        BTreeMap::new()
+    };
 
     let zoom = ui.zoom;
     let pan_x = ui.pan_x;
     let pan_y = ui.pan_y;
     let animating = ui.animating;
 
-    // viewBox auto-fits all placed tiles (baseline, no user zoom/pan).
-    let view_box = format!("{:.1} {:.1} {:.1} {:.1}", vb_x, vb_y, vb_w, vb_h);
-
-    // User zoom/pan is applied via CSS transform on a wrapper div.
-    // This allows CSS transitions for smooth animated recentering.
     let transform = format!(
         "transform: scale({:.3}) translate({:.1}px, {:.1}px);",
         zoom, -pan_x, -pan_y
@@ -74,12 +77,12 @@ pub fn Board() -> Element {
     };
 
     let dragging = ui.dragging;
-    let mut svg_class = String::from("board-svg");
+    let mut viewport_class = String::from("board-viewport");
     if dragging {
-        svg_class.push_str(" dragging");
+        viewport_class.push_str(" dragging");
     }
     if animating {
-        svg_class.push_str(" animating");
+        viewport_class.push_str(" animating");
     }
 
     let zoom_percent = (zoom * 100.0) as i32;
@@ -120,7 +123,7 @@ pub fn Board() -> Element {
                     title: "Reset zoom",
                     onclick: move |_| {
                         let mut ui = ui_state.write();
-                        ui.animating = true; // smooth reset
+                        ui.animating = true;
                         ui.zoom = 1.0;
                         ui.pan_x = 0.0;
                         ui.pan_y = 0.0;
@@ -140,7 +143,7 @@ pub fn Board() -> Element {
 
             // Viewport wrapper: CSS transform handles zoom/pan with transitions.
             div {
-                class: "{svg_class}",
+                class: "{viewport_class}",
                 style: "{transform}",
 
                 onwheel: move |evt| {
@@ -189,17 +192,28 @@ pub fn Board() -> Element {
                     ui_state.write().go_back();
                 },
 
-                svg {
-                    class: "board-svg-inner",
-                    view_box: "{view_box}",
-                    xmlns: "http://www.w3.org/2000/svg",
+                // Tiles layer: centered on bounding box of placed tiles
+                div {
+                    class: "board-tiles-layer",
+                    style: "transform: translate({-center_x:.1}px, {-center_y:.1}px);",
 
                     for m in placed_moves.iter() {
-                        HexTile {
-                            key: "{m.position.x()},{m.position.y()}",
-                            m: *m,
-                            hex_size: HEX_SIZE,
-                            extra_class: if is_game_over { "dimmed-tile".to_string() } else { String::new() },
+                        {
+                            let colors = highlight_map
+                                .get(&m.position)
+                                .cloned()
+                                .unwrap_or_default();
+                            let just_placed = last_placed == Some(m.position);
+                            rsx! {
+                                HexTile {
+                                    key: "{m.position.x()},{m.position.y()}",
+                                    m: *m,
+                                    hex_size: HEX_SIZE,
+                                    just_placed,
+                                    extra_class: if is_game_over { "dimmed-tile".to_string() } else { String::new() },
+                                    highlight_colors: colors,
+                                }
+                            }
                         }
                     }
 
@@ -225,56 +239,6 @@ pub fn Board() -> Element {
                     if let Some(preview) = preview_move {
                         TilePreview { m: preview, hex_size: HEX_SIZE }
                     }
-
-                    // Scoring path highlight overlay
-                    if let Some(ref paths_vec) = scoring_data {
-                        g { class: "scoring-overlay",
-                            for (color , path) in paths_vec.iter() {
-                                {
-                                    let show = highlighted_color.is_none() || highlighted_color == Some(*color);
-                                    if show && !path.positions.is_empty() {
-                                        let color = *color;
-                                        rsx! {
-                                            for pos in path.positions.iter() {
-                                                {
-                                                    let pos = *pos;
-                                                    // Find the placed move at this position.
-                                                    let tile_move = placed_moves.iter().find(|m| m.position == pos);
-                                                    if let Some(tile_move) = tile_move {
-                                                        let (cx, cy) = axial_to_pixel(pos, HEX_SIZE);
-                                                        let pairs = find_color_pairs(tile_move);
-                                                        let matching_pair = pairs.iter().find(|(_, _, c)| *c == color);
-                                                        rsx! {
-                                                            if let Some((d1, d2, _)) = matching_pair {
-                                                                {
-                                                                    let path_d = color_link_path(cx, cy, *d1, *d2, HEX_SIZE);
-                                                                    let curve_class = format!(
-                                                                        "scoring-curve scoring-curve-{}",
-                                                                        color_css_class(color).strip_prefix("hex-curve-").unwrap_or("red"),
-                                                                    );
-                                                                    rsx! {
-                                                                        path {
-                                                                            key: "curve-{color:?}-{pos.x()},{pos.y()}",
-                                                                            d: "{path_d}",
-                                                                            class: "{curve_class}",
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    } else {
-                                                        rsx! {}
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        rsx! {}
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
@@ -298,6 +262,7 @@ pub fn Board() -> Element {
         }
     }
 }
+
 
 fn get_visible_positions(gs: &GameState, ui: &UiState) -> Vec<(Position, bool, bool)> {
     match ui.phase {
@@ -332,7 +297,6 @@ fn get_visible_positions(gs: &GameState, ui: &UiState) -> Vec<(Position, bool, b
 fn build_preview_move(gs: &GameState, ui: &UiState) -> Option<Move> {
     match ui.phase {
         TurnPhase::SelectTile => {
-            // Show ghost when hovering a tile that has exactly one possible move.
             let idx = ui.hovered_tile?;
             let hand = gs.get_hand(gs.currently_playing());
             let tile = *hand.get(idx)?;
@@ -407,9 +371,10 @@ pub fn execute_move(
     mut ui_state: Signal<UiState>,
 ) {
     // --- Phase 1: build the Move from a read-only borrow ---
-    let m = {
+    let (m, player_color) = {
         let gs = game_state.read();
-        gs.build_move(tile_idx, pos, rotation)
+        let color = gs.currently_playing();
+        (gs.build_move(tile_idx, pos, rotation), color)
     };
     let m = match m {
         Some(m) => m,
@@ -432,7 +397,8 @@ pub fn execute_move(
         ui.animating = true;
         ui.pan_x = 0.0;
         ui.pan_y = 0.0;
-        ui.new_tile_index = Some(tile_idx);
+        ui.new_tile = Some((player_color, tile_idx));
+        ui.last_placed_position = Some(m.position);
     }
 
     // --- Phase 4: advance the turn with clean read→write cycles ---
@@ -444,7 +410,6 @@ fn handle_position_click(
     game_state: Signal<GameState>,
     mut ui_state: Signal<UiState>,
 ) {
-    // Read everything we need into locals, then drop the borrows.
     let (phase, tile_idx, rotations) = {
         let gs = game_state.read();
         let ui = ui_state.read();
@@ -472,7 +437,6 @@ fn handle_position_click(
     let board_empty = game_state.read().board_moves().is_empty();
 
     if rotations.len() == 1 || board_empty {
-        // Single valid rotation, or first move (all rotations equivalent) — auto-play.
         execute_move(tile_idx, pos, rotations[0], game_state, ui_state);
     } else {
         let mut ui = ui_state.write();
@@ -486,7 +450,6 @@ fn handle_rotation_select(
     game_state: Signal<GameState>,
     ui_state: Signal<UiState>,
 ) {
-    // Read tile_idx and pos from ui, then drop the borrow.
     let (tile_idx, pos) = {
         let ui = ui_state.read();
         (ui.selected_tile, ui.selected_position)
@@ -504,8 +467,6 @@ fn handle_rotation_select(
 }
 
 /// After a successful move, check if AI should play next.
-/// Steps through each AI move with delays so the player can see what's happening:
-/// 1. "thinking" pause → 2. highlight chosen tile → 3. pause → 4. play it → repeat
 pub fn advance_turn(game_state: Signal<GameState>, mut ui_state: Signal<UiState>) {
     let needs_ai = {
         let gs = game_state.read();
@@ -548,11 +509,13 @@ async fn ai_step_loop(mut game_state: Signal<GameState>, mut ui_state: Signal<Ui
             continue;
         }
 
-        // Step 1: Compute AI's chosen move
-        let chosen = game_state.write().ai_choose();
+        let (chosen, ai_color) = {
+            let mut gs = game_state.write();
+            let color = gs.currently_playing();
+            (gs.ai_choose(), color)
+        };
         let Some(chosen) = chosen else { break };
 
-        // Step 2: Highlight the chosen tile in the hand
         let tile_idx = game_state.read().tile_index(chosen.tile);
         if let Some(idx) = tile_idx {
             let mut ui = ui_state.write();
@@ -562,21 +525,20 @@ async fn ai_step_loop(mut game_state: Signal<GameState>, mut ui_state: Signal<Ui
 
         sleep(Duration::from_millis(500)).await;
 
-        // Step 4: Show the position
         {
             let mut ui = ui_state.write();
             ui.selected_position = Some(chosen.position);
         }
         sleep(Duration::from_millis(400)).await;
 
-        // Step 5: Play the move
         {
             let mut gs = game_state.write();
             let _ = gs.play_move(chosen);
         }
         {
             let mut ui = ui_state.write();
-            ui.new_tile_index = tile_idx;
+            ui.new_tile = tile_idx.map(|idx| (ai_color, idx));
+            ui.last_placed_position = Some(chosen.position);
             ui.selected_tile = None;
             ui.selected_position = None;
             ui.animating = true;
@@ -600,7 +562,7 @@ fn settle_turn(mut game_state: Signal<GameState>, mut ui_state: Signal<UiState>)
     if is_over || !has_moves {
         ui.phase = TurnPhase::GameOver;
         ui.message = "Game Over!".to_string();
-        ui.new_tile_index = None;
+        ui.new_tile = None;
     } else if has_forced {
         ui.reset_selection();
         ui.message = "Forced move! You must fill a forced space.".to_string();

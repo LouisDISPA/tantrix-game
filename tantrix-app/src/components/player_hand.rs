@@ -97,7 +97,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                                 };
                             let is_forced = is_current
                                 && gs.hand_info.get(i).map(|info| info.has_forced).unwrap_or(false);
-                            let is_new = is_current && ui.new_tile_index == Some(i);
+                            let is_new = ui.new_tile == Some((color, i));
                             rsx! {
                                 HandTile {
                                     key: "{tile:?}",

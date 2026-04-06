@@ -1,7 +1,16 @@
 use tantrix_game::{Direction, Position};
 
-pub const HEX_SIZE: f64 = 30.0;
-const SQRT3: f64 = 1.732_050_808;
+pub const HEX_SIZE: f64 = 50.0;
+pub const SQRT3: f64 = 1.732_050_808;
+
+/// Hex radius used inside each tile's inline SVG viewBox.
+pub const TILE_HEX: f64 = 30.0;
+/// ViewBox dimensions: tight fit around the hex bounding box.
+pub const TILE_VB_W: f64 = TILE_HEX * SQRT3;
+pub const TILE_VB_H: f64 = TILE_HEX * 2.0;
+/// Hex center within the viewBox.
+pub const TILE_CX: f64 = TILE_VB_W / 2.0;
+pub const TILE_CY: f64 = TILE_VB_H / 2.0;
 
 /// Convert axial hex coordinates to pixel coordinates.
 /// SVG y-axis points down, game y-axis points up (TopLeft = +y), so we negate y.
@@ -58,6 +67,17 @@ pub fn edge_midpoint(verts: &[(f64, f64); 6], dir: Direction) -> (f64, f64) {
 pub fn edge_separation(d1: Direction, d2: Direction) -> usize {
     let diff = ((d2 as i8) - (d1 as i8)).rem_euclid(6) as usize;
     diff.min(6 - diff)
+}
+
+/// CSS absolute-positioning style for a hex tile div at the given board position.
+pub fn hex_position_style(position: Position, hex_size: f64) -> String {
+    let (px, py) = axial_to_pixel(position, hex_size);
+    let half_w = hex_size * SQRT3 / 2.0;
+    let half_h = hex_size;
+    format!(
+        "left:{:.1}px; top:{:.1}px; width:{:.1}px; height:{:.1}px;",
+        px - half_w, py - half_h, half_w * 2.0, half_h * 2.0
+    )
 }
 
 /// Compute the bounding box of all placed tiles in pixel coordinates.

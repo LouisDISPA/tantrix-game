@@ -31,7 +31,7 @@ pub fn MainMenu() -> Element {
                 div { class: "title-logo-area",
                     div { class: "title-hex-frame" }
                     h1 { class: "title-logo", "TANTRIX" }
-                    p { class: "title-subtitle", "Hexagonal Tile Strategy" }
+                    p { class: "title-subtitle", "Hexagonal Strategy Game" }
                 }
 
                 div { class: "title-buttons",

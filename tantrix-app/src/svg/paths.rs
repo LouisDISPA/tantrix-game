@@ -88,6 +88,16 @@ pub fn color_link_path(cx: f64, cy: f64, d1: Direction, d2: Direction, size: f64
     }
 }
 
+/// Lowercase color name for CSS class composition.
+pub fn color_name(color: Color) -> &'static str {
+    match color {
+        Color::Red => "red",
+        Color::Blue => "blue",
+        Color::Yellow => "yellow",
+        Color::Green => "green",
+    }
+}
+
 /// CSS class name for a game color.
 pub fn color_css_class(color: Color) -> &'static str {
     match color {
