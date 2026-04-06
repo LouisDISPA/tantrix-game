@@ -1,0 +1,205 @@
+/* ===== Player Hand Panel — neumorphic ===== */
+
+.player-hand {
+  display: flex;
+  flex-direction: column;
+  background: var(--hand-bg);
+  border: none;
+  overflow: hidden;
+  box-shadow: var(--neu-inset);
+}
+
+.player-hand.active {
+  box-shadow:
+    var(--neu-inset),
+    0 0 8px var(--hand-active-glow);
+}
+
+/* Side hands (left/right) */
+.player-hand.side {
+  border-radius: 0 8px 8px 0;
+  width: 100%;
+  height: 100%;
+}
+
+.player-hand.side.right {
+  border-radius: 8px 0 0 8px;
+}
+
+/* Edge hands (top/bottom) */
+.player-hand.edge {
+  border-radius: 0 0 8px 8px;
+  width: 100%;
+  height: 100%;
+}
+
+.player-hand.edge.bottom {
+  border-radius: 8px 8px 0 0;
+}
+
+/* ===== Hand Header ===== */
+
+.hand-header {
+  padding: 6px 10px;
+  background: var(--player-color);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hand-header .active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: white;
+  animation: pulse-glow-dot 1.5s ease-in-out infinite;
+}
+
+/* ===== Tile List ===== */
+
+.hand-tiles {
+  flex: 1;
+  display: flex;
+  padding: 6px;
+  gap: 4px;
+  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+}
+
+.hand-tiles.vertical {
+  flex-direction: column;
+  align-items: center;
+}
+
+.hand-tiles.horizontal {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== Hand Tile ===== */
+
+.hand-tile {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hand-tile svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  overflow: visible;
+  /* Neumorphic drop shadow on tile hex */
+  filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* Vertical hands */
+.hand-tiles.vertical .hand-tile {
+  width: 100%;
+  max-width: 120px;
+}
+
+/* Horizontal hands */
+.hand-tiles.horizontal .hand-tile {
+  height: 100%;
+  max-height: 120px;
+}
+
+.hand-tile:hover {
+  transform: scale(1.1);
+  z-index: 1;
+}
+
+.hand-tile.selected {
+  transform: scale(1.15);
+  z-index: 2;
+}
+
+.hand-tile.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.hand-tile.disabled:hover {
+  transform: none;
+}
+
+/* ===== Unified tile fill — subtle border ===== */
+
+.hand-tile svg .hex-tile-fill {
+  fill: var(--tile-fill);
+  stroke: var(--tile-stroke);
+  stroke-width: 0.8;
+}
+
+/* ===== Hex-shaped selection / forced ring ===== */
+
+.hand-hex-ring {
+  fill: none;
+  stroke-width: 2;
+}
+
+.hand-hex-ring.selected {
+  stroke: var(--text-secondary);
+  stroke-width: 2.5;
+}
+
+.hand-hex-ring.forced {
+  stroke: var(--color-red);
+  stroke-width: 2;
+  animation: pulse-ring 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%,
+  100% {
+    stroke-opacity: 0.6;
+  }
+  50% {
+    stroke-opacity: 1;
+    stroke-width: 3;
+  }
+}
+
+/* Empty hand */
+.hand-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-style: italic;
+}
+
+@keyframes pulse-glow-dot {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 4px white;
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px white;
+  }
+}

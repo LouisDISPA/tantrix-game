@@ -1,0 +1,84 @@
+/* ===== Keyframe Animations ===== */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideInLeft {
+    from { transform: translateX(-30px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(30px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes scale-in {
+    from { transform: scale(0.7); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes tile-place {
+    from { transform: scale(1.3); opacity: 0.4; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 8px var(--glow-color, rgba(59,130,246,0.5)); }
+    50% { box-shadow: 0 0 20px var(--glow-color, rgba(59,130,246,0.5)); }
+}
+
+@keyframes winner-glow {
+    0%, 100% { text-shadow: 0 0 20px var(--glow-color, rgba(59,130,246,0.6)); }
+    50% { text-shadow: 0 0 40px var(--glow-color, rgba(59,130,246,0.8)); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* ===== Game Layout Animations ===== */
+
+.game-layout {
+    animation: fadeIn 0.3s ease;
+}
+
+.player-hand.left-hand {
+    animation: slideInLeft 0.3s ease;
+}
+
+.player-hand.right-hand {
+    animation: slideInRight 0.3s ease;
+}
+
+.player-hand.top-hand {
+    animation: slideDown 0.3s ease;
+}
+
+.player-hand.bottom-hand {
+    animation: slideUp 0.3s ease;
+}
+
+/* ===== Tile Placement ===== */
+
+.hex-tile.just-placed {
+    animation: tile-place 0.3s ease;
+}

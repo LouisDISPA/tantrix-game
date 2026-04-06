@@ -10,7 +10,7 @@ pub use coordinate_system::*;
 mod tiles;
 pub use tiles::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Move {
     pub tile: Tile,
     pub position: Position,
@@ -188,7 +188,7 @@ const TILES_IN_HAND: usize = 6;
 const NUMBER_OF_COLOR: usize = enum_iterator::cardinality::<Color>();
 const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Game {
     board: Board,
     bag_of_tile: ArrayVec<Tile, NUMBER_OF_TILE>,

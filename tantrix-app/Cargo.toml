@@ -1,0 +1,20 @@
+[package]
+name = "tantrix-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tantrix-game = { path = "../tantrix-game" }
+dioxus = { version = "0.7", features = ["router"] }
+rand = "0.10"
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_0_4 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
+[features]
+default = []
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+native = ["dioxus/native"]
+mobile = ["dioxus/mobile"]

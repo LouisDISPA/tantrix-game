@@ -1,0 +1,214 @@
+/* ===== Screen Container ===== */
+
+.screen {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-primary);
+  animation: fadeIn 0.3s ease;
+}
+
+/* ===== Card — neumorphic ===== */
+
+.card {
+  background: var(--bg-card);
+  border: none;
+  border-radius: 20px;
+  padding: 40px;
+  box-shadow: var(--neu-shadow);
+  min-width: 360px;
+  max-width: 480px;
+  animation: slideUp 0.4s ease;
+}
+
+.card-title {
+  font-size: 32px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.card-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+/* ===== Main Menu ===== */
+
+.menu-logo {
+  font-size: 48px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 4px;
+  background: linear-gradient(
+    135deg,
+    var(--color-red),
+    var(--color-blue),
+    var(--color-yellow),
+    var(--color-green)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.menu-buttons .btn {
+  width: 100%;
+  text-align: center;
+}
+
+.coming-soon {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ===== Player Setup ===== */
+
+.player-count-selector {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.count-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  border: none;
+  background: var(--convex-bg);
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--neu-shadow-sm);
+  transition: all 0.15s ease;
+}
+
+.count-btn:hover {
+  box-shadow: var(--neu-shadow);
+}
+
+.count-btn.active {
+  background: var(--convex-btn-primary);
+  color: var(--btn-primary-text);
+  box-shadow: var(--neu-inset);
+}
+
+.player-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.player-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: none;
+  background: var(--bg-secondary);
+  box-shadow: var(--neu-shadow-sm);
+  transition: opacity 0.3s ease;
+  opacity: 0.4;
+}
+
+.player-slot .color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: var(--neu-shadow-sm);
+}
+
+.player-slot .player-label {
+  color: var(--text-primary);
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.player-slot .player-status {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ===== Game Over — neumorphic ===== */
+
+.game-over-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+  animation: fadeIn 0.3s ease;
+}
+
+.game-over-card {
+  background: var(--bg-card);
+  border: none;
+  border-radius: 24px;
+  padding: 48px;
+  text-align: center;
+  box-shadow: var(--neu-shadow);
+  animation: scale-in 0.4s ease;
+  min-width: 380px;
+}
+
+.winner-title {
+  font-size: 22px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.winner-name {
+  font-size: 40px;
+  font-weight: 800;
+  margin-bottom: 24px;
+  animation: winner-glow 2s ease-in-out infinite;
+}
+
+.game-over-stats {
+  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.stat-row .stat-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.game-over-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}

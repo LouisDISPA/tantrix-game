@@ -1,0 +1,9 @@
+[application]
+name = "Tantrix"
+
+[web.app]
+title = "Tantrix"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "assets"]
