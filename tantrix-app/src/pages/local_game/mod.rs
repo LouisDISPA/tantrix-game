@@ -16,19 +16,19 @@ pub enum Screen {
 }
 
 /// Context shared across all screens within the local game page.
-/// Owns the game state signals so they survive screen transitions.
+/// Owns the game state stores so they survive screen transitions.
 #[derive(Clone, Copy)]
 pub struct LocalGameContext {
     pub screen: Signal<Screen>,
-    pub game_state: Signal<GameState>,
-    pub ui_state: Signal<UiState>,
+    pub game_state: Store<GameState>,
+    pub ui_state: Store<UiState>,
 }
 
 #[component]
 pub fn LocalGame() -> Element {
     let screen = use_signal(|| Screen::Setup);
-    let game_state = use_signal(|| GameState::new(&GameConfig::new()));
-    let ui_state = use_signal(UiState::default);
+    let game_state = use_store(|| GameState::new(&GameConfig::new()));
+    let ui_state = use_store(UiState::default);
 
     use_context_provider(|| LocalGameContext {
         screen,

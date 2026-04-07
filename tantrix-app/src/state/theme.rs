@@ -29,9 +29,9 @@ impl Theme {
     }
 }
 
-pub static THEME: GlobalSignal<Theme> = Signal::global(|| Theme::Dark);
+pub static THEME: GlobalStore<Theme> = Global::new(|| Theme::Dark);
 
 pub fn toggle_theme() {
-    let current = *THEME.read();
-    *THEME.write() = current.toggle();
+    let current = *THEME.resolve().read();
+    THEME.resolve().set(current.toggle());
 }

@@ -1,3 +1,4 @@
+use dioxus::prelude::*;
 use tantrix_game::{Color, Position, Rotation};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,7 +10,7 @@ pub enum TurnPhase {
     GameOver,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Store)]
 pub struct UiState {
     pub phase: TurnPhase,
     pub selected_tile: Option<usize>,

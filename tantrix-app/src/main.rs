@@ -21,7 +21,7 @@ fn main() {
 }
 
 fn app() -> Element {
-    let theme = THEME.read();
+    let theme = *THEME.resolve().read();
 
     rsx! {
         document::Stylesheet { href: MAIN_CSS }

@@ -2,20 +2,24 @@ use dioxus::prelude::*;
 
 use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
-use crate::state::game_state::GameContext;
-use crate::state::ui_state::UiState;
+use crate::state::game_state::GameStateStoreExt;
+use crate::state::ui_state::{UiState, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
 
 #[component]
 pub fn GameOverOverlay() -> Element {
     let nav = navigator();
     let mut ctx = use_context::<LocalGameContext>();
-    let gctx = use_context::<GameContext>();
-    let mut ui_state = gctx.ui_state;
+    let ui_state = ctx.ui_state;
 
-    let gs = gctx.game_state.read();
-    let active_players: Vec<tantrix_game::Color> = gs.playing_colors().to_vec();
-    let scores = gs.game.scores();
+    // Subscribe to individual fields for fine-grained reactivity
+    let active_players: Vec<tantrix_game::Color> = ctx
+        .game_state
+        .turn_tracker()
+        .read()
+        .playing_colors()
+        .to_vec();
+    let scores = ctx.game_state.board().read().scores();
 
     let max_score = active_players
         .iter()
@@ -31,7 +35,8 @@ pub fn GameOverOverlay() -> Element {
 
     let is_tie = winners.len() > 1;
 
-    let highlighted = ui_state.read().highlighted_color;
+    // Subscribe only to highlighted_color field
+    let highlighted = ui_state.highlighted_color()();
 
     rsx! {
         div { class: "board-results-overlay",
@@ -92,18 +97,18 @@ pub fn GameOverOverlay() -> Element {
                                     class: "{row_class}",
                                     style: format!("--player-color: {cv}"),
                                     onclick: move |_| {
-                                        let mut ui = ui_state.write();
-                                        if ui.highlighted_color == Some(c) {
-                                            ui.highlighted_color = None;
+                                        let current = *ui_state.highlighted_color().read();
+                                        if current == Some(c) {
+                                            ui_state.highlighted_color().set(None);
                                         } else {
-                                            ui.highlighted_color = Some(c);
+                                            ui_state.highlighted_color().set(Some(c));
                                         }
                                     },
                                     onmouseenter: move |_| {
-                                        ui_state.write().hovered_scoring_color = Some(c);
+                                        ui_state.hovered_scoring_color().set(Some(c));
                                     },
                                     onmouseleave: move |_| {
-                                        ui_state.write().hovered_scoring_color = None;
+                                        ui_state.hovered_scoring_color().set(None);
                                     },
                                     div { class: "results-player",
                                         div { class: "results-color-swatch", style: "background-color: {cv}" }

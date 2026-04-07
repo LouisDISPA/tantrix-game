@@ -1,17 +1,20 @@
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
-use tantrix_game::{Color, Game, Move, Position, Rotation, Tile};
+use tantrix_game::{
+    Bag, Board, Color, EnumMap, Hand, Move, Player, Position, Rotation, Tile, TurnTracker,
+    TILES_IN_HAND,
+};
 
 use super::config::GameConfig;
 use super::ui_state::UiState;
 
 /// Context struct holding the game's reactive state.
-/// Uses Signal fields so child components get fine-grained reactivity.
+/// Uses Store fields so child components get fine-grained field-level reactivity.
 #[derive(Clone, Copy)]
 pub struct GameContext {
-    pub game_state: Signal<GameState>,
-    pub ui_state: Signal<UiState>,
+    pub game_state: Store<GameState>,
+    pub ui_state: Store<UiState>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,22 +29,34 @@ impl TileMoveInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Store)]
 pub struct GameState {
-    pub game: Game,
+    pub board: Board,
+    pub bag: Bag,
+    pub hands: EnumMap<Color, Hand>,
+    pub players: EnumMap<Color, Player>,
+    pub turn_tracker: TurnTracker,
     pub hand_info: Vec<TileMoveInfo>,
 }
 
 impl GameState {
     pub fn new(config: &GameConfig) -> Self {
-        let game = Game::new(
-            config.player_for(Color::Red),
-            config.player_for(Color::Blue),
-            config.player_for(Color::Yellow),
-            config.player_for(Color::Green),
-        );
+        let players = EnumMap::from_fn(|color| config.player_for(color));
+
+        let mut bag = Bag::new();
+        let turn_tracker = TurnTracker::new(&players);
+
+        let mut hands: EnumMap<Color, Hand> = Default::default();
+        for &color in turn_tracker.playing_colors() {
+            hands[color].deal(&mut bag, TILES_IN_HAND);
+        }
+
         let mut state = GameState {
-            game,
+            board: Board::default(),
+            bag,
+            hands,
+            players,
+            turn_tracker,
             hand_info: Vec::new(),
         };
         state.refresh_hand_info();
@@ -49,10 +64,10 @@ impl GameState {
     }
 
     pub fn refresh_hand_info(&mut self) {
-        let all_moves = self.game.get_possible_moves().to_vec();
-        let hand: Vec<Tile> = self.game.get_hand(self.game.currently_playing()).to_vec();
+        let current = self.turn_tracker.current();
+        let all_moves = self.board.possible_moves(&self.hands[current], self.bag.is_empty());
 
-        self.hand_info = hand
+        self.hand_info = self.hands[current]
             .iter()
             .map(|tile| {
                 let tile_moves: Vec<&Move> = all_moves.iter().filter(|m| m.tile == *tile).collect();
@@ -71,94 +86,74 @@ impl GameState {
             .collect();
     }
 
-    pub fn currently_playing(&self) -> Color {
-        self.game.currently_playing()
-    }
-
     pub fn play_move(&mut self, m: Move) -> Result<(), String> {
-        self.game.play_move(m)?;
+        let current = self.turn_tracker.current();
+
+        if !self.hands[current].contains(&m.tile) {
+            return Err("Tile not in hand".to_string());
+        }
+
+        let has_forced_move = self
+            .board
+            .possible_moves(&self.hands[current], self.bag.is_empty())
+            .iter()
+            .any(|pm| pm.forced);
+        let move_is_forced = self.board.possition_is_forced(&m.position);
+        if has_forced_move && !move_is_forced {
+            return Err("Must play a forced move".to_string());
+        }
+
+        self.board.insert_move(m)?;
+        self.hands[current].play_tile(m.tile, &mut self.bag);
+        if !move_is_forced {
+            self.turn_tracker.next();
+        }
         self.refresh_hand_info();
         Ok(())
     }
 
     pub fn skip_turn(&mut self) {
-        self.game.skip_turn();
+        self.turn_tracker.next();
         self.refresh_hand_info();
     }
 
     /// Skip past any players with no valid moves. Stops at a player who can act or game over.
     pub fn skip_stuck_players(&mut self) {
-        let num_players = self.game.playing_colors().len();
+        let num_players = self.turn_tracker.playing_colors().len();
         for _ in 0..num_players {
-            if self.game.is_game_over() || self.has_any_moves() {
+            if self.is_game_over() || self.has_any_moves() {
                 return;
             }
-            self.game.skip_turn();
+            self.turn_tracker.next();
             self.refresh_hand_info();
         }
     }
 
     /// If the current player is AI, compute its chosen move.
-    pub fn ai_choose(&mut self) -> Option<Move> {
-        self.game.ai_choose()
-    }
-
-    /// Find the index of a tile in the current player's hand.
-    pub fn tile_index(&self, tile: Tile) -> Option<usize> {
-        self.game
-            .get_hand(self.game.currently_playing())
-            .iter()
-            .position(|t| *t == tile)
+    pub fn ai_choose(&self) -> Option<Move> {
+        if self.is_game_over() {
+            return None;
+        }
+        let current = self.turn_tracker.current();
+        let possible = self.board.possible_moves(&self.hands[current], self.bag.is_empty());
+        if possible.is_empty() {
+            return None;
+        }
+        if let Player::Ai(ref ai) = self.players[current] {
+            let board = self.board.clone();
+            let hands: EnumMap<Color, &[Tile]> =
+                EnumMap::from_fn(|color| self.hands[color].as_slice());
+            Some(ai.choose_move(&board, hands, current, &possible))
+        } else {
+            None
+        }
     }
 
     pub fn is_game_over(&self) -> bool {
-        self.game.is_game_over()
+        self.bag.is_empty() && self.hands.values().all(|h| h.is_empty())
     }
 
     pub fn has_any_moves(&self) -> bool {
         self.hand_info.iter().any(|info| info.has_moves())
-    }
-
-    pub fn has_forced_moves(&self) -> bool {
-        self.hand_info.iter().any(|info| info.has_forced)
-    }
-
-    pub fn get_hand(&self, color: Color) -> &[Tile] {
-        self.game.get_hand(color)
-    }
-
-    pub fn playing_colors(&self) -> &[Color] {
-        self.game.playing_colors()
-    }
-
-    pub fn board_moves(&self) -> &[Move] {
-        self.game.board().moves()
-    }
-
-    pub fn bag_count(&self) -> usize {
-        self.game.bag_count()
-    }
-
-    /// Build a Move from the selected tile, position, and rotation.
-    pub fn build_move(
-        &self,
-        tile_index: usize,
-        position: Position,
-        rotation: Rotation,
-    ) -> Option<Move> {
-        let hand = self.game.get_hand(self.game.currently_playing());
-        let tile = *hand.get(tile_index)?;
-        let forced = self
-            .hand_info
-            .get(tile_index)
-            .map(|info| info.has_forced)
-            .unwrap_or(false);
-
-        Some(Move {
-            tile,
-            position,
-            rotation,
-            forced,
-        })
     }
 }

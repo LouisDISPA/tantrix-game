@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
+use crate::state::game_state::GameStateStoreExt;
 use crate::state::ui_state::UiState;
 use crate::svg::paths::color_css_var;
 
@@ -10,16 +11,20 @@ pub fn GameOver() -> Element {
     let nav = navigator();
     let mut ctx = use_context::<LocalGameContext>();
 
-    let gs = ctx.game_state.read();
-    let active_players: Vec<tantrix_game::Color> = gs.playing_colors().to_vec();
-    let scores = gs.game.scores();
+    // Subscribe to individual fields for fine-grained reactivity
+    let active_players: Vec<tantrix_game::Color> = ctx
+        .game_state
+        .turn_tracker()
+        .read()
+        .playing_colors()
+        .to_vec();
+    let scores = ctx.game_state.board().read().scores();
 
     let winner_color = active_players
         .iter()
         .copied()
         .max_by_key(|&c| scores[c].score)
         .unwrap_or(tantrix_game::Color::Red);
-    drop(gs);
 
     let color_var = color_css_var(winner_color);
 

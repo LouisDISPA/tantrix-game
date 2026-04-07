@@ -3,8 +3,8 @@ use dioxus::prelude::*;
 use crate::components::board::{advance_turn, Board};
 use crate::components::player_hand::{HandPosition, PlayerHand};
 use crate::pages::local_game::LocalGameContext;
-use crate::state::game_state::GameContext;
-use crate::state::ui_state::TurnPhase;
+use crate::state::game_state::GameStateStoreExt;
+use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 use tantrix_game::Color;
 
 /// Determine hand positions based on player count.
@@ -52,23 +52,27 @@ fn grid_template(player_count: usize) -> (&'static str, &'static str, &'static s
 
 #[component]
 pub fn GamePlay() -> Element {
-    let mut ctx = use_context::<LocalGameContext>();
-    let game_ctx = use_context::<GameContext>();
-    let ui_state = ctx.ui_state;
+    let ctx = use_context::<LocalGameContext>();
+    let gs = ctx.game_state;
+    let mut ui = ctx.ui_state;
 
     // On mount, kick off AI turns if the AI plays first.
     use_hook(|| {
-        advance_turn(game_ctx.game_state, game_ctx.ui_state);
+        advance_turn(gs, ui);
     });
 
-    let is_game_over = ui_state.read().phase == TurnPhase::GameOver;
+    // Subscribe only to phase field — won't re-render on zoom/pan/hover
+    let phase = ui.phase()();
+    let is_game_over = phase == TurnPhase::GameOver;
 
-    // Derive layout from game state.
-    let gs = ctx.game_state.read();
-    let colors = gs.playing_colors().to_vec();
-    let player_count = colors.len();
-    let hand_assignments = assign_hand_positions(&colors);
-    drop(gs);
+    // Memoize layout — player colors never change during a game
+    let layout = use_memo(move || {
+        let colors = gs.turn_tracker().read().playing_colors().to_vec();
+        let count = colors.len();
+        let assignments = assign_hand_positions(&colors);
+        (count, colors, assignments)
+    });
+    let (player_count, _colors, hand_assignments) = layout();
 
     // When game is over, give the board the full viewport (hide hands).
     let (grid_rows, grid_cols, grid_areas) = if is_game_over {
@@ -85,7 +89,7 @@ pub fn GamePlay() -> Element {
             autofocus: true,
             onkeydown: move |evt: KeyboardEvent| {
                 if evt.key() == Key::Escape {
-                    ctx.ui_state.write().go_back();
+                    ui.write().go_back();
                 }
             },
 

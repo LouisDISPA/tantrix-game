@@ -16,6 +16,6 @@ pub enum Route {
 fn AppLayout() -> Element {
     rsx! {
         Outlet::<Route> {}
-        button { class: "theme-toggle", onclick: move |_| toggle_theme(), "{THEME.read().icon()}" }
+        button { class: "theme-toggle", onclick: move |_| toggle_theme(), "{THEME.resolve().read().icon()}" }
     }
 }

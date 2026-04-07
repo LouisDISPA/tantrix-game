@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use arrayvec::ArrayVec;
-use enum_map::{enum_map, EnumMap};
+pub use enum_map::EnumMap;
+use enum_map::enum_map;
 use rand::prelude::SliceRandom;
 
 mod coordinate_system;
@@ -80,13 +81,23 @@ pub struct Board {
     moves: ArrayVec<Move, NUMBER_OF_TILE>,
 }
 
+impl AsRef<[Move]> for Board {
+    fn as_ref(&self) -> &[Move] {
+        &self.moves
+    }
+}
+
 impl Board {
     pub fn moves(&self) -> &[Move] {
         &self.moves
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.moves.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.moves.len()
     }
 
     pub fn is_available(&self, pos: &Position) -> bool {
@@ -107,13 +118,13 @@ impl Board {
         pos.around().filter(|(p, _)| !self.is_available(p)).count() as u8
     }
 
-    fn possition_is_forced(&self, pos: &Position) -> bool {
+    pub fn possition_is_forced(&self, pos: &Position) -> bool {
         self.neighbor_count(pos) >= 3
     }
 
     /// Rule 1: Would placing `m` create a forced space where all surrounding
     /// links are the same color (making it impossible to fill)?
-    fn creates_same_color_triple(&self, m: &Move) -> bool {
+    pub fn creates_same_color_triple(&self, m: &Move) -> bool {
         // Check each empty neighbor of the move's position
         for (neighbor_pos, _) in m.position.around() {
             if !self.is_available(&neighbor_pos) {
@@ -147,7 +158,7 @@ impl Board {
     /// For each forced position, finds boundary directions (empty dirs adjacent to occupied
     /// dirs) and traces straight-line rays outward. A ray continues while the position is
     /// on the contour and is not itself forced.
-    fn controlled_positions(&self, contour_positions: &BTreeSet<Position>) -> BTreeSet<Position> {
+    pub fn controlled_positions(&self, contour_positions: &BTreeSet<Position>) -> BTreeSet<Position> {
         let mut controlled = BTreeSet::new();
 
         for &pos in contour_positions {
@@ -177,6 +188,44 @@ impl Board {
         }
 
         controlled
+    }
+
+    /// Compute all valid moves for tiles in the given hand.
+    /// `bag_is_empty` controls whether restriction rules (controlled sides, same-color triples) apply.
+    pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool) -> Vec<Move> {
+        let mut contour_positions = self.countour_positions();
+
+        if !bag_is_empty {
+            let controlled = self.controlled_positions(&contour_positions);
+            contour_positions = contour_positions
+                .difference(&controlled)
+                .cloned()
+                .collect();
+        }
+
+        let mut moves: Vec<Move> = hand
+            .iter()
+            .copied()
+            .flat_map(|tile| {
+                contour_positions
+                    .iter()
+                    .flat_map(move |pos| self.get_possible_move(tile, *pos))
+            })
+            .collect();
+
+        if !bag_is_empty {
+            moves.retain(|m| !self.creates_same_color_triple(m));
+        }
+
+        if moves.iter().any(|m| m.forced) {
+            moves.retain(|m| m.forced);
+        }
+
+        moves
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Move> {
+        self.moves.iter()
     }
 
     fn get_move(&self, pos: &Position) -> Option<Move> {
@@ -446,31 +495,175 @@ impl fmt::Debug for Player {
     }
 }
 
-const TILES_IN_HAND: usize = 6;
+pub const TILES_IN_HAND: usize = 6;
 const NUMBER_OF_COLOR: usize = enum_iterator::cardinality::<Color>();
 const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
+
+// --- Bag ---
+
+#[derive(Debug, Clone)]
+pub struct Bag {
+    tiles: ArrayVec<Tile, NUMBER_OF_TILE>,
+}
+
+impl Bag {
+    pub fn new() -> Self {
+        let mut tiles: ArrayVec<Tile, NUMBER_OF_TILE> = Default::default();
+        for t in enum_iterator::all::<Tile>() {
+            tiles.push(t);
+        }
+        tiles.shuffle(&mut rand::rng());
+        Bag { tiles }
+    }
+
+    pub fn draw(&mut self) -> Option<Tile> {
+        self.tiles.pop()
+    }
+
+    pub fn count(&self) -> usize {
+        self.tiles.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tiles.is_empty()
+    }
+}
+
+// --- Hand ---
+
+#[derive(Debug, Clone, Default)]
+pub struct Hand {
+    tiles: ArrayVec<Tile, TILES_IN_HAND>,
+}
+
+impl Hand {
+    pub fn get(&self, index: usize) -> Option<&Tile> {
+        self.tiles.get(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.tiles.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tiles.is_empty()
+    }
+
+    pub fn contains(&self, tile: &Tile) -> bool {
+        self.tiles.contains(tile)
+    }
+
+    pub fn position(&self, tile: &Tile) -> Option<usize> {
+        self.tiles.iter().position(|t| t == tile)
+    }
+
+    /// Remove a tile from hand and draw a replacement from the bag.
+    /// Returns the index where the tile was removed.
+    pub fn play_tile(&mut self, tile: Tile, bag: &mut Bag) -> usize {
+        let index = self
+            .tiles
+            .iter()
+            .position(|t| *t == tile)
+            .expect("Can't play tile not in hand");
+        self.tiles.remove(index);
+        // Draw replacements to fill back up
+        let to_draw = TILES_IN_HAND - self.tiles.len();
+        for i in 0..to_draw.min(bag.tiles.len()) {
+            let new_tile = bag.draw().unwrap();
+            let idx = (index + i).min(self.tiles.len());
+            self.tiles.insert(idx, new_tile);
+        }
+        index
+    }
+
+    /// Deal `count` tiles from the bag into this hand.
+    pub fn deal(&mut self, bag: &mut Bag, count: usize) {
+        for _ in 0..count {
+            if let Some(tile) = bag.draw() {
+                self.tiles.push(tile);
+            }
+        }
+    }
+
+    pub fn as_slice(&self) -> &[Tile] {
+        &self.tiles
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Tile> {
+        self.tiles.iter()
+    }
+}
+
+impl std::ops::Deref for Hand {
+    type Target = [Tile];
+
+    fn deref(&self) -> &[Tile] {
+        &self.tiles
+    }
+}
+
+impl AsRef<[Tile]> for Hand {
+    fn as_ref(&self) -> &[Tile] {
+        &self.tiles
+    }
+}
+
+// --- TurnTracker ---
+
+#[derive(Debug, Clone)]
+pub struct TurnTracker {
+    currently_playing: usize,
+    color_cycle: ArrayVec<Color, NUMBER_OF_COLOR>,
+}
+
+impl TurnTracker {
+    pub fn new(players: &EnumMap<Color, Player>) -> Self {
+        let mut color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = players
+            .iter()
+            .filter(|(_, p)| *p != &Player::None)
+            .map(|(c, _)| c)
+            .collect();
+        color_cycle.shuffle(&mut rand::rng());
+        TurnTracker {
+            currently_playing: 0,
+            color_cycle,
+        }
+    }
+
+    pub fn current(&self) -> Color {
+        self.color_cycle[self.currently_playing]
+    }
+
+    pub fn next(&mut self) {
+        self.currently_playing += 1;
+        self.currently_playing %= self.color_cycle.len();
+    }
+
+    pub fn playing_colors(&self) -> &[Color] {
+        &self.color_cycle
+    }
+}
+
+// --- is_game_over free function ---
+
+pub fn is_game_over(bag: &Bag, hands: &EnumMap<Color, Hand>) -> bool {
+    bag.is_empty() && hands.values().all(|h| h.is_empty())
+}
 
 #[derive(Debug, Clone)]
 pub struct Game {
     board: Board,
-    bag_of_tile: ArrayVec<Tile, NUMBER_OF_TILE>,
+    bag: Bag,
     players: EnumMap<Color, Player>,
-    currently_playing: usize,
-    color_cycle: ArrayVec<Color, NUMBER_OF_COLOR>,
-    hands: EnumMap<Color, ArrayVec<Tile, TILES_IN_HAND>>,
+    turn_tracker: TurnTracker,
+    hands: EnumMap<Color, Hand>,
     current_moves: Option<Vec<Move>>,
 }
 
 impl Game {
     pub fn new(red: Player, blue: Player, yellow: Player, green: Player) -> Self {
         let board = Default::default();
-
-        let mut bag_of_tile: ArrayVec<Tile, NUMBER_OF_TILE> = Default::default();
-        for i in enum_iterator::all::<Tile>() {
-            bag_of_tile.push(i)
-        }
-        let mut rng = rand::rng();
-        bag_of_tile.shuffle(&mut rng);
+        let mut bag = Bag::new();
 
         let mut players = enum_map! {
             _ => Player::None
@@ -480,82 +673,41 @@ impl Game {
         players[Color::Yellow] = yellow;
         players[Color::Green] = green;
 
-        let mut color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = players
-            .iter()
-            .filter(|(_, p)| *p != &Player::None)
-            .map(|(c, _)| c)
-            .collect();
+        let turn_tracker = TurnTracker::new(&players);
 
-        color_cycle.shuffle(&mut rng);
-
-        let currently_playing = 0;
-
-        let mut hands: EnumMap<Color, ArrayVec<Tile, TILES_IN_HAND>> = Default::default();
-
-        for color in color_cycle.iter() {
-            for _ in 0..TILES_IN_HAND {
-                if let Some(tile) = bag_of_tile.pop() {
-                    hands[*color].push(tile)
-                }
-            }
+        let mut hands: EnumMap<Color, Hand> = Default::default();
+        for &color in turn_tracker.playing_colors() {
+            hands[color].deal(&mut bag, TILES_IN_HAND);
         }
 
         Self {
             board,
-            bag_of_tile,
+            bag,
             players,
-            currently_playing,
-            color_cycle,
+            turn_tracker,
             hands,
             current_moves: None,
         }
     }
 
     pub fn currently_playing(&self) -> Color {
-        self.color_cycle[self.currently_playing]
+        self.turn_tracker.current()
     }
 
     pub fn get_player(&self, color: Color) -> &Player {
         &self.players[color]
     }
 
-    pub fn get_hand(&self, color: Color) -> &[Tile] {
+    pub fn get_hand(&self, color: Color) -> &Hand {
         &self.hands[color]
     }
 
     pub fn get_possible_moves(&mut self) -> &[Move] {
         if self.current_moves.is_none() {
             let current_player = self.currently_playing();
-            let board = self.board();
-            let mut countour_positions = board.countour_positions();
-
-            if !self.bag_of_tile.is_empty() {
-                let controlled_positions = self.board.controlled_positions(&countour_positions);
-                countour_positions = countour_positions
-                    .difference(&controlled_positions)
-                    .cloned()
-                    .collect();
-            }
-
-            let mut moves: Vec<Move> = self
-                .get_hand(current_player)
-                .iter()
-                .copied()
-                .flat_map(|tile| {
-                    countour_positions
-                        .iter()
-                        .flat_map(move |pos| board.get_possible_move(tile, *pos))
-                })
-                .collect();
-
-            if !self.bag_of_tile.is_empty() {
-                moves.retain(|m| !self.board.creates_same_color_triple(m));
-            }
-
-            if moves.iter().any(|m| m.forced) {
-                moves.retain(|m| m.forced);
-            }
-
+            let moves = self
+                .board
+                .possible_moves(&self.hands[current_player], self.bag.is_empty());
             self.current_moves = Some(moves);
         }
         match &self.current_moves {
@@ -568,55 +720,23 @@ impl Game {
         let current_player = self.currently_playing();
         let m: Move = m.into();
 
-        if !self.get_hand(current_player).contains(&m.tile) {
+        if !self.hands[current_player].contains(&m.tile) {
             return Err("Tile not in hand".to_string());
         }
 
         let has_forced_move = self.get_possible_moves().iter().any(|pm| pm.forced);
-        let move_is_forced = self.board().possition_is_forced(&m.position);
+        let move_is_forced = self.board.possition_is_forced(&m.position);
         if has_forced_move && !move_is_forced {
             return Err("Must play a forced move".to_string());
         }
 
-        let tile = m.tile;
         self.board.insert_move(m)?;
-        let removed_idx = self.remove_tile(tile);
-        self.draw_tiles(removed_idx);
+        self.hands[current_player].play_tile(m.tile, &mut self.bag);
         if !move_is_forced {
-            self.next_player();
+            self.turn_tracker.next();
         }
         self.current_moves = None;
         Ok(())
-    }
-
-    fn remove_tile(&mut self, tile: Tile) -> usize {
-        let color = self.currently_playing();
-        let hand = &mut self.hands[color];
-        let index = hand
-            .iter()
-            .position(|t| t == &tile)
-            .expect("Can't remove tile not in hand");
-        hand.remove(index);
-        index
-    }
-
-    fn draw_tiles(&mut self, insert_at: usize) {
-        if !self.bag_of_tile.is_empty() {
-            let color = self.currently_playing();
-            let hand = &mut self.hands[color];
-            let number_to_draw = TILES_IN_HAND - hand.len();
-
-            for i in 0..number_to_draw.min(self.bag_of_tile.len()) {
-                let tile = self.bag_of_tile.pop().unwrap();
-                let idx = (insert_at + i).min(hand.len());
-                hand.insert(idx, tile);
-            }
-        }
-    }
-
-    fn next_player(&mut self) {
-        self.currently_playing += 1;
-        self.currently_playing %= self.color_cycle.len();
     }
 
     pub fn board(&self) -> &Board {
@@ -624,19 +744,19 @@ impl Game {
     }
 
     pub fn is_game_over(&self) -> bool {
-        self.bag_of_tile.is_empty() && self.hands.values().all(|h| h.is_empty())
+        self.bag.is_empty() && self.hands.values().all(|h| h.is_empty())
     }
 
     pub fn bag_count(&self) -> usize {
-        self.bag_of_tile.len()
+        self.bag.count()
     }
 
     pub fn playing_colors(&self) -> &[Color] {
-        &self.color_cycle
+        self.turn_tracker.playing_colors()
     }
 
     pub fn skip_turn(&mut self) {
-        self.next_player();
+        self.turn_tracker.next();
         self.current_moves = None;
     }
 
@@ -672,11 +792,8 @@ impl Game {
         let current = self.currently_playing();
         if let Player::Ai(ref ai) = self.players[current] {
             let board = self.board.clone();
-            let hands_owned: EnumMap<Color, Vec<Tile>> = enum_map! {
-                color => self.get_hand(color).to_vec()
-            };
             let hands: EnumMap<Color, &[Tile]> = enum_map! {
-                color => hands_owned[color].as_slice()
+                color => self.hands[color].as_slice()
             };
             Some(ai.choose_move(&board, hands, current, &possible))
         } else {
@@ -687,7 +804,7 @@ impl Game {
     /// Play all AI turns and skip players with no valid moves.
     /// Returns when it is a human player's turn or the game is over.
     pub fn advance(&mut self) {
-        let num_players = self.color_cycle.len();
+        let num_players = self.turn_tracker.playing_colors().len();
         let mut consecutive_skips = 0;
 
         loop {
