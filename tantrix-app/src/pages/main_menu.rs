@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::components::title_decoration::TitleDecoration;
 use crate::route::Route;
 
 #[component]
@@ -8,24 +9,7 @@ pub fn MainMenu() -> Element {
 
     rsx! {
         div { class: "title-screen",
-
-            div { class: "title-bg" }
-            div { class: "title-glow" }
-
-            div { class: "floating-hexes",
-                div { class: "floating-hex hex-red",
-                    div { class: "floating-hex-inner" }
-                }
-                div { class: "floating-hex hex-blue",
-                    div { class: "floating-hex-inner" }
-                }
-                div { class: "floating-hex hex-yellow",
-                    div { class: "floating-hex-inner" }
-                }
-                div { class: "floating-hex hex-green",
-                    div { class: "floating-hex-inner" }
-                }
-            }
+            TitleDecoration {}
 
             div { class: "title-content",
                 div { class: "title-logo-area",

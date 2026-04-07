@@ -1,4 +1,5 @@
 pub mod board;
+pub mod game_actions;
 pub mod game_over_overlay;
 pub mod hand_tile;
 pub mod hex_empty;
@@ -7,3 +8,4 @@ pub mod player_hand;
 pub mod rotation_wheel;
 pub mod status_bar;
 pub mod tile_preview;
+pub mod title_decoration;

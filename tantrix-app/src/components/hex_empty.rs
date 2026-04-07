@@ -7,15 +7,21 @@ use crate::svg::paths::hex_polygon_points;
 /// Empty hex position: renders as an absolutely-positioned div with inline SVG.
 #[component]
 pub fn HexEmpty(
-    position: Position,
-    hex_size: f64,
-    #[props(default = false)] forced: bool,
-    #[props(default = false)] faint: bool,
-    #[props(default = String::new())] extra_class: String,
+    position: ReadSignal<Position>,
+    hex_size: ReadSignal<f64>,
+    #[props(default)] forced: ReadSignal<bool>,
+    #[props(default)] faint: ReadSignal<bool>,
+    #[props(default)] extra_class: ReadSignal<String>,
     onclick: Option<EventHandler<Position>>,
     onmouseenter: Option<EventHandler<Position>>,
     onmouseleave: Option<EventHandler<Position>>,
 ) -> Element {
+    let position = position();
+    let hex_size = hex_size();
+    let forced = forced();
+    let faint = faint();
+    let extra_class = extra_class();
+
     let style = hex_position_style(position, hex_size);
 
     let class = {

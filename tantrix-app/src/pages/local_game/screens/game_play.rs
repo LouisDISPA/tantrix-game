@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
-use crate::components::board::{advance_turn, Board};
+use crate::components::board::Board;
+use crate::components::game_actions::advance_turn;
 use crate::components::player_hand::{HandPosition, PlayerHand};
 use crate::pages::local_game::LocalGameContext;
 use crate::state::game_state::GameStateStoreExt;

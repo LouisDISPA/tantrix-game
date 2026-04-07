@@ -6,7 +6,10 @@ use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs, hex_
 
 /// Ghost preview tile: renders as an absolutely-positioned div with inline SVG.
 #[component]
-pub fn TilePreview(m: Move, hex_size: f64) -> Element {
+pub fn TilePreview(m: ReadSignal<Move>, hex_size: ReadSignal<f64>) -> Element {
+    let m = m();
+    let hex_size = hex_size();
+
     let style = hex_position_style(m.position, hex_size);
 
     let points = hex_polygon_points(TILE_CX, TILE_CY, TILE_HEX);

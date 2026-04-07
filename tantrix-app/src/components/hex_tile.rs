@@ -7,12 +7,18 @@ use crate::svg::paths::{color_css_class, color_link_path, color_name, find_color
 /// Board tile: renders as an absolutely-positioned div containing an inline SVG.
 #[component]
 pub fn HexTile(
-    m: Move,
-    hex_size: f64,
-    #[props(default = false)] just_placed: bool,
-    #[props(default = String::new())] extra_class: String,
-    #[props(default = Vec::new())] highlight_colors: Vec<Color>,
+    m: ReadSignal<Move>,
+    hex_size: ReadSignal<f64>,
+    #[props(default)] just_placed: ReadSignal<bool>,
+    #[props(default)] extra_class: ReadSignal<String>,
+    #[props(default)] highlight_colors: ReadSignal<Vec<Color>>,
 ) -> Element {
+    let m = m();
+    let hex_size = hex_size();
+    let just_placed = just_placed();
+    let extra_class = extra_class();
+    let highlight_colors = highlight_colors();
+
     let style = hex_position_style(m.position, hex_size);
 
     let class = if just_placed {
@@ -59,12 +65,18 @@ pub fn HexTile(
 /// Outputs SVG `<g>` group — caller must wrap in their own `<svg>`.
 #[component]
 pub fn HexTileAtPixel(
-    m: Move,
-    cx: f64,
-    cy: f64,
-    hex_size: f64,
-    #[props(default = String::new())] extra_class: String,
+    m: ReadSignal<Move>,
+    cx: ReadSignal<f64>,
+    cy: ReadSignal<f64>,
+    hex_size: ReadSignal<f64>,
+    #[props(default)] extra_class: ReadSignal<String>,
 ) -> Element {
+    let m = m();
+    let cx = cx();
+    let cy = cy();
+    let hex_size = hex_size();
+    let extra_class = extra_class();
+
     let points = hex_polygon_points(cx, cy, hex_size);
     let pairs = find_color_pairs(&m);
 

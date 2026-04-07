@@ -12,16 +12,23 @@ const OUTLINE_HEX: f64 = 25.0;
 
 #[component]
 pub fn HandTile(
-    tile: Tile,
-    index: usize,
-    #[props(default = false)] selected: bool,
-    #[props(default = false)] disabled: bool,
-    #[props(default = false)] forced: bool,
-    #[props(default = false)] is_new: bool,
+    tile: ReadSignal<Tile>,
+    index: ReadSignal<usize>,
+    #[props(default)] selected: ReadSignal<bool>,
+    #[props(default)] disabled: ReadSignal<bool>,
+    #[props(default)] forced: ReadSignal<bool>,
+    #[props(default)] is_new: ReadSignal<bool>,
     onclick: Option<EventHandler<usize>>,
     onmouseenter: Option<EventHandler<usize>>,
     onmouseleave: Option<EventHandler<usize>>,
 ) -> Element {
+    let tile = tile();
+    let index = index();
+    let selected = selected();
+    let disabled = disabled();
+    let forced = forced();
+    let is_new = is_new();
+
     let cx = TILE_VB / 2.0;
     let cy = TILE_VB / 2.0;
     let points = hex_polygon_points(cx, cy, TILE_HEX);
