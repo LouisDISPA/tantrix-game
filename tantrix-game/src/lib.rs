@@ -1128,6 +1128,15 @@ mod tests {
         let green_score = board.scores()[Color::Green];
         assert_eq!(green_score.longest_line, 0);
         assert_eq!(green_score.score, 0);
+
+        // scoring_paths should return positions for blue
+        let paths = board.scoring_paths();
+        assert_eq!(paths[Color::Blue].positions.len(), 1);
+        assert_eq!(paths[Color::Blue].positions[0], Position::CENTER);
+        assert_eq!(paths[Color::Blue].score, 1);
+        // Green has no path
+        assert!(paths[Color::Green].positions.is_empty());
+        assert_eq!(paths[Color::Green].score, 0);
     }
 
     #[test]
