@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use tantrix_game::{
-    Bag, Board, Color, EnumMap, Hand, Move, Player, Position, Rotation, Tile, TurnTracker,
+    Bag, Board, Color, EnumMap, Hand, Move, Player, Position, Rotation, TurnTracker,
     TILES_IN_HAND,
 };
 
@@ -140,10 +140,7 @@ impl GameState {
             return None;
         }
         if let Player::Ai(ref ai) = self.players[current] {
-            let board = self.board.clone();
-            let hands: EnumMap<Color, &[Tile]> =
-                EnumMap::from_fn(|color| self.hands[color].as_slice());
-            Some(ai.choose_move(&board, hands, current, &possible))
+            Some(ai.choose_move(&self.board, &self.hands, current, &possible))
         } else {
             None
         }

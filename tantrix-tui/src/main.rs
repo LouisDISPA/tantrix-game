@@ -567,7 +567,7 @@ impl Widget for BoardWidget<'_> {
         let position_index = self.app.position_index;
 
         // Collect placed tiles
-        let placed_moves: Vec<Move> = self.app.game.board().moves().to_vec();
+        let placed_moves: Vec<Move> = self.app.game.board().to_vec();
         let hand_info = &self.app.hand_info;
         let sorted_positions = &self.app.sorted_positions;
         let preview = self.app.preview_move();
@@ -772,7 +772,7 @@ impl Widget for &App {
             " | Bag: ",
             self.game.bag_count().to_string(),
             " | Board: ",
-            self.game.board().moves().len().to_string(),
+            self.game.board().len().to_string(),
             " tiles"
         ];
         Paragraph::new(title).centered().render(title_area, buf);

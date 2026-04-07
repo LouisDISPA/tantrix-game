@@ -31,8 +31,6 @@ pub struct UiState {
     pub dragging: bool,
     pub last_drag_x: f64,
     pub last_drag_y: f64,
-    /// When true, the board SVG group animates its transform (smooth recenter).
-    pub animating: bool,
 
     // --- Animation / transition ---
     /// The most recently drawn replacement tile: (player color, hand index).
@@ -67,7 +65,6 @@ impl Default for UiState {
             dragging: false,
             last_drag_x: 0.0,
             last_drag_y: 0.0,
-            animating: false,
 
             new_tile: None,
             last_placed_position: None,
@@ -121,7 +118,6 @@ impl UiState {
 
     /// Record that a move was just played: recenter camera and mark new tile.
     pub fn after_move(&mut self, player_color: Color, tile_idx: usize, position: Position) {
-        self.animating = true;
         self.pan_x = 0.0;
         self.pan_y = 0.0;
         self.new_tile = Some((player_color, tile_idx));

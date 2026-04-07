@@ -15,14 +15,12 @@
     height: 100%;
     cursor: grab;
     transform-origin: center center;
+    transition: transform 0.4s ease-out;
 }
 
 .board-viewport.dragging {
     cursor: grabbing;
-}
-
-.board-viewport.animating {
-    transition: transform 0.4s ease-out;
+    transition: none;
 }
 
 .board-tiles-layer {

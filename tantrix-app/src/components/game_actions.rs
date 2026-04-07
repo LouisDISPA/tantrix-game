@@ -84,7 +84,7 @@ pub fn handle_position_click(
         None => return,
     };
 
-    let board_empty = game_state.board().read().is_empty();
+    let board_empty = game_state.board()().is_empty();
 
     if rotations.len() == 1 || board_empty {
         execute_move(tile_idx, pos, rotations[0], game_state, ui_state);
@@ -170,7 +170,7 @@ async fn ai_step_loop(mut game_state: Store<GameState>, mut ui_state: Store<UiSt
             let hands = game_state.hands();
             let h = hands.read();
             let current = game_state.turn_tracker().read().current();
-            h[current].position(&chosen.tile)
+            h[current].iter().position(|t| t == &chosen.tile)
         };
         if let Some(idx) = tile_idx {
             ui_state.selected_tile().set(Some(idx));
@@ -192,7 +192,6 @@ async fn ai_step_loop(mut game_state: Store<GameState>, mut ui_state: Store<UiSt
             ui.last_placed_position = Some(chosen.position);
             ui.selected_tile = None;
             ui.selected_position = None;
-            ui.animating = true;
             ui.pan_x = 0.0;
             ui.pan_y = 0.0;
         }

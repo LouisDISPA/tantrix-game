@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::fmt;
+use std::ops::Deref;
 
 use arrayvec::ArrayVec;
 pub use enum_map::EnumMap;
@@ -20,7 +21,7 @@ pub trait TantrixAi: Send + Sync {
     fn choose_move(
         &self,
         board: &Board,
-        hands: EnumMap<Color, &[Tile]>,
+        hands: &EnumMap<Color, Hand>,
         current_player: Color,
         possible_moves: &[Move],
     ) -> Move;
@@ -81,25 +82,15 @@ pub struct Board {
     moves: ArrayVec<Move, NUMBER_OF_TILE>,
 }
 
-impl AsRef<[Move]> for Board {
-    fn as_ref(&self) -> &[Move] {
+impl Deref for Board {
+    type Target = [Move];
+
+    fn deref(&self) -> &Self::Target {
         &self.moves
     }
 }
 
 impl Board {
-    pub fn moves(&self) -> &[Move] {
-        &self.moves
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.moves.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.moves.len()
-    }
-
     pub fn is_available(&self, pos: &Position) -> bool {
         self.moves
             .binary_search_by(|m| m.position.cmp(pos))
@@ -222,10 +213,6 @@ impl Board {
         }
 
         moves
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, Move> {
-        self.moves.iter()
     }
 
     fn get_move(&self, pos: &Position) -> Option<Move> {
@@ -537,25 +524,6 @@ pub struct Hand {
 }
 
 impl Hand {
-    pub fn get(&self, index: usize) -> Option<&Tile> {
-        self.tiles.get(index)
-    }
-
-    pub fn len(&self) -> usize {
-        self.tiles.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.tiles.is_empty()
-    }
-
-    pub fn contains(&self, tile: &Tile) -> bool {
-        self.tiles.contains(tile)
-    }
-
-    pub fn position(&self, tile: &Tile) -> Option<usize> {
-        self.tiles.iter().position(|t| t == tile)
-    }
 
     /// Remove a tile from hand and draw a replacement from the bag.
     /// Returns the index where the tile was removed.
@@ -584,26 +552,12 @@ impl Hand {
             }
         }
     }
-
-    pub fn as_slice(&self) -> &[Tile] {
-        &self.tiles
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<'_, Tile> {
-        self.tiles.iter()
-    }
 }
 
-impl std::ops::Deref for Hand {
+impl Deref for Hand {
     type Target = [Tile];
 
-    fn deref(&self) -> &[Tile] {
-        &self.tiles
-    }
-}
-
-impl AsRef<[Tile]> for Hand {
-    fn as_ref(&self) -> &[Tile] {
+    fn deref(&self) -> &Self::Target {
         &self.tiles
     }
 }
@@ -792,10 +746,7 @@ impl Game {
         let current = self.currently_playing();
         if let Player::Ai(ref ai) = self.players[current] {
             let board = self.board.clone();
-            let hands: EnumMap<Color, &[Tile]> = enum_map! {
-                color => self.hands[color].as_slice()
-            };
-            Some(ai.choose_move(&board, hands, current, &possible))
+            Some(ai.choose_move(&board, &self.hands, current, &possible))
         } else {
             None
         }

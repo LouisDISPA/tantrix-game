@@ -38,7 +38,6 @@ impl BoardCameraHandlers {
 
     pub fn reset_zoom(mut self) {
         let mut ui = self.ui_state.write();
-        ui.animating = true;
         ui.zoom = 1.0;
         ui.pan_x = 0.0;
         ui.pan_y = 0.0;
@@ -47,7 +46,6 @@ impl BoardCameraHandlers {
     pub fn on_wheel(self, evt: &WheelEvent) {
         let ui = self.ui_state;
         let delta_y = evt.data().delta().strip_units().y;
-        ui.animating().set(false);
         let z = *ui.zoom().read();
         let factor = if delta_y < 0.0 { 1.1 } else { 0.9 };
         ui.zoom().set((z * factor).clamp(0.3, 5.0));
@@ -57,7 +55,6 @@ impl BoardCameraHandlers {
         let mut ui = self.ui_state.write();
         let coords = evt.data().client_coordinates();
         ui.dragging = true;
-        ui.animating = false;
         ui.last_drag_x = coords.x;
         ui.last_drag_y = coords.y;
     }
@@ -91,7 +88,6 @@ pub fn use_board_camera() -> (BoardCamera, BoardCameraHandlers) {
     let zoom = ui_state.zoom()();
     let pan_x = ui_state.pan_x()();
     let pan_y = ui_state.pan_y()();
-    let animating = ui_state.animating()();
     let dragging = ui_state.dragging()();
 
     let transform = format!(
@@ -102,9 +98,6 @@ pub fn use_board_camera() -> (BoardCamera, BoardCameraHandlers) {
     let mut viewport_class = String::from("board-viewport");
     if dragging {
         viewport_class.push_str(" dragging");
-    }
-    if animating {
-        viewport_class.push_str(" animating");
     }
 
     let camera = BoardCamera {

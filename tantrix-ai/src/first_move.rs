@@ -1,5 +1,5 @@
 use enum_map::EnumMap;
-use tantrix_game::{Board, Color, Move, TantrixAi, Tile};
+use tantrix_game::{Board, Color, Hand, Move, TantrixAi};
 
 #[derive(Clone)]
 pub struct FirstMoveAi;
@@ -16,7 +16,7 @@ impl TantrixAi for FirstMoveAi {
     fn choose_move(
         &self,
         _board: &Board,
-        _hands: EnumMap<Color, &[Tile]>,
+        _hands: &EnumMap<Color, Hand>,
         _current_player: Color,
         possible_moves: &[Move],
     ) -> Move {
