@@ -153,9 +153,6 @@ pub fn Board() -> Element {
                     on_select: move |rotation: Rotation| {
                         handle_rotation_select(rotation, game_state, ui_state);
                     },
-                    on_cancel: move |_| {
-                        ui_state.write().go_back();
-                    },
                 }
             }
 

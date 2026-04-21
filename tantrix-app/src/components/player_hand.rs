@@ -194,7 +194,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                                     );
                                     rsx! {
                                         HandTile {
-                                            key: "{tile:?}",
+                                            key: "{color:?}-{i}",
                                             tile: *tile,
                                             index: i,
                                             is_new: state.is_new,

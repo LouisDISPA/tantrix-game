@@ -1,33 +1,11 @@
 use dioxus::prelude::*;
-use tantrix_game::{Color, EnumMap, PlayerScore};
+use tantrix_game::Color;
 
 use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
-use crate::state::game_state::GameStateStoreExt;
+use crate::state::game_state::{determine_winners, GameStateStoreExt};
 use crate::state::ui_state::{UiState, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
-
-// ---------------------------------------------------------------------------
-// Utility: determine winners from scores
-// ---------------------------------------------------------------------------
-
-fn determine_winners(
-    active_players: &[Color],
-    scores: &EnumMap<Color, PlayerScore>,
-) -> (Vec<Color>, bool) {
-    let max_score = active_players
-        .iter()
-        .map(|&c| scores[c].score)
-        .max()
-        .unwrap_or(0);
-    let winners: Vec<Color> = active_players
-        .iter()
-        .copied()
-        .filter(|&c| scores[c].score == max_score)
-        .collect();
-    let is_tie = winners.len() > 1;
-    (winners, is_tie)
-}
 
 // ---------------------------------------------------------------------------
 // ScoreRow subcomponent

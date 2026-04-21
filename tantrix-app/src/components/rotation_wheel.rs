@@ -14,7 +14,6 @@ pub fn RotationWheel(
     position: Position,
     rotations: Vec<Rotation>,
     on_select: EventHandler<Rotation>,
-    on_cancel: EventHandler<()>,
 ) -> Element {
     let ctx = use_context::<GameContext>();
     // Only access hovered_rotation field — won't subscribe to anything else

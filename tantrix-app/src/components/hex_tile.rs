@@ -61,37 +61,3 @@ pub fn HexTile(
     }
 }
 
-/// Render a hex tile at a specific pixel position (for hand tiles, rotation wheel, etc.)
-/// Outputs SVG `<g>` group — caller must wrap in their own `<svg>`.
-#[component]
-pub fn HexTileAtPixel(
-    m: ReadSignal<Move>,
-    cx: ReadSignal<f64>,
-    cy: ReadSignal<f64>,
-    hex_size: ReadSignal<f64>,
-    #[props(default)] extra_class: ReadSignal<String>,
-) -> Element {
-    let m = m();
-    let cx = cx();
-    let cy = cy();
-    let hex_size = hex_size();
-    let extra_class = extra_class();
-
-    let points = hex_polygon_points(cx, cy, hex_size);
-    let pairs = find_color_pairs(&m);
-
-    rsx! {
-        g { class: "hex-tile {extra_class}",
-            polygon { points: "{points}" }
-            for (d1 , d2 , color) in pairs {
-                {
-                    let path_d = color_link_path(cx, cy, d1, d2, hex_size);
-                    let css_class = color_css_class(color);
-                    rsx! {
-                        path { d: "{path_d}", class: "hex-curve {css_class}" }
-                    }
-                }
-            }
-        }
-    }
-}

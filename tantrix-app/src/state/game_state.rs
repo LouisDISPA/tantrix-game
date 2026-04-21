@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use tantrix_game::{
-    Bag, Board, Color, EnumMap, Hand, Move, Player, Position, Rotation, TurnTracker,
+    Bag, Board, Color, EnumMap, Hand, Move, Player, PlayerScore, Position, Rotation, TurnTracker,
     TILES_IN_HAND,
 };
 
@@ -153,4 +153,24 @@ impl GameState {
     pub fn has_any_moves(&self) -> bool {
         self.hand_info.iter().any(|info| info.has_moves())
     }
+}
+
+/// Determine the winner(s) of a finished game from player scores.
+/// Returns the list of players tied for the highest score and whether it's a tie.
+pub fn determine_winners(
+    active_players: &[Color],
+    scores: &EnumMap<Color, PlayerScore>,
+) -> (Vec<Color>, bool) {
+    let max_score = active_players
+        .iter()
+        .map(|&c| scores[c].score)
+        .max()
+        .unwrap_or(0);
+    let winners: Vec<Color> = active_players
+        .iter()
+        .copied()
+        .filter(|&c| scores[c].score == max_score)
+        .collect();
+    let is_tie = winners.len() > 1;
+    (winners, is_tie)
 }
