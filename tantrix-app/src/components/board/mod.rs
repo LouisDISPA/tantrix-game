@@ -18,8 +18,7 @@ mod viewport;
 use dioxus::prelude::*;
 
 use crate::components::status_bar::StatusBar;
-use crate::state::game_state::GameContext;
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::hooks::use_is_game_over;
 
 pub use controls::{EndGameButton, ZoomControls};
 pub use empty_layer::BoardEmptyLayer;
@@ -29,8 +28,7 @@ pub use viewport::BoardViewport;
 
 #[component]
 pub fn Board() -> Element {
-    let ctx = use_context::<GameContext>();
-    let is_game_over = ctx.ui_state.phase()() == TurnPhase::GameOver;
+    let is_game_over = use_is_game_over()();
 
     rsx! {
         div { class: "board-container",

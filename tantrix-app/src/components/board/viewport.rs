@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 use tantrix_game::Position;
 
-use crate::state::game_state::{GameContext, GameStateStoreExt};
-use crate::state::hooks::use_board_camera;
+use crate::hooks::{use_board_camera, use_placed_moves};
+use crate::state::game_state::GameContext;
 use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 
 /// The zoom/pan viewport that hosts all board layers.
@@ -13,16 +13,15 @@ use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 #[component]
 pub fn BoardViewport(children: Element) -> Element {
     let ctx = use_context::<GameContext>();
-    let game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 
     let (camera, cam_handlers) = use_board_camera();
+    let placed_moves = use_placed_moves();
 
     // Recenter the tiles layer on the bounding box of placed moves so new
     // tiles push outward from the middle rather than off-screen.
     let (center_x, center_y) = use_memo(move || {
-        let positions: Vec<Position> =
-            game_state.board()().iter().map(|m| m.position).collect();
+        let positions: Vec<Position> = placed_moves().iter().map(|m| m.position).collect();
         if let Some((min_x, min_y, max_x, max_y)) = board_bounding_box(&positions, HEX_SIZE) {
             ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
         } else {

@@ -4,7 +4,7 @@ use tantrix_game::Position;
 use crate::components::tile::{BoardTile, BoardTileVariant, EmptyHex};
 use crate::state::actions::click_position;
 use crate::state::game_state::GameContext;
-use crate::state::hooks::use_phase_view;
+use crate::hooks::use_phase_view;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::geometry::HEX_SIZE;
 

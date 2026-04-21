@@ -10,6 +10,21 @@ pub enum TurnPhase {
     GameOver,
 }
 
+impl TurnPhase {
+    /// Human-readable banner text for the status bar. `current` is the player
+    /// whose turn it is (used for the waiting-for-AI message).
+    pub fn status_text(&self, current: Color, has_forced: bool) -> String {
+        match self {
+            Self::SelectTile if has_forced => "Select a tile — forced move!".to_string(),
+            Self::SelectTile => "Select a tile from your hand".to_string(),
+            Self::SelectPosition => "Click a position on the board".to_string(),
+            Self::SelectRotation => "Choose a rotation".to_string(),
+            Self::WaitingForAi => format!("{} is thinking...", current),
+            Self::GameOver => "Game Over!".to_string(),
+        }
+    }
+}
+
 /// The single thing the user is hovering over. At any moment the user can only
 /// be pointing at one element, so the four former hovered_* fields are unified.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

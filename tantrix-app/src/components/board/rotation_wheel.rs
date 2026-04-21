@@ -4,7 +4,7 @@ use tantrix_game::Move;
 use crate::components::tile::HexSvg;
 use crate::state::actions::pick_rotation;
 use crate::state::game_state::GameContext;
-use crate::state::hooks::use_phase_view;
+use crate::hooks::use_phase_view;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 
 const HEX_SIZE: f64 = 28.0;

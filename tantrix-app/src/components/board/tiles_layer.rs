@@ -1,26 +1,22 @@
 use dioxus::prelude::*;
 
 use crate::components::tile::BoardTile;
-use crate::state::game_state::{GameContext, GameStateStoreExt};
-use crate::state::hooks::use_highlight_map;
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::hooks::{use_highlight_map, use_is_game_over, use_placed_moves};
+use crate::state::game_state::GameContext;
+use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::geometry::HEX_SIZE;
+
 
 /// Renders every placed move on the board with optional just-placed animation
 /// and scoring-path highlighting.
 #[component]
 pub fn BoardTilesLayer() -> Element {
     let ctx = use_context::<GameContext>();
-    let game_state = ctx.game_state;
-    let ui_state = ctx.ui_state;
+    let last_placed = ctx.ui_state.last_placed_position()();
 
-    let highlight_map = use_highlight_map();
-    let last_placed = ui_state.last_placed_position()();
-    let is_game_over = ui_state.phase()() == TurnPhase::GameOver;
-
-    let placed_moves =
-        use_memo(move || game_state.board()().iter().copied().collect::<Vec<_>>())();
-    let hl_map = highlight_map();
+    let placed_moves = use_placed_moves()();
+    let hl_map = use_highlight_map()();
+    let is_game_over = use_is_game_over()();
 
     rsx! {
         for m in placed_moves.iter() {
