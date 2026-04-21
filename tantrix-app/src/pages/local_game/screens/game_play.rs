@@ -2,9 +2,8 @@ use dioxus::prelude::*;
 
 use crate::components::board::Board;
 use crate::components::player_hand::{HandPosition, PlayerHand};
-use crate::pages::local_game::LocalGameContext;
 use crate::state::actions::advance_turn;
-use crate::state::game_state::{GameContext, GameStateStoreExt};
+use crate::state::game_state::GameCtx;
 use tantrix_game::Color;
 
 /// Determine hand positions based on player count.
@@ -31,22 +30,17 @@ fn assign_hand_positions(colors: &[Color]) -> Vec<(Color, HandPosition)> {
 
 #[component]
 pub fn GamePlay() -> Element {
-    let local_ctx = use_context::<LocalGameContext>();
-    let gs = local_ctx.game_state;
-    let mut ui = local_ctx.ui_state;
-    let game_ctx = GameContext {
-        game_state: gs,
-        ui_state: ui,
-    };
+    let ctx = use_context::<GameCtx>();
+    let mut ui = ctx.ui_state;
 
     // On mount, kick off AI turns if the AI plays first.
     use_hook(|| {
-        advance_turn(game_ctx);
+        advance_turn(ctx);
     });
 
     // Memoize layout — player colors never change during a game.
     let layout = use_memo(move || {
-        let colors = gs.turn_tracker().read().playing_colors().to_vec();
+        let colors = ctx.game_state.read().turn_tracker.playing_colors().to_vec();
         let count = colors.len();
         let assignments = assign_hand_positions(&colors);
         (count, colors, assignments)

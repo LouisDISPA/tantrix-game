@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use tantrix_game::Position;
 
 use crate::hooks::{use_board_camera, use_placed_moves};
-use crate::state::game_state::GameContext;
+use crate::state::game_state::GameCtx;
 use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 
 /// The zoom/pan viewport that hosts all board layers.
@@ -12,7 +12,7 @@ use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 /// Layers (`BoardTilesLayer`, `BoardEmptyLayer`) are passed as children.
 #[component]
 pub fn BoardViewport(children: Element) -> Element {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let mut ui_state = ctx.ui_state;
 
     let (camera, cam_handlers) = use_board_camera();

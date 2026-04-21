@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use tantrix_game::{Color, Position};
 
-use crate::state::game_state::{GameContext, GameStateStoreExt};
+use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
 /// Scoring-path overlay shown on game over. Maps each position to the list of
@@ -13,9 +13,8 @@ use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 /// When the user clicks or hovers a color in the scores panel, only that
 /// color's path is returned; otherwise every player's path is included.
 pub fn use_highlight_map() -> Memo<BTreeMap<Position, Vec<Color>>> {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
-    let game_state = ctx.game_state;
 
     use_memo(move || {
         let phase = ui_state.phase()();
@@ -25,10 +24,9 @@ pub fn use_highlight_map() -> Memo<BTreeMap<Position, Vec<Color>>> {
         let hovered_sc = ui_state.hovered()().scoring_color();
         let highlighted_c = ui_state.highlighted_color()();
         let hl = hovered_sc.or(highlighted_c);
-        let board = game_state.board();
-        let b = board.read();
-        let paths = b.scoring_paths();
-        let colors = game_state.turn_tracker().read().playing_colors().to_vec();
+        let gs = ctx.game_state.read();
+        let paths = gs.board.scoring_paths();
+        let colors = gs.turn_tracker.playing_colors().to_vec();
         let mut map = BTreeMap::<Position, Vec<Color>>::new();
         for color in &colors {
             let show = hl.is_none() || hl == Some(*color);

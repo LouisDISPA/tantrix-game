@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tantrix_game::Color;
 
-use crate::state::game_state::{determine_winners, GameContext, GameStateStoreExt};
+use crate::state::game_state::{determine_winners, GameCtx};
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
 
@@ -21,7 +21,7 @@ fn ScoreRow(
     let is_active = is_active();
     let cv = color_css_var(c);
 
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
     rsx! {
@@ -57,16 +57,13 @@ fn ScoreRow(
 /// the parent screen to inject its own action buttons (Play Again, Main Menu).
 #[component]
 pub fn ScoresPanel(children: Element) -> Element {
-    let ctx = use_context::<GameContext>();
-    let game_state = ctx.game_state;
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
-    let active_players: Vec<Color> = game_state
-        .turn_tracker()
-        .read()
-        .playing_colors()
-        .to_vec();
-    let scores = game_state.board().read().scores();
+    let (active_players, scores) = {
+        let gs = ctx.game_state.read();
+        (gs.turn_tracker.playing_colors().to_vec(), gs.board.scores())
+    };
     let (winners, is_tie) = determine_winners(&active_players, &scores);
     let highlighted = ui_state.highlighted_color()();
 

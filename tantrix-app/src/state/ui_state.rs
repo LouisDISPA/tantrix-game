@@ -1,6 +1,15 @@
 use dioxus::prelude::*;
 use tantrix_game::{Color, Position, Rotation};
 
+/// Which top-level screen inside the local-game page is showing. Orthogonal
+/// to `TurnPhase`: Setup shows the new-game form, Playing delegates to the
+/// active or game-over screen based on `TurnPhase`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Screen {
+    Setup,
+    Playing,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnPhase {
     SelectTile,
@@ -64,6 +73,24 @@ impl Hovered {
     }
 }
 
+/// Whether the board viewport is currently being panned, and (if so) where
+/// the last pointer-move event landed so we can compute a delta.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum Drag {
+    #[default]
+    Idle,
+    Active {
+        last_x: f64,
+        last_y: f64,
+    },
+}
+
+impl Drag {
+    pub fn is_active(&self) -> bool {
+        matches!(self, Self::Active { .. })
+    }
+}
+
 /// Primary visual state for a single tile in a player's hand.
 /// Variants are mutually exclusive — highest-priority one wins when multiple
 /// conditions apply (Selected beats Forced beats Disabled beats Idle).
@@ -104,7 +131,6 @@ pub struct UiState {
     // --- Selection state ---
     pub selected_tile: Option<usize>,
     pub selected_position: Option<Position>,
-    pub selected_rotation: Option<Rotation>,
 
     // --- Hover (unified) ---
     pub hovered: Hovered,
@@ -113,9 +139,7 @@ pub struct UiState {
     pub zoom: f64,
     pub pan_x: f64,
     pub pan_y: f64,
-    pub dragging: bool,
-    pub last_drag_x: f64,
-    pub last_drag_y: f64,
+    pub drag: Drag,
 
     // --- Animation / transition ---
     /// The most recently drawn replacement tile: (player color, hand index).
@@ -137,16 +161,13 @@ impl Default for UiState {
 
             selected_tile: None,
             selected_position: None,
-            selected_rotation: None,
 
             hovered: Hovered::None,
 
             zoom: 1.0,
             pan_x: 0.0,
             pan_y: 0.0,
-            dragging: false,
-            last_drag_x: 0.0,
-            last_drag_y: 0.0,
+            drag: Drag::Idle,
 
             new_tile: None,
             last_placed_position: None,
@@ -161,7 +182,6 @@ impl UiState {
     pub fn reset_selection(&mut self) {
         self.selected_tile = None;
         self.selected_position = None;
-        self.selected_rotation = None;
         self.hovered = Hovered::None;
         self.phase = TurnPhase::SelectTile;
         self.message.clear();
@@ -171,7 +191,6 @@ impl UiState {
     pub fn go_back(&mut self) {
         match self.phase {
             TurnPhase::SelectRotation => {
-                self.selected_rotation = None;
                 self.selected_position = None;
                 self.hovered = Hovered::None;
                 self.phase = TurnPhase::SelectPosition;
@@ -190,7 +209,6 @@ impl UiState {
     pub fn select_tile(&mut self, idx: usize) {
         self.selected_tile = Some(idx);
         self.selected_position = None;
-        self.selected_rotation = None;
         self.hovered = Hovered::None;
         self.phase = TurnPhase::SelectPosition;
         self.message.clear();

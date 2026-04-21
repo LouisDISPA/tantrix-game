@@ -3,7 +3,7 @@ use tantrix_game::Move;
 
 use crate::components::tile::HexSvg;
 use crate::state::actions::pick_rotation;
-use crate::state::game_state::GameContext;
+use crate::state::game_state::GameCtx;
 use crate::hooks::use_phase_view;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 
@@ -17,7 +17,7 @@ const SVG_SIZE: f64 = HEX_SIZE * 2.2;
 /// reflects the current pick.
 #[component]
 pub fn RotationWheel() -> Element {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
 
     let phase_view = use_phase_view();

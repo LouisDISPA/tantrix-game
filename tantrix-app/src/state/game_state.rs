@@ -7,13 +7,17 @@ use tantrix_game::{
 };
 
 use super::config::GameConfig;
-use super::ui_state::UiState;
+use super::ui_state::{Screen, UiState};
 
-/// Context struct holding the game's reactive state.
-/// Uses Store fields so child components get fine-grained field-level reactivity.
+/// The single context shared across every component in the local-game page.
+///
+/// * `screen` — which top-level screen is showing (Setup / Playing)
+/// * `game_state` — the atomic game snapshot; components read it wholesale
+/// * `ui_state` — per-field reactive UI state (zoom, hover, selection, …)
 #[derive(Clone, Copy)]
-pub struct GameContext {
-    pub game_state: Store<GameState>,
+pub struct GameCtx {
+    pub screen: Signal<Screen>,
+    pub game_state: Signal<GameState>,
     pub ui_state: Store<UiState>,
 }
 
@@ -29,7 +33,11 @@ impl TileMoveInfo {
     }
 }
 
-#[derive(Debug, Clone, Store)]
+/// Core game data. `GameState` is treated as one atomic unit — every mutation
+/// (`play_move`, `skip_turn`, …) updates multiple fields together, so there's
+/// nothing to gain from per-field reactivity. Providers wrap this in a plain
+/// `Signal<GameState>`.
+#[derive(Debug, Clone)]
 pub struct GameState {
     pub board: Board,
     pub bag: Bag,

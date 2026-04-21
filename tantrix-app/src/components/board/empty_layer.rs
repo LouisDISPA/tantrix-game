@@ -3,7 +3,7 @@ use tantrix_game::Position;
 
 use crate::components::tile::{BoardTile, BoardTileVariant, EmptyHex};
 use crate::state::actions::click_position;
-use crate::state::game_state::GameContext;
+use crate::state::game_state::GameCtx;
 use crate::hooks::use_phase_view;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::geometry::HEX_SIZE;
@@ -12,7 +12,7 @@ use crate::svg::geometry::HEX_SIZE;
 /// ghost preview of the move being considered.
 #[component]
 pub fn BoardEmptyLayer() -> Element {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
     let phase_view = use_phase_view();

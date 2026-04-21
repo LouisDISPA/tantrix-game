@@ -3,7 +3,7 @@ use std::time::Duration;
 use dioxus::prelude::*;
 use tantrix_game::{Move, Player};
 
-use crate::state::game_state::{GameContext, GameStateStoreExt};
+use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 use crate::util::sleep;
 
@@ -11,9 +11,9 @@ use crate::util::sleep;
 /// the position, commit the move, pause, then look at the next player. Exits
 /// when the current player becomes a human or the game is over.
 ///
-/// Designed to be `spawn`ed — all signal reads clone scalar values before any
-/// `.await` to avoid holding guards across suspend points.
-pub async fn run_ai_loop(ctx: GameContext) {
+/// Designed to be `spawn`ed — scalar signal reads happen before any `.await`
+/// to avoid holding guards across suspend points.
+pub async fn run_ai_loop(ctx: GameCtx) {
     let mut game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 
@@ -35,8 +35,7 @@ pub async fn run_ai_loop(ctx: GameContext) {
 
         let (chosen, ai_color) = {
             let gs = game_state.read();
-            let color = gs.turn_tracker.current();
-            (gs.ai_choose(), color)
+            (gs.ai_choose(), gs.turn_tracker.current())
         };
         let Some(chosen) = chosen else { break };
 
@@ -68,10 +67,8 @@ pub async fn run_ai_loop(ctx: GameContext) {
     }
 }
 
-fn find_tile_index(ctx: &GameContext, chosen: Move) -> Option<usize> {
-    let game_state = ctx.game_state;
-    let hands = game_state.hands();
-    let h = hands.read();
-    let current = game_state.turn_tracker().read().current();
-    h[current].iter().position(|t| t == &chosen.tile)
+fn find_tile_index(ctx: &GameCtx, chosen: Move) -> Option<usize> {
+    let gs = ctx.game_state.read();
+    let current = gs.turn_tracker.current();
+    gs.hands[current].iter().position(|t| t == &chosen.tile)
 }

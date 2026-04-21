@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::state::game_state::GameContext;
+use crate::state::game_state::GameCtx;
 use crate::hooks::use_board_camera;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
@@ -37,7 +37,7 @@ pub fn ZoomControls() -> Element {
 /// into GameOver phase so the final state is visible.
 #[component]
 pub fn EndGameButton() -> Element {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
     rsx! {

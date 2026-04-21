@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::components::tile::BoardTile;
 use crate::hooks::{use_highlight_map, use_is_game_over, use_placed_moves};
-use crate::state::game_state::GameContext;
+use crate::state::game_state::GameCtx;
 use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::geometry::HEX_SIZE;
 
@@ -11,7 +11,7 @@ use crate::svg::geometry::HEX_SIZE;
 /// and scoring-path highlighting.
 #[component]
 pub fn BoardTilesLayer() -> Element {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let last_placed = ctx.ui_state.last_placed_position()();
 
     let placed_moves = use_placed_moves()();

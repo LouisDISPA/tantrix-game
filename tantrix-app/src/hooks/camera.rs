@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 
-use crate::state::game_state::GameContext;
-use crate::state::ui_state::{UiState, UiStateStoreExt};
+use crate::state::game_state::GameCtx;
+use crate::state::ui_state::{Drag, UiState, UiStateStoreExt};
 
 /// Immutable display data for the current camera pose.
 ///
@@ -47,33 +47,34 @@ impl BoardCameraHandlers {
         self.ui_state.zoom().set((z * factor).clamp(0.3, 5.0));
     }
 
-    pub fn on_drag_start(mut self, evt: &MouseEvent) {
-        let mut ui = self.ui_state.write();
+    pub fn on_drag_start(self, evt: &MouseEvent) {
         let coords = evt.data().client_coordinates();
-        ui.dragging = true;
-        ui.last_drag_x = coords.x;
-        ui.last_drag_y = coords.y;
+        self.ui_state.drag().set(Drag::Active {
+            last_x: coords.x,
+            last_y: coords.y,
+        });
     }
 
     pub fn on_drag_move(self, evt: &MouseEvent) {
         let mut ui = self.ui_state;
-        if *ui.dragging().read() {
-            let coords = evt.data().client_coordinates();
-            let last_x = *ui.last_drag_x().read();
-            let last_y = *ui.last_drag_y().read();
-            let z = *ui.zoom().read();
-            let dx = coords.x - last_x;
-            let dy = coords.y - last_y;
-            let mut w = ui.write();
-            w.pan_x -= dx / z;
-            w.pan_y -= dy / z;
-            w.last_drag_x = coords.x;
-            w.last_drag_y = coords.y;
-        }
+        let Drag::Active { last_x, last_y } = *ui.drag().read() else {
+            return;
+        };
+        let coords = evt.data().client_coordinates();
+        let z = *ui.zoom().read();
+        let dx = coords.x - last_x;
+        let dy = coords.y - last_y;
+        let mut w = ui.write();
+        w.pan_x -= dx / z;
+        w.pan_y -= dy / z;
+        w.drag = Drag::Active {
+            last_x: coords.x,
+            last_y: coords.y,
+        };
     }
 
     pub fn on_drag_end(self) {
-        self.ui_state.dragging().set(false);
+        self.ui_state.drag().set(Drag::Idle);
     }
 }
 
@@ -81,13 +82,13 @@ impl BoardCameraHandlers {
 /// handlers. Components that need the CSS transform read this — everything
 /// that needs to *mutate* the camera uses the handler struct.
 pub fn use_board_camera() -> (BoardCamera, BoardCameraHandlers) {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
     let zoom = ui_state.zoom()();
     let pan_x = ui_state.pan_x()();
     let pan_y = ui_state.pan_y()();
-    let dragging = ui_state.dragging()();
+    let dragging = ui_state.drag()().is_active();
 
     let style = format!(
         "--zoom: {:.3}; --pan-x: {:.1}px; --pan-y: {:.1}px;",

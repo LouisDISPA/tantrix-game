@@ -2,9 +2,9 @@ use dioxus::prelude::*;
 
 use crate::components::board::Board;
 use crate::components::scores_panel::ScoresPanel;
-use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
-use crate::state::ui_state::UiState;
+use crate::state::game_state::GameCtx;
+use crate::state::ui_state::{Screen, UiState};
 
 /// End-of-game screen. Reuses [`Board`] so the final tile layout and scoring
 /// highlights stay visible, with the scores card overlaid on top.
@@ -15,7 +15,7 @@ use crate::state::ui_state::UiState;
 #[component]
 pub fn GameOver() -> Element {
     let nav = navigator();
-    let mut ctx = use_context::<LocalGameContext>();
+    let mut ctx = use_context::<GameCtx>();
 
     rsx! {
         div { class: "game-layout game-over-layout",

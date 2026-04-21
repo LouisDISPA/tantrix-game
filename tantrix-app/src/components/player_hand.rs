@@ -3,7 +3,7 @@ use tantrix_game::Color;
 
 use crate::components::tile::{HandTile, HandTileAction};
 use crate::state::actions::execute_move;
-use crate::state::game_state::{GameContext, GameStateStoreExt, TileMoveInfo};
+use crate::state::game_state::{GameCtx, TileMoveInfo};
 use crate::state::ui_state::{HandTileState, Hovered, TurnPhase, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
 
@@ -77,7 +77,7 @@ fn compute_tile_state(
 /// Dispatch a hand-tile action. Hover updates happen for the current player
 /// only — tiles in other hands raise no-ops. Clicks route through
 /// [`click_tile`] which handles selection, deselection, and auto-play.
-fn handle_tile_action(action: HandTileAction, ctx: GameContext, is_current: bool) {
+fn handle_tile_action(action: HandTileAction, ctx: GameCtx, is_current: bool) {
     match action {
         HandTileAction::Click(idx) => {
             if is_current {
@@ -100,8 +100,7 @@ fn handle_tile_action(action: HandTileAction, ctx: GameContext, is_current: bool
 /// Clicking a hand tile either deselects it (if it's the currently selected
 /// one), auto-plays it when only one legal move exists, or selects it so the
 /// player can choose a position.
-fn click_tile(ctx: GameContext, idx: usize) {
-    let game_state = ctx.game_state;
+fn click_tile(ctx: GameCtx, idx: usize) {
     let mut ui_state = ctx.ui_state;
 
     let phase = *ui_state.phase().read();
@@ -117,10 +116,9 @@ fn click_tile(ctx: GameContext, idx: usize) {
     }
 
     let auto = {
-        let board_empty = game_state.board().read().is_empty();
-        let hi_store = game_state.hand_info();
-        let hi = hi_store.read();
-        hi.get(idx).and_then(|info| {
+        let gs = ctx.game_state.read();
+        let board_empty = gs.board.is_empty();
+        gs.hand_info.get(idx).and_then(|info| {
             if info.positions.len() == 1 {
                 let (&pos, rots) = info.positions.iter().next().unwrap();
                 if rots.len() == 1 || board_empty {
@@ -146,16 +144,17 @@ fn click_tile(ctx: GameContext, idx: usize) {
 
 #[component]
 pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
-    let ctx = use_context::<GameContext>();
-    let game_state = ctx.game_state;
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
-    let is_current = game_state.turn_tracker().read().current() == color;
-    let hand: Vec<_> = game_state.hands().read()[color].iter().copied().collect();
-    let color_var = color_css_var(color);
+    let gs = ctx.game_state.read();
+    let is_current = gs.turn_tracker.current() == color;
+    let hand: Vec<_> = gs.hands[color].iter().copied().collect();
+    let hand_info = gs.hand_info.clone();
+    let any_forced = is_current && hand_info.iter().any(|info| info.has_forced);
+    drop(gs);
 
-    let hand_info = game_state.hand_info();
-    let any_forced = is_current && hand_info.read().iter().any(|info| info.has_forced);
+    let color_var = color_css_var(color);
 
     let selected_tile = ui_state.selected_tile()();
     let new_tile_val = ui_state.new_tile()();
@@ -185,27 +184,22 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                 div { class: "hand-empty", "No tiles" }
             } else {
                 div { class: "{tiles_class}",
-                    {
-                        let hi = hand_info.read();
-                        rsx! {
-                            for (i , tile) in hand.iter().enumerate() {
-                                {
-                                    let state = compute_tile_state(
-                                        i, is_current, selected_tile, any_forced, &hi,
-                                    );
-                                    let just_drawn = new_tile_val == Some((color, i));
-                                    rsx! {
-                                        HandTile {
-                                            key: "{color:?}-{i}",
-                                            tile: *tile,
-                                            index: i,
-                                            state,
-                                            just_drawn,
-                                            on_action: move |action: HandTileAction| {
-                                                handle_tile_action(action, ctx, is_current);
-                                            },
-                                        }
-                                    }
+                    for (i , tile) in hand.iter().enumerate() {
+                        {
+                            let state = compute_tile_state(
+                                i, is_current, selected_tile, any_forced, &hand_info,
+                            );
+                            let just_drawn = new_tile_val == Some((color, i));
+                            rsx! {
+                                HandTile {
+                                    key: "{color:?}-{i}",
+                                    tile: *tile,
+                                    index: i,
+                                    state,
+                                    just_drawn,
+                                    on_action: move |action: HandTileAction| {
+                                        handle_tile_action(action, ctx, is_current);
+                                    },
                                 }
                             }
                         }

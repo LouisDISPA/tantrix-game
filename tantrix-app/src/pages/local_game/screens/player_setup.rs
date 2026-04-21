@@ -1,18 +1,17 @@
 use dioxus::prelude::*;
 
 use crate::components::title_decoration::TitleDecoration;
-use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
 use crate::state::config::{GameConfig, PlayerKind};
-use crate::state::game_state::GameState;
-use crate::state::ui_state::UiState;
+use crate::state::game_state::{GameCtx, GameState};
+use crate::state::ui_state::{Screen, UiState};
 use crate::svg::paths::color_css_var;
 
 #[component]
 pub fn PlayerSetup() -> Element {
     let mut config = use_signal(GameConfig::new);
     let nav = navigator();
-    let mut ctx = use_context::<LocalGameContext>();
+    let mut ctx = use_context::<GameCtx>();
 
     let cfg = config.read().clone();
     let can_start = cfg.active_count() >= 2;

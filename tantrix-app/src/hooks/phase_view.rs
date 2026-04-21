@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation, Tile};
 
-use crate::state::game_state::{GameContext, GameStateStoreExt};
+use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
 /// An empty hex shown on the board as a click target.
@@ -35,9 +35,8 @@ pub struct PhaseView {
 }
 
 pub fn use_phase_view() -> Memo<PhaseView> {
-    let ctx = use_context::<GameContext>();
+    let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
-    let game_state = ctx.game_state;
 
     use_memo(move || {
         let phase = ui_state.phase()();
@@ -45,19 +44,16 @@ pub fn use_phase_view() -> Memo<PhaseView> {
         let selected_tile = ui_state.selected_tile()();
         let selected_position = ui_state.selected_position()();
 
-        let hi_store = game_state.hand_info();
-        let hand_info = hi_store.read();
-        let current = game_state.turn_tracker().read().current();
-        let hands = game_state.hands();
-        let h = hands.read();
-        let hand = &h[current];
+        let gs = ctx.game_state.read();
+        let current = gs.turn_tracker.current();
+        let hand = &gs.hands[current];
 
         match phase {
             TurnPhase::SelectTile => {
                 let Some(idx) = hovered.hand_tile() else {
                     return PhaseView::default();
                 };
-                let Some(info) = hand_info.get(idx) else {
+                let Some(info) = gs.hand_info.get(idx) else {
                     return PhaseView::default();
                 };
                 let positions = info
@@ -93,7 +89,7 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                 let Some(idx) = selected_tile else {
                     return PhaseView::default();
                 };
-                let Some(info) = hand_info.get(idx) else {
+                let Some(info) = gs.hand_info.get(idx) else {
                     return PhaseView::default();
                 };
                 let positions = info
@@ -121,7 +117,7 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                 let Some(idx) = selected_tile else {
                     return PhaseView::default();
                 };
-                let Some(info) = hand_info.get(idx) else {
+                let Some(info) = gs.hand_info.get(idx) else {
                     return PhaseView::default();
                 };
                 let positions = info
