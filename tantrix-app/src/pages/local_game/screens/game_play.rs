@@ -29,27 +29,6 @@ fn assign_hand_positions(colors: &[Color]) -> Vec<(Color, HandPosition)> {
     }
 }
 
-fn grid_template(player_count: usize) -> (&'static str, &'static str, &'static str) {
-    match player_count {
-        2 => (
-            "0px 1fr 0px",
-            "140px 1fr 140px",
-            "\". board .\" \"left board right\" \". board .\"",
-        ),
-        3 => (
-            "0px 1fr 140px",
-            "140px 1fr 140px",
-            "\"left board right\" \"left board right\" \"left bottom right\"",
-        ),
-        4 => (
-            "140px 1fr 140px",
-            "140px 1fr 140px",
-            "\"left top right\" \"left board right\" \"left bottom right\"",
-        ),
-        _ => ("1fr", "1fr", "\"board\""),
-    }
-}
-
 #[component]
 pub fn GamePlay() -> Element {
     let local_ctx = use_context::<LocalGameContext>();
@@ -74,12 +53,9 @@ pub fn GamePlay() -> Element {
     });
     let (player_count, _colors, hand_assignments) = layout();
 
-    let (grid_rows, grid_cols, grid_areas) = grid_template(player_count);
-
     rsx! {
         div {
-            class: "game-layout",
-            style: "display: grid; grid-template-rows: {grid_rows}; grid-template-columns: {grid_cols}; grid-template-areas: {grid_areas}; height: 100vh; width: 100vw; gap: 2px; background: var(--border-subtle);",
+            class: "game-layout players-{player_count}",
             tabindex: "0",
             autofocus: true,
             onkeydown: move |evt: KeyboardEvent| {
@@ -88,7 +64,7 @@ pub fn GamePlay() -> Element {
                 }
             },
 
-            div { style: "grid-area: board; min-width: 0; min-height: 0;", Board {} }
+            div { class: "board-slot", Board {} }
 
             for (color , position) in hand_assignments.iter() {
                 PlayerHand {

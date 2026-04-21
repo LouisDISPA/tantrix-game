@@ -51,24 +51,14 @@ pub fn HandTile(
     };
     let outline_points = hex_polygon_points(cx, cy, OUTLINE_HEX);
 
-    let class = {
-        let mut c = String::from("hand-tile");
-        let state_class = state.css_class();
-        if !state_class.is_empty() {
-            c.push(' ');
-            c.push_str(state_class);
-        }
-        if just_drawn {
-            c.push_str(" new-tile");
-        }
-        c
-    };
-
+    let state_class = state.css_class();
     let interactive = state.is_interactive();
 
     rsx! {
         div {
-            class: "{class}",
+            class: "hand-tile",
+            class: "{state_class}",
+            class: if just_drawn { "new-tile" },
             onclick: move |_| {
                 if interactive {
                     on_action.call(HandTileAction::Click(index));

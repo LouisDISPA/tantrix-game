@@ -32,7 +32,7 @@ pub fn BoardViewport(children: Element) -> Element {
     rsx! {
         div {
             class: "{camera.viewport_class}",
-            style: "{camera.transform}",
+            style: "{camera.style}",
 
             onwheel: move |evt| cam_handlers.on_wheel(&evt),
             onmousedown: move |evt| cam_handlers.on_drag_start(&evt),
@@ -46,7 +46,7 @@ pub fn BoardViewport(children: Element) -> Element {
 
             div {
                 class: "board-tiles-layer",
-                style: "transform: translate({-center_x:.1}px, {-center_y:.1}px);",
+                style: "--center-x: {center_x:.1}px; --center-y: {center_y:.1}px;",
                 {children}
             }
         }

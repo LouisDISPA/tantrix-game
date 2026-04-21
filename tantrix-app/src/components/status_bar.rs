@@ -30,7 +30,8 @@ pub fn StatusBar() -> Element {
                 align_items: "center",
                 justify_content: "center",
                 div {
-                    class: if is_forced { "turn-banner forced" } else { "turn-banner" },
+                    class: "turn-banner",
+                    class: if is_forced { "forced" },
                     style: "--turn-color: {color_var}",
                     span { class: "turn-banner-name", "{current_color}" }
                     span { class: "turn-banner-phase", "{phase_text}" }

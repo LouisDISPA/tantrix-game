@@ -1,3 +1,58 @@
+/* ===== Game Layout (grid) ===== */
+
+.game-layout {
+    display: grid;
+    gap: 2px;
+    background: var(--border-subtle);
+    height: 100vh;
+    width: 100vw;
+}
+
+.game-layout.players-2 {
+    grid-template-rows: 0px 1fr 0px;
+    grid-template-columns: 140px 1fr 140px;
+    grid-template-areas:
+        ". board ."
+        "left board right"
+        ". board .";
+}
+
+.game-layout.players-3 {
+    grid-template-rows: 0px 1fr 140px;
+    grid-template-columns: 140px 1fr 140px;
+    grid-template-areas:
+        "left board right"
+        "left board right"
+        "left bottom right";
+}
+
+.game-layout.players-4 {
+    grid-template-rows: 140px 1fr 140px;
+    grid-template-columns: 140px 1fr 140px;
+    grid-template-areas:
+        "left top right"
+        "left board right"
+        "left bottom right";
+}
+
+.game-over-layout {
+    grid-template-rows: 1fr;
+    grid-template-columns: 1fr;
+    grid-template-areas: "board";
+}
+
+.board-slot {
+    grid-area: board;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* Player-hand grid areas, paired with .player-hand.area-* */
+.player-hand.area-left   { grid-area: left; }
+.player-hand.area-right  { grid-area: right; }
+.player-hand.area-top    { grid-area: top; }
+.player-hand.area-bottom { grid-area: bottom; }
+
 /* ===== Board Container ===== */
 
 .board-container {
@@ -15,6 +70,7 @@
     height: 100%;
     cursor: grab;
     transform-origin: center center;
+    transform: scale(var(--zoom, 1)) translate(calc(-1 * var(--pan-x, 0px)), calc(-1 * var(--pan-y, 0px)));
     transition: transform 0.4s ease-out;
 }
 
@@ -28,11 +84,19 @@
     left: 50%;
     top: 50%;
     filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.6));
+    transform: translate(calc(-1 * var(--center-x, 0px)), calc(-1 * var(--center-y, 0px)));
     transition: transform 0.4s ease-out;
 }
 
-.board-tile {
+/* Board tiles / empty slots are positioned via --hx/--hy/--hw/--hh set inline
+   by `hex_position_style`, keeping CSS static and the dynamic part minimal. */
+.board-tile,
+.board-empty {
     position: absolute;
+    left: var(--hx);
+    top: var(--hy);
+    width: var(--hw);
+    height: var(--hh);
 }
 
 .board-tile svg {
@@ -43,7 +107,6 @@
 }
 
 .board-empty {
-    position: absolute;
     cursor: pointer;
     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
@@ -73,12 +136,6 @@
 
 .hex-tile {
     cursor: default;
-}
-
-.hex-tile polygon {
-    fill: var(--tile-fill);
-    stroke: var(--tile-stroke);
-    stroke-width: 0.8;
 }
 
 .hex-curve-red { stroke: var(--color-red); }
@@ -257,7 +314,7 @@
     font-size: 14px;
     transition: background 0.3s ease;
     box-shadow: var(--shadow-md);
-    clip-path: polygon(0 50%, 1.5% 0, 98.5% 0, 100% 50%, 98.5% 100%, 1.5% 100%);
+    clip-path: var(--clip-banner);
 }
 
 .turn-banner .turn-banner-name {
@@ -410,33 +467,8 @@
 }
 
 .results-hex-frame {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
     width: 340px;
     height: 340px;
-    clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
-    background: linear-gradient(
-        135deg,
-        rgba(230, 57, 70, 0.06),
-        rgba(74, 144, 217, 0.06),
-        rgba(240, 192, 64, 0.06),
-        rgba(46, 170, 138, 0.06)
-    );
-    z-index: -1;
-    animation: hexFramePulse 4s ease-in-out infinite;
-    pointer-events: none;
-}
-
-[data-theme="dark"] .results-hex-frame {
-    background: linear-gradient(
-        135deg,
-        rgba(230, 57, 70, 0.10),
-        rgba(74, 144, 217, 0.10),
-        rgba(240, 192, 64, 0.10),
-        rgba(46, 170, 138, 0.10)
-    );
 }
 
 .results-header {
@@ -538,7 +570,20 @@
     width: 22px;
     height: 22px;
     flex-shrink: 0;
-    clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+    clip-path: var(--clip-hex);
+    background-color: var(--player-color);
+}
+
+.results-points.winner {
+    color: var(--player-color);
+}
+
+/* Winner name + glow inherit from --player-color so the text and its glow
+   stay in sync with the row's color. */
+.results-winner-name,
+.results-tie-names .results-winner-name {
+    color: var(--player-color);
+    --glow-color: var(--player-color);
 }
 
 .results-name {
@@ -582,7 +627,7 @@
     padding: 14px 20px;
     background: #333333;
     color: #ffffff;
-    clip-path: polygon(6% 0%, 94% 0%, 100% 30%, 100% 70%, 94% 100%, 6% 100%, 0% 70%, 0% 30%);
+    clip-path: var(--clip-btn-tight);
 }
 
 [data-theme="dark"] .results-btn-primary {
@@ -591,8 +636,8 @@
 }
 
 .results-btn-primary:hover {
-    filter: drop-shadow(0 0 10px rgba(230, 57, 70, 0.25))
-        drop-shadow(0 0 10px rgba(74, 144, 217, 0.25));
+    filter: drop-shadow(0 0 10px var(--glow-red))
+        drop-shadow(0 0 10px var(--glow-blue));
 }
 
 .results-btn-secondary {

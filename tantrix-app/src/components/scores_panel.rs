@@ -24,17 +24,12 @@ fn ScoreRow(
     let ctx = use_context::<GameContext>();
     let ui_state = ctx.ui_state;
 
-    let row_class = match (is_winner, is_active) {
-        (true, true) => "results-row results-row-winner results-row-active",
-        (true, false) => "results-row results-row-winner",
-        (false, true) => "results-row results-row-active",
-        (false, false) => "results-row",
-    };
-
     rsx! {
         div {
-            class: "{row_class}",
-            style: format!("--player-color: {cv}"),
+            class: "results-row",
+            class: if is_winner { "results-row-winner" },
+            class: if is_active { "results-row-active" },
+            style: "--player-color: {cv}",
             onclick: move |_| {
                 let current = *ui_state.highlighted_color().read();
                 if current == Some(c) {
@@ -46,12 +41,12 @@ fn ScoreRow(
             onmouseenter: move |_| ui_state.hovered().set(Hovered::ScoringColor(c)),
             onmouseleave: move |_| ui_state.hovered().set(Hovered::None),
             div { class: "results-player",
-                div { class: "results-color-swatch", style: "background-color: {cv}" }
+                div { class: "results-color-swatch" }
                 span { class: "results-name", "{c}" }
             }
             span {
                 class: "results-points",
-                style: if is_winner { format!("color: {cv}") } else { String::new() },
+                class: if is_winner { "winner" },
                 "{score}"
             }
         }
@@ -78,7 +73,7 @@ pub fn ScoresPanel(children: Element) -> Element {
     rsx! {
         div { class: "board-results-overlay",
             div { class: "board-results-card",
-                div { class: "results-hex-frame" }
+                div { class: "hex-frame results-hex-frame" }
 
                 div { class: "results-header",
                     if is_tie {
@@ -93,7 +88,7 @@ pub fn ScoresPanel(children: Element) -> Element {
                                         }
                                         span {
                                             class: "results-winner-name",
-                                            style: "color: {cv}; --glow-color: {cv}",
+                                            style: "--player-color: {cv}",
                                             "{color}"
                                         }
                                     }
@@ -108,7 +103,7 @@ pub fn ScoresPanel(children: Element) -> Element {
                                 div { class: "results-winner-label", "Winner" }
                                 div {
                                     class: "results-winner-name",
-                                    style: "color: {winner_var}; --glow-color: {winner_var}",
+                                    style: "--player-color: {winner_var}",
                                     "{winner_color}"
                                 }
                             }

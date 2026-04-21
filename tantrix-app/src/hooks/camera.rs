@@ -4,8 +4,12 @@ use crate::state::game_state::GameContext;
 use crate::state::ui_state::{UiState, UiStateStoreExt};
 
 /// Immutable display data for the current camera pose.
+///
+/// `style` sets the custom properties `--zoom`, `--pan-x`, `--pan-y` and leaves
+/// the actual `transform` declaration in CSS — this keeps transitions and
+/// easing configurable without touching Rust.
 pub struct BoardCamera {
-    pub transform: String,
+    pub style: String,
     pub zoom_percent: i32,
     pub viewport_class: String,
 }
@@ -85,9 +89,9 @@ pub fn use_board_camera() -> (BoardCamera, BoardCameraHandlers) {
     let pan_y = ui_state.pan_y()();
     let dragging = ui_state.dragging()();
 
-    let transform = format!(
-        "transform: scale({:.3}) translate({:.1}px, {:.1}px);",
-        zoom, -pan_x, -pan_y
+    let style = format!(
+        "--zoom: {:.3}; --pan-x: {:.1}px; --pan-y: {:.1}px;",
+        zoom, pan_x, pan_y
     );
 
     let mut viewport_class = String::from("board-viewport");
@@ -97,7 +101,7 @@ pub fn use_board_camera() -> (BoardCamera, BoardCameraHandlers) {
 
     (
         BoardCamera {
-            transform,
+            style,
             zoom_percent: (zoom * 100.0) as i32,
             viewport_class,
         },

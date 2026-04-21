@@ -25,23 +25,13 @@ pub fn EmptyHex(
     let faint = faint();
 
     let style = hex_position_style(position, hex_size);
-
-    let class = {
-        let mut c = String::from("board-empty hex-empty");
-        if forced {
-            c.push_str(" forced");
-        }
-        if faint {
-            c.push_str(" faint");
-        }
-        c
-    };
-
     let points = hex_polygon_points(TILE_CX, TILE_CY, TILE_HEX);
 
     rsx! {
         div {
-            class: "{class}",
+            class: "board-empty hex-empty",
+            class: if forced { "forced" },
+            class: if faint { "faint" },
             style: "{style}",
             onclick: move |_| {
                 if let Some(h) = &onclick {

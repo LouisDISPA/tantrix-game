@@ -13,26 +13,12 @@
   border-width: 2px;
 }
 
-/* Side hands (left/right) */
-.player-hand.side {
-  border-radius: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.player-hand.side.right {
-  border-radius: 0;
-}
-
-/* Edge hands (top/bottom) */
+/* Side (left/right) + edge (top/bottom) hands share the same fill behaviour. */
+.player-hand.side,
 .player-hand.edge {
   border-radius: 0;
   width: 100%;
   height: 100%;
-}
-
-.player-hand.edge.bottom {
-  border-radius: 0;
 }
 
 /* ===== Hand Header ===== */
@@ -154,14 +140,6 @@
 
 .hand-tile.disabled:hover {
   transform: none;
-}
-
-/* ===== Unified tile fill — subtle border ===== */
-
-.hand-tile svg .hex-tile-fill {
-  fill: var(--tile-fill);
-  stroke: var(--tile-stroke);
-  stroke-width: 0.8;
 }
 
 /* ===== Hex-shaped selection / forced ring ===== */

@@ -13,7 +13,7 @@ pub fn MainMenu() -> Element {
 
             div { class: "title-content",
                 div { class: "title-logo-area",
-                    div { class: "title-hex-frame" }
+                    div { class: "hex-frame title-hex-frame" }
                     h1 { class: "title-logo", "TANTRIX" }
                     p { class: "title-subtitle", "Hexagonal Strategy Game" }
                 }

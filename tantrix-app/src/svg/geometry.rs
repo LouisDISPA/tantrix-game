@@ -69,13 +69,14 @@ pub fn edge_separation(d1: Direction, d2: Direction) -> usize {
     diff.min(6 - diff)
 }
 
-/// CSS absolute-positioning style for a hex tile div at the given board position.
+/// CSS custom properties that anchor a hex tile div at its board position.
+/// Paired with `.board-tile`/`.board-empty` CSS which reads `--hx/--hy/--hw/--hh`.
 pub fn hex_position_style(position: Position, hex_size: f64) -> String {
     let (px, py) = axial_to_pixel(position, hex_size);
     let half_w = hex_size * SQRT3 / 2.0;
     let half_h = hex_size;
     format!(
-        "left:{:.1}px; top:{:.1}px; width:{:.1}px; height:{:.1}px;",
+        "--hx: {:.1}px; --hy: {:.1}px; --hw: {:.1}px; --hh: {:.1}px;",
         px - half_w, py - half_h, half_w * 2.0, half_h * 2.0
     )
 }

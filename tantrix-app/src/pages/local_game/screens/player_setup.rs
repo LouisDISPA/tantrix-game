@@ -23,7 +23,7 @@ pub fn PlayerSetup() -> Element {
 
             div { class: "title-content",
                 div { class: "setup-card",
-                    div { class: "setup-hex-frame" }
+                    div { class: "hex-frame setup-hex-frame" }
                     button {
                         class: "setup-back-btn",
                         onclick: move |_| {
@@ -45,8 +45,11 @@ pub fn PlayerSetup() -> Element {
                                     PlayerKind::Ai => "player-toggle ai",
                                 };
                                 rsx! {
-                                    div { class: if is_active { "player-slot active" } else { "player-slot" },
-                                        div { class: "color-swatch", style: "background-color: {color_var}" }
+                                    div {
+                                        class: "player-slot",
+                                        class: if is_active { "active" },
+                                        style: "--player-color: {color_var}",
+                                        div { class: "color-swatch" }
                                         div { class: "player-label", "{color}" }
                                         button {
                                             class: "{toggle_class}",
@@ -61,7 +64,8 @@ pub fn PlayerSetup() -> Element {
                         }
                     }
                     button {
-                        class: if can_start { "setup-start-btn" } else { "setup-start-btn disabled" },
+                        class: "setup-start-btn",
+                        class: if !can_start { "disabled" },
                         disabled: !can_start,
                         onclick: move |_| {
                             let cfg = config.read();

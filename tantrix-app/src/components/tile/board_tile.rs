@@ -34,24 +34,15 @@ pub fn BoardTile(
     let highlight_colors = highlight_colors();
 
     let style = hex_position_style(m.position, hex_size);
-
-    let class = {
-        let mut c = String::from("board-tile hex-tile");
-        match variant {
-            BoardTileVariant::Placed => {}
-            BoardTileVariant::Preview => c.push_str(" tile-preview"),
-        }
-        if just_placed {
-            c.push_str(" just-placed");
-        }
-        if dimmed {
-            c.push_str(" dimmed-tile");
-        }
-        c
-    };
+    let is_preview = matches!(variant, BoardTileVariant::Preview);
 
     rsx! {
-        div { class: "{class}", style: "{style}",
+        div {
+            class: "board-tile hex-tile",
+            class: if is_preview { "tile-preview" },
+            class: if just_placed { "just-placed" },
+            class: if dimmed { "dimmed-tile" },
+            style: "{style}",
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                 HexSvg {
                     m,

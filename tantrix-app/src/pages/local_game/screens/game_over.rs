@@ -18,11 +18,9 @@ pub fn GameOver() -> Element {
     let mut ctx = use_context::<LocalGameContext>();
 
     rsx! {
-        div {
-            class: "game-layout game-over-layout",
-            style: "display: grid; grid-template-rows: 1fr; grid-template-columns: 1fr; grid-template-areas: \"board\"; height: 100vh; width: 100vw;",
+        div { class: "game-layout game-over-layout",
 
-            div { style: "grid-area: board; min-width: 0; min-height: 0;", Board {} }
+            div { class: "board-slot", Board {} }
 
             ScoresPanel {
                 button {

@@ -29,12 +29,13 @@ impl HandPosition {
         }
     }
 
-    pub fn grid_area(&self) -> &'static str {
+    /// CSS class encoding the grid area (paired with `.player-hand.area-*`).
+    pub fn area_class(&self) -> &'static str {
         match self {
-            HandPosition::Left => "left",
-            HandPosition::Right => "right",
-            HandPosition::Top => "top",
-            HandPosition::Bottom => "bottom",
+            HandPosition::Left => "area-left",
+            HandPosition::Right => "area-right",
+            HandPosition::Top => "area-top",
+            HandPosition::Bottom => "area-bottom",
         }
     }
 }
@@ -160,8 +161,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
     let new_tile_val = ui_state.new_tile()();
 
     let pos_class = position.css_class();
-    let grid_area = position.grid_area();
-    let active_class = if is_current { " active" } else { "" };
+    let area_class = position.area_class();
     let tiles_class = if position.is_vertical() {
         "hand-tiles vertical"
     } else {
@@ -170,8 +170,9 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
 
     rsx! {
         div {
-            class: "player-hand {pos_class}{active_class}",
-            style: "grid-area: {grid_area}; --player-color: {color_var}",
+            class: "player-hand {pos_class} {area_class}",
+            class: if is_current { "active" },
+            style: "--player-color: {color_var}",
 
             div { class: "hand-header",
                 if is_current {
