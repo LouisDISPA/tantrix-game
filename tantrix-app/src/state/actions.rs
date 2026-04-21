@@ -5,6 +5,7 @@
 //! then advance the turn. If the next player is an AI, `advance_turn` spawns
 //! [`run_ai_loop`] to take care of their move.
 
+use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 use tantrix_game::{Move, Player, Position, Rotation};
 
@@ -100,7 +101,8 @@ pub fn advance_turn(ctx: GameCtx) {
 
     if needs_ai {
         ui_state.phase().set(TurnPhase::WaitingForAi);
-        spawn(async move {
+
+        spawn_forever(async move {
             run_ai_loop(ctx).await;
             settle_turn(ctx);
         });
