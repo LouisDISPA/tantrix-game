@@ -3,11 +3,9 @@ use tantrix_game::{Position, Rotation};
 
 use crate::components::game_actions::{handle_position_click, handle_rotation_select};
 use crate::components::game_over_overlay::GameOverOverlay;
-use crate::components::hex_empty::HexEmpty;
-use crate::components::hex_tile::HexTile;
 use crate::components::rotation_wheel::RotationWheel;
 use crate::components::status_bar::StatusBar;
-use crate::components::tile_preview::TilePreview;
+use crate::components::tile::{BoardTile, BoardTileVariant, EmptyHex};
 use crate::state::game_state::{GameContext, GameStateStoreExt};
 use crate::state::hooks::{use_board_camera, use_highlight_map, use_phase_view};
 use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt};
@@ -99,12 +97,12 @@ pub fn Board() -> Element {
                                         .unwrap_or_default();
                                     let just_placed = last_placed == Some(m.position);
                                     rsx! {
-                                        HexTile {
+                                        BoardTile {
                                             key: "{m.position.x()},{m.position.y()}",
                                             m: *m,
                                             hex_size: HEX_SIZE,
                                             just_placed,
-                                            extra_class: if is_game_over { "dimmed-tile".to_string() } else { String::new() },
+                                            dimmed: is_game_over,
                                             highlight_colors: colors,
                                         }
                                     }
@@ -117,7 +115,7 @@ pub fn Board() -> Element {
                         let view = phase_view();
                         rsx! {
                             for vp in view.positions.iter() {
-                                HexEmpty {
+                                EmptyHex {
                                     key: "e{vp.pos.x()},{vp.pos.y()}",
                                     position: vp.pos,
                                     hex_size: HEX_SIZE,
@@ -135,7 +133,11 @@ pub fn Board() -> Element {
                                 }
                             }
                             if let Some(preview) = view.preview {
-                                TilePreview { m: preview, hex_size: HEX_SIZE }
+                                BoardTile {
+                                    m: preview,
+                                    hex_size: HEX_SIZE,
+                                    variant: BoardTileVariant::Preview,
+                                }
                             }
                         }
                     }

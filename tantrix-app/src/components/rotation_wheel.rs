@@ -1,9 +1,9 @@
 use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation, Tile};
 
+use crate::components::tile::HexSvg;
 use crate::state::game_state::GameContext;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
-use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs, hex_polygon_points};
 
 const HEX_SIZE: f64 = 28.0;
 const SVG_SIZE: f64 = HEX_SIZE * 2.2;
@@ -28,11 +28,8 @@ pub fn RotationWheel(
                         rotation: *rotation,
                         forced: false,
                     };
-                    let pairs = find_color_pairs(&m);
                     let cx = SVG_SIZE / 2.0;
                     let cy = SVG_SIZE / 2.0;
-                    let points = hex_polygon_points(cx, cy, HEX_SIZE);
-
                     let rot = *rotation;
 
                     rsx! {
@@ -51,16 +48,7 @@ pub fn RotationWheel(
                             svg {
                                 view_box: "0 0 {SVG_SIZE:.0} {SVG_SIZE:.0}",
                                 class: "rotation-bar-svg",
-                                polygon { points: "{points}", class: "hex-tile-fill" }
-                                for (d1 , d2 , color) in pairs {
-                                    {
-                                        let path_d = color_link_path(cx, cy, d1, d2, HEX_SIZE);
-                                        let css_class = color_css_class(color);
-                                        rsx! {
-                                            path { d: "{path_d}", class: "hex-curve {css_class}" }
-                                        }
-                                    }
-                                }
+                                HexSvg { m, cx, cy, hex_size: HEX_SIZE }
                             }
                         }
                     }

@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use tantrix_game::Color;
 
 use crate::components::game_actions::execute_move;
-use crate::components::hand_tile::{HandTile, HandTileAction};
+use crate::components::tile::{HandTile, HandTileAction};
 use crate::state::game_state::{GameContext, GameStateStoreExt, TileMoveInfo};
 use crate::state::ui_state::{HandTileState, Hovered, TurnPhase, UiStateStoreExt};
 use crate::svg::paths::color_css_var;

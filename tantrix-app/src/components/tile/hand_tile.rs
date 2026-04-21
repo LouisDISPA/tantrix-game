@@ -1,8 +1,9 @@
 use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation, Tile};
 
+use crate::components::tile::hex_svg::HexSvg;
 use crate::state::ui_state::HandTileState;
-use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs, hex_polygon_points};
+use crate::svg::paths::hex_polygon_points;
 
 /// Fixed viewBox size for hand tiles — the SVG internal coordinate space.
 /// Actual rendered size is controlled entirely by CSS.
@@ -35,7 +36,6 @@ pub fn HandTile(
 
     let cx = TILE_VB / 2.0;
     let cy = TILE_VB / 2.0;
-    let points = hex_polygon_points(cx, cy, TILE_HEX);
 
     let m = Move {
         tile,
@@ -43,7 +43,6 @@ pub fn HandTile(
         rotation: Rotation::None,
         forced: false,
     };
-    let pairs = find_color_pairs(&m);
 
     let show_outline = matches!(state, HandTileState::Selected | HandTileState::Forced);
     let outline_class = match state {
@@ -81,16 +80,7 @@ pub fn HandTile(
                 if show_outline {
                     polygon { points: "{outline_points}", class: "{outline_class}" }
                 }
-                polygon { points: "{points}", class: "hex-tile-fill" }
-                for (d1 , d2 , color) in pairs {
-                    {
-                        let path_d = color_link_path(cx, cy, d1, d2, TILE_HEX);
-                        let css_class = color_css_class(color);
-                        rsx! {
-                            path { d: "{path_d}", class: "hex-curve {css_class}" }
-                        }
-                    }
-                }
+                HexSvg { m, cx, cy, hex_size: TILE_HEX }
             }
         }
     }
