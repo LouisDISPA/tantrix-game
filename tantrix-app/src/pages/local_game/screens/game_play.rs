@@ -1,10 +1,10 @@
 use dioxus::prelude::*;
 
 use crate::components::board::Board;
-use crate::components::game_actions::advance_turn;
 use crate::components::player_hand::{HandPosition, PlayerHand};
 use crate::pages::local_game::LocalGameContext;
-use crate::state::game_state::GameStateStoreExt;
+use crate::state::actions::advance_turn;
+use crate::state::game_state::{GameContext, GameStateStoreExt};
 use tantrix_game::Color;
 
 /// Determine hand positions based on player count.
@@ -52,13 +52,17 @@ fn grid_template(player_count: usize) -> (&'static str, &'static str, &'static s
 
 #[component]
 pub fn GamePlay() -> Element {
-    let ctx = use_context::<LocalGameContext>();
-    let gs = ctx.game_state;
-    let mut ui = ctx.ui_state;
+    let local_ctx = use_context::<LocalGameContext>();
+    let gs = local_ctx.game_state;
+    let mut ui = local_ctx.ui_state;
+    let game_ctx = GameContext {
+        game_state: gs,
+        ui_state: ui,
+    };
 
     // On mount, kick off AI turns if the AI plays first.
     use_hook(|| {
-        advance_turn(gs, ui);
+        advance_turn(game_ctx);
     });
 
     // Memoize layout — player colors never change during a game.

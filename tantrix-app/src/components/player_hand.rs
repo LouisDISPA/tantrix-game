@@ -1,8 +1,8 @@
 use dioxus::prelude::*;
 use tantrix_game::Color;
 
-use crate::components::game_actions::execute_move;
 use crate::components::tile::{HandTile, HandTileAction};
+use crate::state::actions::execute_move;
 use crate::state::game_state::{GameContext, GameStateStoreExt, TileMoveInfo};
 use crate::state::ui_state::{HandTileState, Hovered, TurnPhase, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
@@ -74,62 +74,47 @@ fn compute_tile_state(
 // ---------------------------------------------------------------------------
 
 /// Dispatch a hand-tile action. Hover updates happen for the current player
-/// only — tiles in other hands raise no-ops.
-fn handle_tile_action(
-    action: HandTileAction,
-    is_current: bool,
-    tile_click: EventHandler<usize>,
-    ui_state: Store<crate::state::ui_state::UiState>,
-) {
+/// only — tiles in other hands raise no-ops. Clicks route through
+/// [`click_tile`] which handles selection, deselection, and auto-play.
+fn handle_tile_action(action: HandTileAction, ctx: GameContext, is_current: bool) {
     match action {
-        HandTileAction::Click(idx) => tile_click.call(idx),
+        HandTileAction::Click(idx) => {
+            if is_current {
+                click_tile(ctx, idx);
+            }
+        }
         HandTileAction::HoverEnter(idx) => {
             if is_current {
-                ui_state.hovered().set(Hovered::HandTile(idx));
+                ctx.ui_state.hovered().set(Hovered::HandTile(idx));
             }
         }
         HandTileAction::HoverLeave => {
             if is_current {
-                ui_state.hovered().set(Hovered::None);
+                ctx.ui_state.hovered().set(Hovered::None);
             }
         }
     }
 }
 
-fn use_tile_click(is_current: bool) -> EventHandler<usize> {
-    let ctx = use_context::<GameContext>();
+/// Clicking a hand tile either deselects it (if it's the currently selected
+/// one), auto-plays it when only one legal move exists, or selects it so the
+/// player can choose a position.
+fn click_tile(ctx: GameContext, idx: usize) {
     let game_state = ctx.game_state;
-    let ui_state = ctx.ui_state;
+    let mut ui_state = ctx.ui_state;
 
-    EventHandler::new(move |idx: usize| {
-        if !is_current {
-            return;
-        }
-        handle_tile_click(idx, game_state, ui_state);
-    })
-}
-
-fn handle_tile_click(
-    idx: usize,
-    game_state: Store<crate::state::game_state::GameState>,
-    mut ui_state: Store<crate::state::ui_state::UiState>,
-) {
-    // Check if we should deselect or switch first.
-    {
-        let phase = *ui_state.phase().read();
-        match phase {
-            TurnPhase::SelectPosition | TurnPhase::SelectRotation => {
-                if *ui_state.selected_tile().read() == Some(idx) {
-                    ui_state.write().reset_selection();
-                    return;
-                }
+    let phase = *ui_state.phase().read();
+    match phase {
+        TurnPhase::SelectPosition | TurnPhase::SelectRotation => {
+            if *ui_state.selected_tile().read() == Some(idx) {
+                ui_state.write().reset_selection();
+                return;
             }
-            TurnPhase::SelectTile => {}
-            _ => return,
         }
+        TurnPhase::SelectTile => {}
+        _ => return,
     }
 
-    // Try auto-play: if only one position (and one rotation or empty board), play immediately.
     let auto = {
         let board_empty = game_state.board().read().is_empty();
         let hi_store = game_state.hand_info();
@@ -148,7 +133,7 @@ fn handle_tile_click(
         })
     };
     if let Some((pos, rot)) = auto {
-        execute_move(idx, pos, rot, game_state, ui_state);
+        execute_move(ctx, idx, pos, rot);
     } else {
         ui_state.write().select_tile(idx);
     }
@@ -164,21 +149,15 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
     let game_state = ctx.game_state;
     let ui_state = ctx.ui_state;
 
-    // Subscribe to individual fields for fine-grained reactivity
     let is_current = game_state.turn_tracker().read().current() == color;
     let hand: Vec<_> = game_state.hands().read()[color].iter().copied().collect();
     let color_var = color_css_var(color);
 
-    // Subscribe to hand_info for move validity
     let hand_info = game_state.hand_info();
     let any_forced = is_current && hand_info.read().iter().any(|info| info.has_forced);
 
-    // Subscribe to individual ui fields (not zoom/pan/drag/etc.)
     let selected_tile = ui_state.selected_tile()();
     let new_tile_val = ui_state.new_tile()();
-
-    // Custom hook for tile click handling
-    let tile_click = use_tile_click(is_current);
 
     let pos_class = position.css_class();
     let grid_area = position.grid_area();
@@ -222,7 +201,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                                             state,
                                             just_drawn,
                                             on_action: move |action: HandTileAction| {
-                                                handle_tile_action(action, is_current, tile_click, ui_state);
+                                                handle_tile_action(action, ctx, is_current);
                                             },
                                         }
                                     }
