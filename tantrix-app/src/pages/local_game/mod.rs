@@ -4,8 +4,9 @@ use dioxus::prelude::*;
 
 use crate::state::config::GameConfig;
 use crate::state::game_state::{GameContext, GameState};
-use crate::state::ui_state::UiState;
+use crate::state::ui_state::{TurnPhase, UiState, UiStateStoreExt};
 
+pub use screens::game_over::GameOver;
 pub use screens::game_play::GamePlay;
 pub use screens::player_setup::PlayerSetup;
 
@@ -43,13 +44,13 @@ pub fn LocalGame() -> Element {
         ui_state,
     });
 
-    let current_screen = *screen.read();
-    match current_screen {
-        Screen::Setup => rsx! {
-            PlayerSetup {}
-        },
-        Screen::Playing => rsx! {
-            GamePlay {}
-        },
+    // When playing, split routing between live play and game-over so each
+    // screen owns its own layout and navigation.
+    let current = *screen.read();
+    let phase = ui_state.phase()();
+    match (current, phase) {
+        (Screen::Setup, _) => rsx! { PlayerSetup {} },
+        (Screen::Playing, TurnPhase::GameOver) => rsx! { GameOver {} },
+        (Screen::Playing, _) => rsx! { GamePlay {} },
     }
 }

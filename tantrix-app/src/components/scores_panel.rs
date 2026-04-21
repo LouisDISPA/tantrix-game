@@ -1,30 +1,28 @@
 use dioxus::prelude::*;
 use tantrix_game::Color;
 
-use crate::pages::local_game::{LocalGameContext, Screen};
-use crate::route::Route;
-use crate::state::game_state::{determine_winners, GameStateStoreExt};
-use crate::state::ui_state::{Hovered, UiState, UiStateStoreExt};
+use crate::state::game_state::{determine_winners, GameContext, GameStateStoreExt};
+use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
 
-// ---------------------------------------------------------------------------
-// ScoreRow subcomponent
-// ---------------------------------------------------------------------------
-
+/// A single row in the scores list — one player's color, name, and score.
+/// Clicking locks the scoring-path highlight to this color; hovering previews
+/// it. Both interactions live in UiState so the board reacts accordingly.
 #[component]
 fn ScoreRow(
     color: ReadSignal<Color>,
     score: ReadSignal<usize>,
     is_winner: ReadSignal<bool>,
     is_active: ReadSignal<bool>,
-    on_toggle: EventHandler<Color>,
-    on_hover: EventHandler<Option<Color>>,
 ) -> Element {
     let c = color();
     let score = score();
     let is_winner = is_winner();
     let is_active = is_active();
     let cv = color_css_var(c);
+
+    let ctx = use_context::<GameContext>();
+    let ui_state = ctx.ui_state;
 
     let row_class = match (is_winner, is_active) {
         (true, true) => "results-row results-row-winner results-row-active",
@@ -37,9 +35,16 @@ fn ScoreRow(
         div {
             class: "{row_class}",
             style: format!("--player-color: {cv}"),
-            onclick: move |_| on_toggle.call(c),
-            onmouseenter: move |_| on_hover.call(Some(c)),
-            onmouseleave: move |_| on_hover.call(None),
+            onclick: move |_| {
+                let current = *ui_state.highlighted_color().read();
+                if current == Some(c) {
+                    ui_state.highlighted_color().set(None);
+                } else {
+                    ui_state.highlighted_color().set(Some(c));
+                }
+            },
+            onmouseenter: move |_| ui_state.hovered().set(Hovered::ScoringColor(c)),
+            onmouseleave: move |_| ui_state.hovered().set(Hovered::None),
             div { class: "results-player",
                 div { class: "results-color-swatch", style: "background-color: {cv}" }
                 span { class: "results-name", "{c}" }
@@ -53,27 +58,21 @@ fn ScoreRow(
     }
 }
 
-// ---------------------------------------------------------------------------
-// GameOverOverlay
-// ---------------------------------------------------------------------------
-
+/// End-of-game scores card: winner header, per-player rows, and a slot for
+/// the parent screen to inject its own action buttons (Play Again, Main Menu).
 #[component]
-pub fn GameOverOverlay() -> Element {
-    let nav = navigator();
-    let mut ctx = use_context::<LocalGameContext>();
+pub fn ScoresPanel(children: Element) -> Element {
+    let ctx = use_context::<GameContext>();
+    let game_state = ctx.game_state;
     let ui_state = ctx.ui_state;
 
-    // Subscribe to individual fields for fine-grained reactivity
-    let active_players: Vec<Color> = ctx
-        .game_state
+    let active_players: Vec<Color> = game_state
         .turn_tracker()
         .read()
         .playing_colors()
         .to_vec();
-    let scores = ctx.game_state.board().read().scores();
+    let scores = game_state.board().read().scores();
     let (winners, is_tie) = determine_winners(&active_players, &scores);
-
-    // Subscribe only to highlighted_color field
     let highlighted = ui_state.highlighted_color()();
 
     rsx! {
@@ -92,7 +91,11 @@ pub fn GameOverOverlay() -> Element {
                                         if i > 0 {
                                             span { class: "results-tie-separator", " & " }
                                         }
-                                        span { class: "results-winner-name", style: "color: {cv}; --glow-color: {cv}", "{color}" }
+                                        span {
+                                            class: "results-winner-name",
+                                            style: "color: {cv}; --glow-color: {cv}",
+                                            "{color}"
+                                        }
                                     }
                                 }
                             }
@@ -123,42 +126,11 @@ pub fn GameOverOverlay() -> Element {
                             score: scores[c].score,
                             is_winner: winners.contains(&c),
                             is_active: highlighted == Some(c),
-                            on_toggle: move |color: Color| {
-                                let current = *ui_state.highlighted_color().read();
-                                if current == Some(color) {
-                                    ui_state.highlighted_color().set(None);
-                                } else {
-                                    ui_state.highlighted_color().set(Some(color));
-                                }
-                            },
-                            on_hover: move |color: Option<Color>| {
-                                let h = match color {
-                                    Some(c) => Hovered::ScoringColor(c),
-                                    None => Hovered::None,
-                                };
-                                ui_state.hovered().set(h);
-                            },
                         }
                     }
                 }
 
-                div { class: "results-buttons",
-                    button {
-                        class: "results-btn results-btn-primary",
-                        onclick: move |_| {
-                            ctx.ui_state.set(UiState::default());
-                            ctx.screen.set(Screen::Setup);
-                        },
-                        "Play Again"
-                    }
-                    button {
-                        class: "results-btn results-btn-secondary",
-                        onclick: move |_| {
-                            let _ = nav.push(Route::MainMenu {});
-                        },
-                        "Main Menu"
-                    }
-                }
+                div { class: "results-buttons", {children} }
             }
         }
     }

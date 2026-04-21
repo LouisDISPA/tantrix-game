@@ -5,7 +5,6 @@ use crate::components::game_actions::advance_turn;
 use crate::components::player_hand::{HandPosition, PlayerHand};
 use crate::pages::local_game::LocalGameContext;
 use crate::state::game_state::GameStateStoreExt;
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 use tantrix_game::Color;
 
 /// Determine hand positions based on player count.
@@ -62,11 +61,7 @@ pub fn GamePlay() -> Element {
         advance_turn(gs, ui);
     });
 
-    // Subscribe only to phase field — won't re-render on zoom/pan/hover
-    let phase = ui.phase()();
-    let is_game_over = phase == TurnPhase::GameOver;
-
-    // Memoize layout — player colors never change during a game
+    // Memoize layout — player colors never change during a game.
     let layout = use_memo(move || {
         let colors = gs.turn_tracker().read().playing_colors().to_vec();
         let count = colors.len();
@@ -75,12 +70,7 @@ pub fn GamePlay() -> Element {
     });
     let (player_count, _colors, hand_assignments) = layout();
 
-    // When game is over, give the board the full viewport (hide hands).
-    let (grid_rows, grid_cols, grid_areas) = if is_game_over {
-        ("1fr", "1fr", "\"board\"")
-    } else {
-        grid_template(player_count)
-    };
+    let (grid_rows, grid_cols, grid_areas) = grid_template(player_count);
 
     rsx! {
         div {
@@ -96,13 +86,11 @@ pub fn GamePlay() -> Element {
 
             div { style: "grid-area: board; min-width: 0; min-height: 0;", Board {} }
 
-            if !is_game_over {
-                for (color , position) in hand_assignments.iter() {
-                    PlayerHand {
-                        key: "{color:?}",
-                        color: *color,
-                        position: *position,
-                    }
+            for (color , position) in hand_assignments.iter() {
+                PlayerHand {
+                    key: "{color:?}",
+                    color: *color,
+                    position: *position,
                 }
             }
         }
