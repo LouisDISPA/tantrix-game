@@ -10,6 +10,76 @@ pub enum TurnPhase {
     GameOver,
 }
 
+/// The single thing the user is hovering over. At any moment the user can only
+/// be pointing at one element, so the four former hovered_* fields are unified.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Hovered {
+    #[default]
+    None,
+    HandTile(usize),
+    BoardPosition(Position),
+    Rotation(Rotation),
+    ScoringColor(Color),
+}
+
+impl Hovered {
+    pub fn hand_tile(&self) -> Option<usize> {
+        match self {
+            Self::HandTile(i) => Some(*i),
+            _ => None,
+        }
+    }
+    pub fn board_position(&self) -> Option<Position> {
+        match self {
+            Self::BoardPosition(p) => Some(*p),
+            _ => None,
+        }
+    }
+    pub fn rotation(&self) -> Option<Rotation> {
+        match self {
+            Self::Rotation(r) => Some(*r),
+            _ => None,
+        }
+    }
+    pub fn scoring_color(&self) -> Option<Color> {
+        match self {
+            Self::ScoringColor(c) => Some(*c),
+            _ => None,
+        }
+    }
+}
+
+/// Primary visual state for a single tile in a player's hand.
+/// Variants are mutually exclusive — highest-priority one wins when multiple
+/// conditions apply (Selected beats Forced beats Disabled beats Idle).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HandTileState {
+    /// Playable tile with no special state.
+    #[default]
+    Idle,
+    /// Cannot be played right now (no moves, or another tile is forced).
+    Disabled,
+    /// A forced move is available for this tile.
+    Forced,
+    /// This tile is currently selected by the user.
+    Selected,
+}
+
+impl HandTileState {
+    pub fn css_class(&self) -> &'static str {
+        match self {
+            Self::Idle => "",
+            Self::Disabled => "disabled",
+            Self::Forced => "forced",
+            Self::Selected => "selected",
+        }
+    }
+
+    pub fn is_interactive(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Store)]
 pub struct UiState {
     // --- Turn phase ---
@@ -18,11 +88,11 @@ pub struct UiState {
 
     // --- Selection state ---
     pub selected_tile: Option<usize>,
-    pub hovered_tile: Option<usize>,
     pub selected_position: Option<Position>,
-    pub hovered_position: Option<Position>,
     pub selected_rotation: Option<Rotation>,
-    pub hovered_rotation: Option<Rotation>,
+
+    // --- Hover (unified) ---
+    pub hovered: Hovered,
 
     // --- Camera / viewport ---
     pub zoom: f64,
@@ -39,11 +109,9 @@ pub struct UiState {
     /// Position of the most recently placed tile on the board (for placement animation).
     pub last_placed_position: Option<Position>,
 
-    // --- Scoring overlay ---
+    // --- Scoring overlay (persistent click-to-lock) ---
     /// When Some, only this color's scoring path is highlighted on the board.
     pub highlighted_color: Option<Color>,
-    /// Transiently highlights a color's path on hover.
-    pub hovered_scoring_color: Option<Color>,
 }
 
 impl Default for UiState {
@@ -53,11 +121,10 @@ impl Default for UiState {
             message: String::new(),
 
             selected_tile: None,
-            hovered_tile: None,
             selected_position: None,
-            hovered_position: None,
             selected_rotation: None,
-            hovered_rotation: None,
+
+            hovered: Hovered::None,
 
             zoom: 1.0,
             pan_x: 0.0,
@@ -70,7 +137,6 @@ impl Default for UiState {
             last_placed_position: None,
 
             highlighted_color: None,
-            hovered_scoring_color: None,
         }
     }
 }
@@ -79,11 +145,9 @@ impl UiState {
     /// Clear all selection/hover state and return to SelectTile phase.
     pub fn reset_selection(&mut self) {
         self.selected_tile = None;
-        self.hovered_tile = None;
         self.selected_position = None;
-        self.hovered_position = None;
         self.selected_rotation = None;
-        self.hovered_rotation = None;
+        self.hovered = Hovered::None;
         self.phase = TurnPhase::SelectTile;
         self.message.clear();
     }
@@ -93,13 +157,14 @@ impl UiState {
         match self.phase {
             TurnPhase::SelectRotation => {
                 self.selected_rotation = None;
-                self.hovered_rotation = None;
                 self.selected_position = None;
+                self.hovered = Hovered::None;
                 self.phase = TurnPhase::SelectPosition;
             }
             TurnPhase::SelectPosition => {
                 self.selected_position = None;
                 self.selected_tile = None;
+                self.hovered = Hovered::None;
                 self.phase = TurnPhase::SelectTile;
             }
             _ => {}
@@ -111,7 +176,7 @@ impl UiState {
         self.selected_tile = Some(idx);
         self.selected_position = None;
         self.selected_rotation = None;
-        self.hovered_position = None;
+        self.hovered = Hovered::None;
         self.phase = TurnPhase::SelectPosition;
         self.message.clear();
     }

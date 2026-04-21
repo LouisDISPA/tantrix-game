@@ -4,7 +4,7 @@ use tantrix_game::Color;
 use crate::pages::local_game::{LocalGameContext, Screen};
 use crate::route::Route;
 use crate::state::game_state::{determine_winners, GameStateStoreExt};
-use crate::state::ui_state::{UiState, UiStateStoreExt};
+use crate::state::ui_state::{Hovered, UiState, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
 
 // ---------------------------------------------------------------------------
@@ -132,7 +132,11 @@ pub fn GameOverOverlay() -> Element {
                                 }
                             },
                             on_hover: move |color: Option<Color>| {
-                                ui_state.hovered_scoring_color().set(color);
+                                let h = match color {
+                                    Some(c) => Hovered::ScoringColor(c),
+                                    None => Hovered::None,
+                                };
+                                ui_state.hovered().set(h);
                             },
                         }
                     }

@@ -2,9 +2,9 @@ use dioxus::prelude::*;
 use tantrix_game::Color;
 
 use crate::components::game_actions::execute_move;
-use crate::components::hand_tile::HandTile;
+use crate::components::hand_tile::{HandTile, HandTileAction};
 use crate::state::game_state::{GameContext, GameStateStoreExt, TileMoveInfo};
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::state::ui_state::{HandTileState, Hovered, TurnPhase, UiStateStoreExt};
 use crate::svg::paths::color_css_var;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,36 +43,58 @@ impl HandPosition {
 // Tile state computation
 // ---------------------------------------------------------------------------
 
-struct TileRenderState {
-    is_selected: bool,
-    is_disabled: bool,
-    is_forced: bool,
-    is_new: bool,
-}
-
+/// Derive the visible state of a single hand tile. Returns Idle for non-current
+/// players (their tiles aren't visually dimmed — they're just inert).
 fn compute_tile_state(
     i: usize,
     is_current: bool,
     selected_tile: Option<usize>,
     any_forced: bool,
-    new_tile_val: Option<(Color, usize)>,
-    color: Color,
     hi: &[TileMoveInfo],
-) -> TileRenderState {
-    let is_selected = is_current && selected_tile == Some(i);
-    let is_disabled = is_current && {
-        let has_moves = hi.get(i).map(|info| info.has_moves()).unwrap_or(false);
-        let is_forced_tile = hi.get(i).map(|info| info.has_forced).unwrap_or(false);
-        !has_moves || (any_forced && !is_forced_tile)
-    };
-    let is_forced = is_current && hi.get(i).map(|info| info.has_forced).unwrap_or(false);
-    let is_new = new_tile_val == Some((color, i));
-    TileRenderState { is_selected, is_disabled, is_forced, is_new }
+) -> HandTileState {
+    if !is_current {
+        return HandTileState::Idle;
+    }
+    if selected_tile == Some(i) {
+        return HandTileState::Selected;
+    }
+    let has_moves = hi.get(i).map(|info| info.has_moves()).unwrap_or(false);
+    let is_forced_tile = hi.get(i).map(|info| info.has_forced).unwrap_or(false);
+    if is_forced_tile {
+        return HandTileState::Forced;
+    }
+    if !has_moves || (any_forced && !is_forced_tile) {
+        return HandTileState::Disabled;
+    }
+    HandTileState::Idle
 }
 
 // ---------------------------------------------------------------------------
 // Tile click handler as a custom hook
 // ---------------------------------------------------------------------------
+
+/// Dispatch a hand-tile action. Hover updates happen for the current player
+/// only — tiles in other hands raise no-ops.
+fn handle_tile_action(
+    action: HandTileAction,
+    is_current: bool,
+    tile_click: EventHandler<usize>,
+    ui_state: Store<crate::state::ui_state::UiState>,
+) {
+    match action {
+        HandTileAction::Click(idx) => tile_click.call(idx),
+        HandTileAction::HoverEnter(idx) => {
+            if is_current {
+                ui_state.hovered().set(Hovered::HandTile(idx));
+            }
+        }
+        HandTileAction::HoverLeave => {
+            if is_current {
+                ui_state.hovered().set(Hovered::None);
+            }
+        }
+    }
+}
 
 fn use_tile_click(is_current: bool) -> EventHandler<usize> {
     let ctx = use_context::<GameContext>();
@@ -189,28 +211,18 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                             for (i , tile) in hand.iter().enumerate() {
                                 {
                                     let state = compute_tile_state(
-                                        i, is_current, selected_tile, any_forced,
-                                        new_tile_val, color, &hi,
+                                        i, is_current, selected_tile, any_forced, &hi,
                                     );
+                                    let just_drawn = new_tile_val == Some((color, i));
                                     rsx! {
                                         HandTile {
                                             key: "{color:?}-{i}",
                                             tile: *tile,
                                             index: i,
-                                            is_new: state.is_new,
-                                            selected: state.is_selected,
-                                            disabled: if is_current { state.is_disabled } else { false },
-                                            forced: state.is_forced,
-                                            onclick: tile_click,
-                                            onmouseenter: move |idx: usize| {
-                                                if is_current {
-                                                    ui_state.hovered_tile().set(Some(idx));
-                                                }
-                                            },
-                                            onmouseleave: move |_idx: usize| {
-                                                if is_current {
-                                                    ui_state.hovered_tile().set(None);
-                                                }
+                                            state,
+                                            just_drawn,
+                                            on_action: move |action: HandTileAction| {
+                                                handle_tile_action(action, is_current, tile_click, ui_state);
                                             },
                                         }
                                     }

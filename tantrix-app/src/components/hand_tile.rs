@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation, Tile};
 
+use crate::state::ui_state::HandTileState;
 use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs, hex_polygon_points};
 
 /// Fixed viewBox size for hand tiles — the SVG internal coordinate space.
@@ -10,24 +11,27 @@ const TILE_HEX: f64 = 22.0;
 /// Slightly larger hex used for selection/forced outline rings.
 const OUTLINE_HEX: f64 = 25.0;
 
+/// Interaction events a hand tile can raise. The tile's own hand index is
+/// attached so the parent doesn't need per-index closures.
+#[derive(Debug, Clone, Copy)]
+pub enum HandTileAction {
+    Click(usize),
+    HoverEnter(usize),
+    HoverLeave,
+}
+
 #[component]
 pub fn HandTile(
     tile: ReadSignal<Tile>,
     index: ReadSignal<usize>,
-    #[props(default)] selected: ReadSignal<bool>,
-    #[props(default)] disabled: ReadSignal<bool>,
-    #[props(default)] forced: ReadSignal<bool>,
-    #[props(default)] is_new: ReadSignal<bool>,
-    onclick: Option<EventHandler<usize>>,
-    onmouseenter: Option<EventHandler<usize>>,
-    onmouseleave: Option<EventHandler<usize>>,
+    #[props(default)] state: ReadSignal<HandTileState>,
+    #[props(default)] just_drawn: ReadSignal<bool>,
+    on_action: EventHandler<HandTileAction>,
 ) -> Element {
     let tile = tile();
     let index = index();
-    let selected = selected();
-    let disabled = disabled();
-    let forced = forced();
-    let is_new = is_new();
+    let state = state();
+    let just_drawn = just_drawn();
 
     let cx = TILE_VB / 2.0;
     let cy = TILE_VB / 2.0;
@@ -41,60 +45,43 @@ pub fn HandTile(
     };
     let pairs = find_color_pairs(&m);
 
-    // Hex-shaped outline ring for selected / forced states
-    let outline_points = hex_polygon_points(cx, cy, OUTLINE_HEX);
-    let show_outline = selected || forced;
-    let outline_class = if selected {
-        "hand-hex-ring selected"
-    } else {
-        "hand-hex-ring forced"
+    let show_outline = matches!(state, HandTileState::Selected | HandTileState::Forced);
+    let outline_class = match state {
+        HandTileState::Selected => "hand-hex-ring selected",
+        _ => "hand-hex-ring forced",
     };
+    let outline_points = hex_polygon_points(cx, cy, OUTLINE_HEX);
 
     let class = {
         let mut c = String::from("hand-tile");
-        if selected {
-            c.push_str(" selected");
+        let state_class = state.css_class();
+        if !state_class.is_empty() {
+            c.push(' ');
+            c.push_str(state_class);
         }
-        if disabled {
-            c.push_str(" disabled");
-        }
-        if forced {
-            c.push_str(" forced");
-        }
-        if is_new {
+        if just_drawn {
             c.push_str(" new-tile");
         }
         c
     };
 
+    let interactive = state.is_interactive();
+
     rsx! {
         div {
             class: "{class}",
             onclick: move |_| {
-                if !disabled {
-                    if let Some(handler) = &onclick {
-                        handler.call(index);
-                    }
+                if interactive {
+                    on_action.call(HandTileAction::Click(index));
                 }
             },
-            onmouseenter: move |_| {
-                if let Some(handler) = &onmouseenter {
-                    handler.call(index);
-                }
-            },
-            onmouseleave: move |_| {
-                if let Some(handler) = &onmouseleave {
-                    handler.call(index);
-                }
-            },
+            onmouseenter: move |_| on_action.call(HandTileAction::HoverEnter(index)),
+            onmouseleave: move |_| on_action.call(HandTileAction::HoverLeave),
             svg { view_box: "0 0 {TILE_VB:.0} {TILE_VB:.0}",
-                // Hex-shaped selection / forced ring (behind the tile)
                 if show_outline {
                     polygon { points: "{outline_points}", class: "{outline_class}" }
                 }
-                // Tile polygon — uses shared .hex-tile-fill class
                 polygon { points: "{points}", class: "hex-tile-fill" }
-                // Colored curves — identical to board tiles
                 for (d1 , d2 , color) in pairs {
                     {
                         let path_d = color_link_path(cx, cy, d1, d2, TILE_HEX);

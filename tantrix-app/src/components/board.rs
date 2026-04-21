@@ -9,8 +9,8 @@ use crate::components::rotation_wheel::RotationWheel;
 use crate::components::status_bar::StatusBar;
 use crate::components::tile_preview::TilePreview;
 use crate::state::game_state::{GameContext, GameStateStoreExt};
-use crate::state::hooks::{use_board_camera, use_highlight_map, use_preview_move, use_visible_positions, use_wheel_data};
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::state::hooks::{use_board_camera, use_highlight_map, use_phase_view};
+use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt};
 use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 
 #[component]
@@ -22,9 +22,7 @@ pub fn Board() -> Element {
     // Custom hooks — all called unconditionally at top level
     let (camera, cam_handlers) = use_board_camera();
     let highlight_map = use_highlight_map();
-    let visible_positions = use_visible_positions();
-    let preview_move = use_preview_move();
-    let wheel_data = use_wheel_data();
+    let phase_view = use_phase_view();
 
     // Phase and selection fields
     let phase = ui_state.phase()();
@@ -116,40 +114,39 @@ pub fn Board() -> Element {
                     }
 
                     {
-                        let vis_pos = visible_positions();
+                        let view = phase_view();
                         rsx! {
-                            for (pos , forced , faint) in vis_pos.iter() {
+                            for vp in view.positions.iter() {
                                 HexEmpty {
-                                    key: "e{pos.x()},{pos.y()}",
-                                    position: *pos,
+                                    key: "e{vp.pos.x()},{vp.pos.y()}",
+                                    position: vp.pos,
                                     hex_size: HEX_SIZE,
-                                    forced: *forced,
-                                    faint: *faint,
+                                    forced: vp.forced,
+                                    faint: vp.faint,
                                     onclick: move |pos: Position| {
                                         handle_position_click(pos, game_state, ui_state);
                                     },
                                     onmouseenter: move |pos: Position| {
-                                        ui_state.hovered_position().set(Some(pos));
+                                        ui_state.hovered().set(Hovered::BoardPosition(pos));
                                     },
                                     onmouseleave: move |_pos: Position| {
-                                        ui_state.hovered_position().set(None);
+                                        ui_state.hovered().set(Hovered::None);
                                     },
                                 }
                             }
+                            if let Some(preview) = view.preview {
+                                TilePreview { m: preview, hex_size: HEX_SIZE }
+                            }
                         }
-                    }
-
-                    if let Some(preview) = preview_move() {
-                        TilePreview { m: preview, hex_size: HEX_SIZE }
                     }
                 }
             }
 
-            if let Some((tile, position, rotations)) = wheel_data() {
+            if let Some(wheel) = phase_view().wheel {
                 RotationWheel {
-                    tile,
-                    position,
-                    rotations,
+                    tile: wheel.tile,
+                    position: wheel.position,
+                    rotations: wheel.rotations,
                     on_select: move |rotation: Rotation| {
                         handle_rotation_select(rotation, game_state, ui_state);
                     },

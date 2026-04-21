@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use tantrix_game::{Move, Position, Rotation, Tile};
 
 use crate::state::game_state::GameContext;
-use crate::state::ui_state::UiStateStoreExt;
+use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::paths::{color_css_class, color_link_path, find_color_pairs, hex_polygon_points};
 
 const HEX_SIZE: f64 = 28.0;
@@ -16,8 +16,7 @@ pub fn RotationWheel(
     on_select: EventHandler<Rotation>,
 ) -> Element {
     let ctx = use_context::<GameContext>();
-    // Only access hovered_rotation field — won't subscribe to anything else
-    let mut hovered_rot = ctx.ui_state.hovered_rotation();
+    let mut hovered = ctx.ui_state.hovered();
 
     rsx! {
         div { class: "rotation-bar",
@@ -44,10 +43,10 @@ pub fn RotationWheel(
                                 on_select.call(rot);
                             },
                             onmouseenter: move |_| {
-                                hovered_rot.set(Some(rot));
+                                hovered.set(Hovered::Rotation(rot));
                             },
                             onmouseleave: move |_| {
-                                hovered_rot.set(None);
+                                hovered.set(Hovered::None);
                             },
                             svg {
                                 view_box: "0 0 {SVG_SIZE:.0} {SVG_SIZE:.0}",
