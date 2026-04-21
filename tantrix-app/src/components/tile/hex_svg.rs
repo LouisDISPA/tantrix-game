@@ -14,25 +14,17 @@ use crate::svg::paths::{
 /// 2. Optional scoring-path overlay curves, one per color in `highlight_colors`.
 ///    Rendered outside the base group so they stay bright when dimmed.
 ///
-/// Callers provide their own outer `<svg>` element and viewBox — this keeps
-/// hand tiles, board tiles, and the rotation wheel free to pick their own
-/// coordinate space.
+/// Pure primitive — takes plain values (no `ReadSignal` wrappers) and does not
+/// read context. Callers provide their own outer `<svg>` / viewBox.
 #[component]
 pub fn HexSvg(
-    m: ReadSignal<Move>,
-    cx: ReadSignal<f64>,
-    cy: ReadSignal<f64>,
-    hex_size: ReadSignal<f64>,
-    #[props(default)] base_class: ReadSignal<String>,
-    #[props(default)] highlight_colors: ReadSignal<Vec<Color>>,
+    m: Move,
+    cx: f64,
+    cy: f64,
+    hex_size: f64,
+    #[props(default)] base_class: String,
+    #[props(default)] highlight_colors: Vec<Color>,
 ) -> Element {
-    let m = m();
-    let cx = cx();
-    let cy = cy();
-    let hex_size = hex_size();
-    let base_class = base_class();
-    let highlights = highlight_colors();
-
     let points = hex_polygon_points(cx, cy, hex_size);
     let pairs = find_color_pairs(&m);
 
@@ -50,7 +42,7 @@ pub fn HexSvg(
             }
         }
         for (d1 , d2 , color) in pairs.iter().copied() {
-            if highlights.contains(&color) {
+            if highlight_colors.contains(&color) {
                 {
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let name = color_name(color);

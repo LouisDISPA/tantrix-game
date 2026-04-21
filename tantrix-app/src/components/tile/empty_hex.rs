@@ -1,28 +1,18 @@
 use dioxus::prelude::*;
 use tantrix_game::Position;
 
+use crate::state::actions::click_position;
+use crate::state::game_state::GameCtx;
+use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::geometry::{hex_position_style, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
 use crate::svg::paths::hex_polygon_points;
 
-/// An empty hex slot on the board. Positioned at a board coordinate and wired
-/// up with click/hover handlers so the parent can react to placement attempts.
-///
-/// No tile content — just the hex polygon. `forced` and `faint` toggle CSS
-/// classes that adjust the fill appearance.
+/// An empty hex slot on the board. Positioned at a board coordinate; click and
+/// hover interactions dispatch directly through `GameCtx`.
 #[component]
-pub fn EmptyHex(
-    position: ReadSignal<Position>,
-    hex_size: ReadSignal<f64>,
-    #[props(default)] forced: ReadSignal<bool>,
-    #[props(default)] faint: ReadSignal<bool>,
-    onclick: Option<EventHandler<Position>>,
-    onmouseenter: Option<EventHandler<Position>>,
-    onmouseleave: Option<EventHandler<Position>>,
-) -> Element {
-    let position = position();
-    let hex_size = hex_size();
-    let forced = forced();
-    let faint = faint();
+pub fn EmptyHex(position: Position, hex_size: f64, forced: bool, faint: bool) -> Element {
+    let ctx = use_context::<GameCtx>();
+    let mut hovered = ctx.ui_state.hovered();
 
     let style = hex_position_style(position, hex_size);
     let points = hex_polygon_points(TILE_CX, TILE_CY, TILE_HEX);
@@ -33,21 +23,9 @@ pub fn EmptyHex(
             class: if forced { "forced" },
             class: if faint { "faint" },
             style: "{style}",
-            onclick: move |_| {
-                if let Some(h) = &onclick {
-                    h.call(position);
-                }
-            },
-            onmouseenter: move |_| {
-                if let Some(h) = &onmouseenter {
-                    h.call(position);
-                }
-            },
-            onmouseleave: move |_| {
-                if let Some(h) = &onmouseleave {
-                    h.call(position);
-                }
-            },
+            onclick: move |_| click_position(ctx, position),
+            onmouseenter: move |_| hovered.set(Hovered::BoardPosition(position)),
+            onmouseleave: move |_| hovered.set(Hovered::None),
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                 polygon { points: "{points}" }
             }
