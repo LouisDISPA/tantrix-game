@@ -10,7 +10,8 @@
 
 .player-hand.active {
   border-color: var(--player-color);
-  border-width: 2px;
+  border-width: 3px;
+  box-shadow: 0 0 20px color-mix(in oklch, var(--player-color) 30%, transparent);
 }
 
 /* Side (left/right) + edge (top/bottom) hands share the same fill behaviour. */

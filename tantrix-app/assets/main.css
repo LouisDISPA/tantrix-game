@@ -32,17 +32,17 @@ html, body {
     --clip-banner: polygon(0 50%, 1.5% 0, 98.5% 0, 100% 50%, 98.5% 100%, 1.5% 100%);
 
     /* Opacity for the animated hex-gradient frame behind cards / titles */
-    --hex-frame-opacity: 0.06;
+    --hex-frame-opacity: 0.10;
 }
 
 [data-theme="dark"] {
-    --hex-frame-opacity: 0.10;
+    --hex-frame-opacity: 0.16;
 }
 
 /* Glow tints derived from the game colors. Uses --glow-alpha so callers
    can dial the intensity without recomputing the whole color. */
 :root {
-    --glow-alpha: 0.25;
+    --glow-alpha: 0.40;
     --glow-red:    color-mix(in oklch, var(--color-red)    calc(var(--glow-alpha) * 100%), transparent);
     --glow-blue:   color-mix(in oklch, var(--color-blue)   calc(var(--glow-alpha) * 100%), transparent);
     --glow-yellow: color-mix(in oklch, var(--color-yellow) calc(var(--glow-alpha) * 100%), transparent);
@@ -67,10 +67,10 @@ html, body {
     --hex-empty: rgba(0, 0, 0, 0.04);
     --overlay: rgba(0, 0, 0, 0.45);
 
-    /* Flat shadows */
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.10);
-    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+    /* Layered shadows — large soft + small crisp for tactile depth */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.13), 0 2px 6px rgba(0, 0, 0, 0.07);
+    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
 
     /* Surfaces */
     --surface-primary: #ffffff;
@@ -120,10 +120,10 @@ html, body {
     --hex-empty: rgba(255, 255, 255, 0.04);
     --overlay: rgba(0, 0, 0, 0.65);
 
-    /* Flat shadows */
-    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
+    /* Layered shadows — large soft + small crisp for tactile depth */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.20);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.30);
+    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.40);
 
     /* Surfaces */
     --surface-primary: #141414;
