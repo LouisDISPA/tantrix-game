@@ -285,18 +285,18 @@ fn ColorSeat(color: Color, lobby: LobbyState, my_color: Option<Color>) -> Elemen
     }
 }
 
-/// Build a shareable URL of the shape `<origin>/#/join/CODE`. Falls back to
-/// a relative fragment if `window` isn't available (e.g. SSR or native).
+/// Build a shareable URL of the shape `<origin>/join/CODE`. Falls back to
+/// a relative path if `window` isn't available (e.g. SSR or native).
 fn share_link(code: &str) -> String {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(win) = web_sys::window() {
             if let Ok(origin) = win.location().origin() {
-                return format!("{origin}/#/join/{code}");
+                return format!("{origin}/join/{code}");
             }
         }
     }
-    format!("/#/join/{code}")
+    format!("/join/{code}")
 }
 
 /// Copy `text` to the system clipboard using the browser's async clipboard

@@ -18,8 +18,12 @@ use crate::state::online_state::{OnlineCtx, OnlinePhase, OnlineState};
 #[component]
 pub fn OnlineRoom(code: String, role: RoleParam) -> Element {
     let session_role = role.as_session_role();
+    // Each room mount gets a freshly generated name unless the user has
+    // previously committed a custom one in the lobby (which does persist).
+    // Without this, every new tab would pick up the first cached name and
+    // two players in the same browser would start out with identical
+    // nicknames.
     let initial_nickname = nickname::load_or_generate();
-    nickname::persist(&initial_nickname);
 
     let state = use_signal(|| OnlineState::new(code.clone(), session_role, initial_nickname.clone()));
     let sender = use_signal(|| None);
