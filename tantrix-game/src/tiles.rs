@@ -2,10 +2,11 @@ use std::fmt;
 
 use enum_iterator::Sequence;
 use enum_map::Enum;
+use serde::{Deserialize, Serialize};
 
 use crate::Direction;
 
-#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Color {
     Red,
     Blue,
@@ -19,7 +20,7 @@ impl fmt::Display for Color {
     }
 }
 
-#[derive(Sequence, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Tile {
     // RYB tiles (1-14)
     RYYBRB, // 1: YYBRBR

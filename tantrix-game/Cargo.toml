@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-enum-map = "2"
+enum-map = { version = "2", features = ["serde"] }
 enum-iterator = "2.3"
 rand = "0.10"
-arrayvec = "0.7"
+arrayvec = { version = "0.7", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }

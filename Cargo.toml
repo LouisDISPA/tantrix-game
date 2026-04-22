@@ -1,3 +1,11 @@
 [workspace]
-members = ["tantrix-game", "tantrix-ai", "tantrix-tui", "tantrix-app", "tantrix-tournament"]
+members = [
+    "tantrix-game",
+    "tantrix-ai",
+    "tantrix-tui",
+    "tantrix-app",
+    "tantrix-tournament",
+    "tantrix-proto",
+    "tantrix-net",
+]
 resolver = "2"

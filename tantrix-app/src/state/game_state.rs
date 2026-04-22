@@ -7,6 +7,7 @@ use tantrix_game::{
 };
 
 use super::config::GameConfig;
+use super::online_state::CommandSender;
 use super::ui_state::{Screen, UiState};
 
 /// The single context shared across every component in the local-game page.
@@ -14,11 +15,15 @@ use super::ui_state::{Screen, UiState};
 /// * `screen` — which top-level screen is showing (Setup / Playing)
 /// * `game_state` — the atomic game snapshot; components read it wholesale
 /// * `ui_state` — per-field reactive UI state (zoom, hover, selection, …)
+/// * `online` — if set, `actions::execute_move` forwards the move to the
+///   host instead of mutating the local `game_state`. Local games leave
+///   this as `None`.
 #[derive(Clone, Copy)]
 pub struct GameCtx {
     pub screen: Signal<Screen>,
     pub game_state: Signal<GameState>,
     pub ui_state: Store<UiState>,
+    pub online: Signal<Option<CommandSender>>,
 }
 
 #[derive(Debug, Clone)]

@@ -6,6 +6,7 @@ use arrayvec::ArrayVec;
 pub use enum_map::EnumMap;
 use enum_map::enum_map;
 use rand::prelude::SliceRandom;
+use serde::{Deserialize, Serialize};
 
 mod coordinate_system;
 pub use coordinate_system::*;
@@ -63,7 +64,7 @@ fn color_link(m: &Move, color: Color) -> Option<(Direction, Direction)> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Move {
     pub tile: Tile,
     pub position: Position,
@@ -77,7 +78,7 @@ impl Move {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Board {
     moves: ArrayVec<Move, NUMBER_OF_TILE>,
 }
@@ -488,7 +489,7 @@ const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
 
 // --- Bag ---
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bag {
     tiles: ArrayVec<Tile, NUMBER_OF_TILE>,
 }
@@ -514,11 +515,22 @@ impl Bag {
     pub fn is_empty(&self) -> bool {
         self.tiles.is_empty()
     }
+
+    /// Build a bag with `n` placeholder tiles. The contents are arbitrary —
+    /// this constructor exists so remote clients can mirror the host's
+    /// `bag_count` without seeing the real draw order.
+    pub fn with_count(n: usize) -> Self {
+        let mut tiles: ArrayVec<Tile, NUMBER_OF_TILE> = Default::default();
+        for _ in 0..n.min(NUMBER_OF_TILE) {
+            tiles.push(Tile::RYYBRB);
+        }
+        Bag { tiles }
+    }
 }
 
 // --- Hand ---
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Hand {
     tiles: ArrayVec<Tile, TILES_IN_HAND>,
 }
@@ -564,7 +576,7 @@ impl Deref for Hand {
 
 // --- TurnTracker ---
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnTracker {
     currently_playing: usize,
     color_cycle: ArrayVec<Color, NUMBER_OF_COLOR>,
@@ -595,6 +607,21 @@ impl TurnTracker {
 
     pub fn playing_colors(&self) -> &[Color] {
         &self.color_cycle
+    }
+
+    /// Build a TurnTracker pointing at `current` with the given ordered
+    /// color cycle. Used by clients that receive an authoritative snapshot
+    /// and need to reconstruct turn state without reshuffling.
+    pub fn from_parts(current: Color, colors: impl IntoIterator<Item = Color>) -> Self {
+        let color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = colors.into_iter().collect();
+        let currently_playing = color_cycle
+            .iter()
+            .position(|&c| c == current)
+            .unwrap_or(0);
+        TurnTracker {
+            currently_playing,
+            color_cycle,
+        }
     }
 }
 

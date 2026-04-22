@@ -5,8 +5,9 @@ use std::{
 
 use enum_iterator::Sequence;
 use enum_map::Enum;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize)]
 pub struct Position {
     x: i8,
     y: i8,
@@ -54,7 +55,7 @@ impl Position {
     }
 }
 
-#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(i8)]
 pub enum Rotation {
     None = 0,
@@ -69,7 +70,7 @@ impl Rotation {
     const COUNT: i8 = enum_iterator::cardinality::<Self>() as i8;
 }
 
-#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(i8)]
 pub enum Direction {
     Left = 0,

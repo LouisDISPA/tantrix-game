@@ -8,6 +8,7 @@
 use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 use tantrix_game::{Move, Player, Position, Rotation};
+use tantrix_net::SessionCommand;
 
 use crate::state::ai_service::run_ai_loop;
 use crate::state::game_state::GameCtx;
@@ -33,6 +34,14 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
         (color, tile, forced)
     };
     let m = Move { tile, position: pos, rotation, forced };
+
+    // Online play: forward the intent and let the host's StateUpdate drive
+    // the next render. The local GameState stays untouched until then.
+    if let Some(sender) = ctx.online.read().as_ref().cloned() {
+        sender.send(SessionCommand::PlayMove(m));
+        ui_state.write().reset_selection();
+        return;
+    }
 
     let result = game_state.write().play_move(m);
     if let Err(e) = result {
@@ -92,6 +101,12 @@ pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
 /// off the async AI loop; otherwise settle directly.
 pub fn advance_turn(ctx: GameCtx) {
     let ui_state = ctx.ui_state;
+
+    // Online rooms are host-authoritative: we never schedule AI turns or
+    // mutate local state here.
+    if ctx.online.read().is_some() {
+        return;
+    }
 
     let needs_ai = {
         let gs = ctx.game_state.read();

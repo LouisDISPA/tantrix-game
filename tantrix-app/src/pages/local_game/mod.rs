@@ -15,11 +15,13 @@ pub fn LocalGame() -> Element {
     let screen = use_signal(|| Screen::Setup);
     let game_state = use_signal(|| GameState::new(&GameConfig::new()));
     let ui_state = use_store(UiState::default);
+    let online = use_signal(|| None);
 
     use_context_provider(|| GameCtx {
         screen,
         game_state,
         ui_state,
+        online,
     });
 
     let current = *screen.read();
