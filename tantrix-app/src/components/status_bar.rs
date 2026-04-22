@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::hooks::{use_current_player, use_has_forced_move};
 use crate::state::game_state::GameCtx;
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::paths::color_css_var;
 
 /// Floating HUD chip: player identity, phase instruction, and bag count in one line.
@@ -20,14 +20,12 @@ pub fn StatusBar() -> Element {
     let bag_count = ctx.game_state.read().bag.count();
 
     let phase_text = phase.status_text(current_color, has_forced);
-    let is_forced = has_forced && phase == TurnPhase::SelectTile;
     let has_alert = !message.is_empty();
 
     rsx! {
         div { class: "status-bar",
             div {
                 class: "hud-chip",
-                class: if is_forced { "forced" },
                 style: "--turn-color: {color_var}",
 
                 // Left — player identity

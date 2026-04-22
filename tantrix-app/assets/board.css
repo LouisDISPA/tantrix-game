@@ -317,9 +317,6 @@
     animation: fadeIn 0.3s ease;
 }
 
-.hud-chip.forced {
-    animation: fadeIn 0.3s ease, hud-forced-ring 1.2s ease-in-out infinite;
-}
 
 .hud-chip-player {
     display: flex;
