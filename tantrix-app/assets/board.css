@@ -369,6 +369,64 @@
     flex-shrink: 0;
 }
 
+.hud-chip-online {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+}
+
+.hud-chip-conn-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.hud-chip-conn-dot.connecting {
+    background: oklch(0.75 0.18 70);
+    box-shadow: 0 0 8px color-mix(in oklch, oklch(0.75 0.18 70), transparent 50%);
+    animation: pulse-glow-dot 1.2s ease-in-out infinite;
+}
+
+.hud-chip-conn-dot.lobby {
+    background: oklch(0.70 0.16 210);
+    box-shadow: 0 0 6px color-mix(in oklch, oklch(0.70 0.16 210), transparent 60%);
+}
+
+.hud-chip-conn-dot.live {
+    background: oklch(0.68 0.22 150);
+    box-shadow: 0 0 8px color-mix(in oklch, oklch(0.68 0.22 150), transparent 50%);
+}
+
+.hud-chip-conn-dot.ended {
+    background: var(--text-muted);
+}
+
+.hud-chip-conn-dot.failed {
+    background: oklch(0.62 0.22 25);
+    box-shadow: 0 0 8px color-mix(in oklch, oklch(0.62 0.22 25), transparent 50%);
+}
+
+.hud-chip-conn-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: white;
+}
+
+.hud-chip-room {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+    flex-shrink: 0;
+}
+
 /* ===== Rotation Bar (top of board) ===== */
 
 .rotation-bar {

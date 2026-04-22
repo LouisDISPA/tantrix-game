@@ -16,12 +16,16 @@ pub fn LocalGame() -> Element {
     let game_state = use_signal(|| GameState::new(&GameConfig::new()));
     let ui_state = use_store(UiState::default);
     let online = use_signal(|| None);
+    let my_color = use_signal(|| None);
+    let player_names = use_signal(tantrix_game::EnumMap::default);
 
     use_context_provider(|| GameCtx {
         screen,
         game_state,
         ui_state,
         online,
+        my_color,
+        player_names,
     });
 
     let current = *screen.read();

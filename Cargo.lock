@@ -8500,6 +8500,8 @@ dependencies = [
  "tantrix-net",
  "tantrix-proto",
  "tokio",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

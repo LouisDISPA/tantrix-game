@@ -1,10 +1,14 @@
 //! Online game view — reuses the local `GamePlay` screen by providing a
 //! `GameCtx` whose `game_state` is rebuilt from every incoming
 //! `GameSnapshot`, and whose `online` sender is wired to the session.
+//!
+//! There is no separate header strip here: the HUD chip rendered by
+//! `StatusBar` picks up the live connection + room info automatically via
+//! the `OnlineCtx` that `OnlineRoom` has already placed in scope.
 
 use dioxus::prelude::*;
 use tantrix_game::{Bag, Board, Color, EnumMap, Player, TurnTracker};
-use tantrix_proto::{EndReason, GameSnapshot};
+use tantrix_proto::{GameSnapshot, Seat};
 
 use crate::pages::local_game::GamePlay;
 use crate::state::game_state::{GameCtx, GameState};
@@ -37,7 +41,18 @@ pub fn OnlineGameView() -> Element {
     let ui_state = use_store(UiState::default);
     let online = use_signal(|| online_ctx.sender.read().clone());
 
-    use_context_provider(|| GameCtx { screen, game_state, ui_state, online });
+    let initial_my_color = online_ctx.state.read().my_color();
+    let my_color = use_signal(|| initial_my_color);
+    let player_names = use_signal(|| names_from_seats(&initial.seats));
+
+    use_context_provider(|| GameCtx {
+        screen,
+        game_state,
+        ui_state,
+        online,
+        my_color,
+        player_names,
+    });
 
     // Keep the `online` signal fresh if the sender appears after first paint.
     {
@@ -48,22 +63,30 @@ pub fn OnlineGameView() -> Element {
         });
     }
 
-    // Pipe snapshot updates into the shared GameState signal and reset UI
-    // phase when a new game actually starts.
+    // Keep `my_color` fresh with the seat assignment in the online state.
+    {
+        let mut my_color = my_color;
+        let state = online_ctx.state;
+        use_effect(move || {
+            my_color.set(state.read().my_color());
+        });
+    }
+
+    // Pipe snapshot updates into the shared GameState + player_names signals
+    // and reset UI phase when a new game actually starts.
     {
         let mut game_state = game_state;
         let mut ui_state = ui_state;
+        let mut player_names = player_names;
         let state = online_ctx.state;
         use_effect(move || {
             let s = state.read();
             match &s.phase {
                 OnlinePhase::Playing { snapshot, last_move } => {
                     *game_state.write() = build_game_state(snapshot);
+                    player_names.set(names_from_seats(&snapshot.seats));
                     if let Some(m) = last_move {
-                        let writer = ui_state.write();
-                        drop(writer);
-                        let mut ui = ui_state.write();
-                        ui.last_placed_position = Some(m.position);
+                        ui_state.write().last_placed_position = Some(m.position);
                     }
                     let mut ui = ui_state.write();
                     if ui.phase == TurnPhase::GameOver {
@@ -72,6 +95,7 @@ pub fn OnlineGameView() -> Element {
                 }
                 OnlinePhase::Ended { snapshot, .. } => {
                     *game_state.write() = build_game_state(snapshot);
+                    player_names.set(names_from_seats(&snapshot.seats));
                     ui_state.write().phase = TurnPhase::GameOver;
                 }
                 _ => {}
@@ -79,64 +103,15 @@ pub fn OnlineGameView() -> Element {
         });
     }
 
-    let state = online_ctx.state.read();
-    let error = state.last_error.clone();
-    let header = header_text(&state);
-    drop(state);
-
-    rsx! {
-        div { class: "online-game-wrap",
-            div { class: "online-game-header",
-                span { class: "online-game-status", "{header}" }
-                if let Some(err) = error {
-                    span { class: "online-error", "{err}" }
-                }
-            }
-            GamePlay {}
-        }
-    }
+    rsx! { GamePlay {} }
 }
 
-fn header_text(state: &crate::state::online_state::OnlineState) -> String {
-    let mine = state
-        .my_color()
-        .map(color_name)
-        .unwrap_or("spectator");
-    match &state.phase {
-        OnlinePhase::Playing { snapshot, .. } => {
-            let turn = color_name(snapshot.current_player);
-            format!("Room {} · You are {} · {}'s turn", state.room_code, mine, turn)
-        }
-        OnlinePhase::Ended { reason, .. } => {
-            let ended = match reason {
-                EndReason::Completed { winners } => {
-                    if winners.is_empty() {
-                        "Game over".to_string()
-                    } else if winners.len() == 1 {
-                        format!("{} wins", color_name(winners[0]))
-                    } else {
-                        let names: Vec<&str> = winners.iter().copied().map(color_name).collect();
-                        format!("Tie: {}", names.join(" / "))
-                    }
-                }
-                EndReason::PlayerDisconnected { color } => {
-                    format!("{} disconnected — game over", color_name(*color))
-                }
-                EndReason::HostLeft => "Host left — game over".into(),
-            };
-            format!("Room {} · {}", state.room_code, ended)
-        }
-        _ => format!("Room {}", state.room_code),
+fn names_from_seats(seats: &EnumMap<Color, Option<Seat>>) -> EnumMap<Color, Option<String>> {
+    let mut out: EnumMap<Color, Option<String>> = EnumMap::default();
+    for (c, slot) in seats.iter() {
+        out[c] = slot.as_ref().map(|s| s.nickname.clone());
     }
-}
-
-fn color_name(c: Color) -> &'static str {
-    match c {
-        Color::Red => "Red",
-        Color::Blue => "Blue",
-        Color::Yellow => "Yellow",
-        Color::Green => "Green",
-    }
+    out
 }
 
 /// Reconstruct a local `GameState` from a remote `GameSnapshot`. Bag
@@ -155,7 +130,6 @@ fn build_game_state(snap: &GameSnapshot) -> GameState {
         TurnTracker::from_parts(snap.current_player, snap.playing_colors.iter().copied());
     let bag = Bag::with_count(snap.bag_count);
 
-    // Reuse Hand clones from the snapshot.
     let hands = snap.hands.clone();
     let board: Board = snap.board.clone();
 

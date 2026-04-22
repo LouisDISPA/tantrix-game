@@ -22,8 +22,10 @@ pub enum OnlinePhase {
         snapshot: GameSnapshot,
         last_move: Option<Move>,
     },
-    /// Terminal state.
+    /// Terminal state. `reason` is retained for a future end-of-game
+    /// screen even though the current HUD only shows the snapshot.
     Ended {
+        #[allow(dead_code)]
         reason: EndReason,
         snapshot: GameSnapshot,
     },

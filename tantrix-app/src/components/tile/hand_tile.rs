@@ -37,9 +37,18 @@ pub fn HandTile(color: Color, index: usize) -> Element {
     });
 
     // Non-current players' tiles aren't interactive; current-player disabled
-    // tiles aren't either.
+    // tiles aren't either. In online games we additionally restrict control
+    // to the seat the local user occupies — other seats are spectator-only
+    // for them, even on the current player's turn.
     let is_current = use_memo(move || {
-        ctx.game_state.read().turn_tracker.current() == color
+        let gs = ctx.game_state.read();
+        if gs.turn_tracker.current() != color {
+            return false;
+        }
+        match *ctx.my_color.read() {
+            Some(mine) => mine == color,
+            None => true,
+        }
     });
 
     rsx! {

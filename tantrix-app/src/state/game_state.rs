@@ -18,12 +18,19 @@ use super::ui_state::{Screen, UiState};
 /// * `online` — if set, `actions::execute_move` forwards the move to the
 ///   host instead of mutating the local `game_state`. Local games leave
 ///   this as `None`.
+/// * `my_color` — if `Some(c)`, only this color's hand is interactive on
+///   this device. Online games set this from the lobby seat; local games
+///   leave it `None` so every current-turn hand is clickable.
+/// * `player_names` — optional nicknames per color, shown beside the color
+///   in each hand's header. Empty for local games.
 #[derive(Clone, Copy)]
 pub struct GameCtx {
     pub screen: Signal<Screen>,
     pub game_state: Signal<GameState>,
     pub ui_state: Store<UiState>,
     pub online: Signal<Option<CommandSender>>,
+    pub my_color: Signal<Option<Color>>,
+    pub player_names: Signal<EnumMap<Color, Option<String>>>,
 }
 
 #[derive(Debug, Clone)]

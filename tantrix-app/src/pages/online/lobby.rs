@@ -11,14 +11,6 @@ use crate::state::online_state::{OnlineCtx, OnlinePhase};
 const COLORS: [Color; 4] = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
 
 #[component]
-pub fn OnlineLobby() -> Element {
-    // When navigated to directly, /online/lobby isn't used — the real entry
-    // is /online/:code/:nickname/:role via `OnlineRoom`. This component
-    // exists so the pages module can re-export it for the router tree.
-    rsx! { OnlineLobbyView {} }
-}
-
-#[component]
 pub fn OnlineLobbyView() -> Element {
     let ctx = use_context::<OnlineCtx>();
     let state = ctx.state.read();
@@ -37,67 +29,94 @@ pub fn OnlineLobbyView() -> Element {
     drop(state);
 
     let share_url = share_link(&room_code);
+    let copied = use_signal(|| false);
 
     rsx! {
-        div { class: "title-screen",
+        div { class: "title-screen lobby-screen",
             div { class: "title-content lobby-content",
                 div { class: "lobby-header",
                     h1 { class: "title-logo", "LOBBY" }
-                    div { class: "lobby-room-chip",
-                        span { class: "lobby-room-code", "{room_code}" }
-                        span { class: "lobby-share-url", "{share_url}" }
-                    }
+                    div { class: "lobby-room-code", "{room_code}" }
+                    ShareUrlChip { url: share_url, copied }
                 }
 
-                div { class: "lobby-peers",
-                    h2 { "Players" }
+                section { class: "lobby-section",
+                    h2 { class: "lobby-section-title", "Players" }
                     PeerList { lobby: lobby.clone() }
                 }
 
-                div { class: "lobby-colors",
-                    h2 { "Choose a color" }
+                section { class: "lobby-section",
+                    h2 { class: "lobby-section-title", "Pick your color" }
                     div { class: "lobby-color-grid",
                         for color in COLORS.iter().copied() {
                             ColorSeat { color, lobby: lobby.clone(), my_color }
                         }
                     }
-                    button {
-                        class: "title-btn-link",
-                        disabled: my_color.is_none(),
-                        onclick: move |_| {
-                            if let Some(s) = ctx.sender.read().as_ref() {
-                                s.send(SessionCommand::PickColor(None));
-                            }
-                        },
-                        "Release my seat"
+                    if my_color.is_some() {
+                        button {
+                            class: "lobby-release-btn",
+                            onclick: move |_| {
+                                if let Some(s) = ctx.sender.read().as_ref() {
+                                    s.send(SessionCommand::PickColor(None));
+                                }
+                            },
+                            "Release my seat"
+                        }
                     }
                 }
 
                 if let Some(err) = error {
-                    p { class: "online-error", "{err}" }
+                    p { class: "lobby-error", "{err}" }
                 }
 
-                if is_host {
-                    button {
-                        class: "title-btn title-btn-primary",
-                        disabled: seated_count < 2,
-                        onclick: move |_| {
-                            if let Some(s) = ctx.sender.read().as_ref() {
-                                s.send(SessionCommand::StartGame);
-                            }
-                        },
-                        div { class: "title-btn-inner",
-                            if seated_count < 2 {
-                                "Waiting for players…"
-                            } else {
-                                "Start game"
+                div { class: "lobby-actions",
+                    if is_host {
+                        button {
+                            class: "title-btn title-btn-primary",
+                            disabled: seated_count < 2,
+                            onclick: move |_| {
+                                if let Some(s) = ctx.sender.read().as_ref() {
+                                    s.send(SessionCommand::StartGame);
+                                }
+                            },
+                            div { class: "title-btn-inner",
+                                if seated_count < 2 {
+                                    "Waiting for players…"
+                                } else {
+                                    "Start game"
+                                }
                             }
                         }
+                    } else {
+                        p { class: "lobby-waiting", "Waiting for the host to start the game…" }
                     }
-                } else {
-                    p { class: "lobby-waiting", "Waiting for the host to start the game…" }
                 }
             }
+        }
+    }
+}
+
+#[component]
+fn ShareUrlChip(url: String, copied: Signal<bool>) -> Element {
+    let url_for_copy = url.clone();
+
+    rsx! {
+        button {
+            class: "lobby-share-chip",
+            class: if copied() { "copied" },
+            onclick: move |_| {
+                copy_to_clipboard(url_for_copy.clone());
+                let mut c = copied;
+                c.set(true);
+                spawn(async move {
+                    gloo_sleep(1500).await;
+                    c.set(false);
+                });
+            },
+            span { class: "lobby-share-label",
+                if copied() { "Copied!" } else { "Click to copy invite link" }
+            }
+            span { class: "lobby-share-url", "{url}" }
         }
     }
 }
@@ -123,14 +142,14 @@ fn PeerList(lobby: LobbyState) -> Element {
                 li { class: "lobby-peer-row",
                     span { class: "lobby-peer-dot",
                         style: if let Some(c) = color {
-                            format!("background: var(--color-{});", color_var(c))
+                            format!("background: var(--color-{});", color_slug(c))
                         } else {
-                            String::from("background: var(--bg-muted);")
+                            String::from("background: var(--border-color);")
                         },
                     }
                     span { class: "lobby-peer-name", "{nickname}" }
                     if is_host {
-                        span { class: "lobby-peer-tag", "host" }
+                        span { class: "lobby-peer-tag host", "host" }
                     }
                     if color.is_none() {
                         span { class: "lobby-peer-tag dim", "picking…" }
@@ -148,7 +167,6 @@ fn ColorSeat(color: Color, lobby: LobbyState, my_color: Option<Color>) -> Elemen
     let taken_by_other = matches!(&seat, Some(_)) && my_color != Some(color);
     let is_mine = my_color == Some(color);
 
-    let label = seat.as_ref().map(|s| s.nickname.clone()).unwrap_or_default();
     let class = if is_mine {
         "lobby-color-chip mine"
     } else if taken_by_other {
@@ -156,6 +174,8 @@ fn ColorSeat(color: Color, lobby: LobbyState, my_color: Option<Color>) -> Elemen
     } else {
         "lobby-color-chip free"
     };
+
+    let slug = color_slug(color);
 
     rsx! {
         button {
@@ -166,29 +186,27 @@ fn ColorSeat(color: Color, lobby: LobbyState, my_color: Option<Color>) -> Elemen
                     s.send(SessionCommand::PickColor(Some(color)));
                 }
             },
-            style: format!("--seat-color: var(--color-{});", color_var(color)),
-            span { class: "lobby-color-dot" }
-            span { class: "lobby-color-label", "{color_name(color)}" }
-            if let Some(name) = seat.as_ref().map(|s| s.nickname.clone()) {
-                span { class: "lobby-color-player", "{name}" }
-            } else {
-                span { class: "lobby-color-player dim", "open" }
+            style: "--seat-color: var(--color-{slug});",
+            div { class: "lobby-color-hex",
+                div { class: "lobby-color-hex-inner" }
+                if is_mine {
+                    div { class: "lobby-color-check", "✓" }
+                }
+            }
+            div { class: "lobby-color-meta",
+                span { class: "lobby-color-label", "{color_name(color)}" }
+                if let Some(name) = seat.as_ref().map(|s| s.nickname.clone()) {
+                    span { class: "lobby-color-player", "{name}" }
+                } else {
+                    span { class: "lobby-color-player empty", "Open" }
+                }
             }
             if is_mine {
-                span { class: "lobby-color-tag", "you" }
+                span { class: "lobby-color-tag", "You" }
+            } else if taken_by_other {
+                span { class: "lobby-color-tag dim", "Taken" }
             }
-            // Silence unused var warnings when label is present but not used yet.
-            { let _ = label; rsx! {} }
         }
-    }
-}
-
-fn color_var(c: Color) -> &'static str {
-    match c {
-        Color::Red => "red",
-        Color::Blue => "blue",
-        Color::Yellow => "yellow",
-        Color::Green => "green",
     }
 }
 
@@ -201,9 +219,46 @@ fn color_name(c: Color) -> &'static str {
     }
 }
 
+fn color_slug(c: Color) -> &'static str {
+    match c {
+        Color::Red => "red",
+        Color::Blue => "blue",
+        Color::Yellow => "yellow",
+        Color::Green => "green",
+    }
+}
+
+/// Build a shareable URL of the shape `<origin>/#/join/CODE`. Falls back to
+/// a relative fragment if `window` isn't available (e.g. SSR or native).
 fn share_link(code: &str) -> String {
-    // Hash-route share link; matchbox_server is untouched by this — the
-    // fragment is client-side only. `window.location.origin` would give
-    // the accurate base, but during initial dev we just hint the shape.
-    format!("/#/join/{}", code)
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(win) = web_sys::window() {
+            if let Ok(origin) = win.location().origin() {
+                return format!("{origin}/#/join/{code}");
+            }
+        }
+    }
+    format!("/#/join/{code}")
+}
+
+/// Copy `text` to the system clipboard using the browser's async clipboard
+/// API. Silently no-ops off the web.
+fn copy_to_clipboard(text: String) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(win) = web_sys::window() {
+            let clipboard = win.navigator().clipboard();
+            let _ = clipboard.write_text(&text);
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = text;
+}
+
+async fn gloo_sleep(ms: u32) {
+    #[cfg(feature = "web")]
+    gloo_timers::future::TimeoutFuture::new(ms).await;
+    #[cfg(not(feature = "web"))]
+    let _ = ms;
 }

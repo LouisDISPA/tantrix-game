@@ -36,6 +36,40 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  min-width: 0;
+}
+
+.hand-header-color {
+  flex-shrink: 0;
+}
+
+.hand-header-name {
+  font-weight: 500;
+  letter-spacing: 0.6px;
+  text-transform: none;
+  font-size: 12px;
+  opacity: 0.9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.hand-header-name::before {
+  content: "· ";
+  opacity: 0.5;
+  margin-right: 2px;
+}
+
+.hand-header-you {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+  flex-shrink: 0;
 }
 
 .hand-header .active-dot {
@@ -44,6 +78,11 @@
   border-radius: 50%;
   background: white;
   animation: pulse-glow-dot 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.player-hand.mine {
+  box-shadow: 0 0 0 2px var(--player-color), var(--shadow-md);
 }
 
 /* ===== Tile List ===== */

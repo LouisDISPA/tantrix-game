@@ -54,17 +54,28 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
         "hand-tiles horizontal"
     };
 
+    // Player nickname (online) + whether this seat belongs to the local user.
+    let player_name = ctx.player_names.read()[color].clone();
+    let is_mine = *ctx.my_color.read() == Some(color);
+
     rsx! {
         div {
             class: "player-hand {pos_class} {area_class}",
             class: if is_current { "active" },
+            class: if is_mine { "mine" },
             style: "--player-color: {color_var}",
 
             div { class: "hand-header",
                 if is_current {
                     span { class: "active-dot" }
                 }
-                "{color}"
+                span { class: "hand-header-color", "{color}" }
+                if let Some(name) = player_name {
+                    span { class: "hand-header-name", "{name}" }
+                }
+                if is_mine {
+                    span { class: "hand-header-you", "you" }
+                }
             }
 
             if hand_len == 0 {
