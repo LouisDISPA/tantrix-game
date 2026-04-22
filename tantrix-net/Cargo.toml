@@ -7,7 +7,7 @@ description = "matchbox_socket glue + host/client state machines for Tantrix onl
 [dependencies]
 tantrix-game = { path = "../tantrix-game" }
 tantrix-proto = { path = "../tantrix-proto" }
-matchbox_socket = "0.12"
+matchbox_socket = "0.14"
 enum-map = { version = "2", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
