@@ -66,17 +66,29 @@ fn ConnectingView() -> Element {
 #[component]
 fn FailedView(reason: String) -> Element {
     let nav = navigator();
+    // A rejection message from the host is user-actionable; a generic
+    // transport failure is not. Tailor the heading so the former stands
+    // out as "room full / kicked" rather than "something broke".
+    let (title, is_rejection) = if reason.starts_with("This room") || reason.contains("full") {
+        ("Room is full", true)
+    } else if reason.starts_with("The host") || reason.contains("different game version") {
+        ("Can't join this room", true)
+    } else {
+        ("Disconnected", false)
+    };
     rsx! {
         div { class: "title-screen",
             div { class: "title-content",
-                h1 { class: "title-logo", "Disconnected" }
+                h1 { class: "title-logo", "{title}" }
                 p { class: "title-subtitle", "{reason}" }
                 button {
                     class: "title-btn title-btn-primary",
                     onclick: move |_| {
-                        let _ = nav.push(crate::route::Route::MainMenu {});
+                        let _ = nav.push(crate::route::Route::OnlineEntry {});
                     },
-                    div { class: "title-btn-inner", "Back to menu" }
+                    div { class: "title-btn-inner",
+                        if is_rejection { "Back to online menu" } else { "Back to menu" }
+                    }
                 }
             }
         }

@@ -87,7 +87,11 @@ fn apply_event(state: &mut Signal<OnlineState>, event: SessionEvent) {
             s.last_error = Some(friendly);
         }
         SessionEvent::Disconnected { reason } => {
-            s.phase = OnlinePhase::Failed { reason };
+            // Prefer a friendly per-code message (e.g. "This room is
+            // already full.") over the generic disconnect reason when
+            // the host sent a reject right before closing.
+            let shown = s.last_error.clone().unwrap_or(reason);
+            s.phase = OnlinePhase::Failed { reason: shown };
         }
     }
 }

@@ -11,7 +11,14 @@
 use getrandom::fill;
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-const STORAGE_KEY: &str = "tantrix-nickname";
+const STORAGE_KEY: &str = "tantrix-nickname-v2";
+
+/// Older key used before auto-generated names were treated as ephemeral.
+/// We delete it on startup so stale cached values (like the notorious
+/// "Clumsy Pickle" that everyone ended up with) don't override fresh
+/// random picks.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+const LEGACY_STORAGE_KEY: &str = "tantrix-nickname";
 
 const ADJECTIVES: &[&str] = &[
     "Sneaky", "Grumpy", "Happy", "Jolly", "Dizzy", "Sleepy", "Cranky",
@@ -51,6 +58,7 @@ fn pick_index(len: usize) -> usize {
 /// or a fresh random one. Auto-generated names are *not* cached here —
 /// only names the user explicitly edited in the lobby land in storage.
 pub fn load_or_generate() -> String {
+    clear_legacy();
     if let Some(stored) = load_stored() {
         if !stored.trim().is_empty() {
             return stored;
@@ -79,6 +87,15 @@ fn load_stored() -> Option<String> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     None
+}
+
+fn clear_legacy() {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if let Some(s) = local_storage() {
+            let _ = s.remove_item(LEGACY_STORAGE_KEY);
+        }
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
