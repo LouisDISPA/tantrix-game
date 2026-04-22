@@ -7,15 +7,14 @@
 //! the `OnlineCtx` that `OnlineRoom` has already placed in scope.
 
 use dioxus::prelude::*;
-use tantrix_game::{Bag, Board, Color, EnumMap, Player, TurnTracker};
-use tantrix_proto::{GameSnapshot, Seat};
+use tantrix_game::{Color, EnumMap};
+use tantrix_proto::Seat;
 
 use crate::pages::local_game::GamePlay;
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::online_state::{OnlineCtx, OnlinePhase};
 use crate::state::ui_state::{Screen, TurnPhase, UiState};
 
-/// Inner view — the outer `OnlineRoom` has already provisioned `OnlineCtx`.
 #[component]
 pub fn OnlineGameView() -> Element {
     let online_ctx = use_context::<OnlineCtx>();
@@ -36,7 +35,7 @@ pub fn OnlineGameView() -> Element {
         }
     };
 
-    let game_state = use_signal(|| build_game_state(&initial));
+    let game_state = use_signal(|| GameState::from_snapshot(&initial));
     let screen = use_signal(|| Screen::Playing);
     let ui_state = use_store(UiState::default);
     let online = use_signal(|| online_ctx.sender.read().clone());
@@ -64,11 +63,16 @@ pub fn OnlineGameView() -> Element {
     }
 
     // Keep `my_color` fresh with the seat assignment in the online state.
+    // Only writes when the value actually changed so downstream components
+    // don't re-render on every state update.
     {
         let mut my_color = my_color;
         let state = online_ctx.state;
         use_effect(move || {
-            my_color.set(state.read().my_color());
+            let new_color = state.read().my_color();
+            if *my_color.peek() != new_color {
+                my_color.set(new_color);
+            }
         });
     }
 
@@ -83,8 +87,11 @@ pub fn OnlineGameView() -> Element {
             let s = state.read();
             match &s.phase {
                 OnlinePhase::Playing { snapshot, last_move } => {
-                    *game_state.write() = build_game_state(snapshot);
-                    player_names.set(names_from_seats(&snapshot.seats));
+                    *game_state.write() = GameState::from_snapshot(snapshot);
+                    let fresh_names = names_from_seats(&snapshot.seats);
+                    if *player_names.peek() != fresh_names {
+                        player_names.set(fresh_names);
+                    }
                     if let Some(m) = last_move {
                         ui_state.write().last_placed_position = Some(m.position);
                     }
@@ -93,9 +100,12 @@ pub fn OnlineGameView() -> Element {
                         ui.phase = TurnPhase::SelectTile;
                     }
                 }
-                OnlinePhase::Ended { snapshot, .. } => {
-                    *game_state.write() = build_game_state(snapshot);
-                    player_names.set(names_from_seats(&snapshot.seats));
+                OnlinePhase::Ended { snapshot } => {
+                    *game_state.write() = GameState::from_snapshot(snapshot);
+                    let fresh_names = names_from_seats(&snapshot.seats);
+                    if *player_names.peek() != fresh_names {
+                        player_names.set(fresh_names);
+                    }
                     ui_state.write().phase = TurnPhase::GameOver;
                 }
                 _ => {}
@@ -107,40 +117,5 @@ pub fn OnlineGameView() -> Element {
 }
 
 fn names_from_seats(seats: &EnumMap<Color, Option<Seat>>) -> EnumMap<Color, Option<String>> {
-    let mut out: EnumMap<Color, Option<String>> = EnumMap::default();
-    for (c, slot) in seats.iter() {
-        out[c] = slot.as_ref().map(|s| s.nickname.clone());
-    }
-    out
-}
-
-/// Reconstruct a local `GameState` from a remote `GameSnapshot`. Bag
-/// contents are stubbed (only the count matters to the UI); player kinds
-/// are all `Someone` for seated colors and `None` otherwise.
-fn build_game_state(snap: &GameSnapshot) -> GameState {
-    let mut players: EnumMap<Color, Player> = EnumMap::from_fn(|_| Player::None);
-    for (c, slot) in snap.seats.iter() {
-        players[c] = match slot {
-            Some(_) => Player::Someone,
-            None => Player::None,
-        };
-    }
-
-    let turn_tracker =
-        TurnTracker::from_parts(snap.current_player, snap.playing_colors.iter().copied());
-    let bag = Bag::with_count(snap.bag_count);
-
-    let hands = snap.hands.clone();
-    let board: Board = snap.board.clone();
-
-    let mut state = GameState {
-        board,
-        bag,
-        hands,
-        players,
-        turn_tracker,
-        hand_info: Vec::new(),
-    };
-    state.refresh_hand_info();
-    state
+    EnumMap::from_fn(|c| seats[c].as_ref().map(|s| s.nickname.clone()))
 }

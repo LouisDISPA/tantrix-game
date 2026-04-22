@@ -7,9 +7,7 @@ use tantrix_net::{
     SessionEvent, SessionHandle, SessionRole, open_client_session, open_host_session,
 };
 
-use crate::state::online_state::{
-    CommandSender, OnlineCtx, OnlinePhase, OnlineState, reject_message,
-};
+use crate::state::online_state::{CommandSender, OnlineCtx, OnlinePhase, OnlineState, reject_message};
 use crate::state::signaling::signaling_url;
 
 /// Open a session (host or client) for the given room and pump events into
@@ -36,7 +34,7 @@ pub fn spawn_session(
 
     // Publish the command sender so child components can dispatch actions.
     let mut sender = ctx.sender;
-    sender.set(Some(CommandSender(handle.commands)));
+    sender.set(Some(CommandSender::new(handle.commands)));
 
     // Drive the network task.
     spawn(async move {
@@ -78,8 +76,8 @@ fn apply_event(state: &mut Signal<OnlineState>, event: SessionEvent) {
         SessionEvent::StateUpdate { snapshot, last_move } => {
             s.phase = OnlinePhase::Playing { snapshot, last_move };
         }
-        SessionEvent::GameEnded { reason, snapshot } => {
-            s.phase = OnlinePhase::Ended { reason, snapshot };
+        SessionEvent::GameEnded { reason: _, snapshot } => {
+            s.phase = OnlinePhase::Ended { snapshot };
         }
         SessionEvent::Error { code, message } => {
             let friendly = code

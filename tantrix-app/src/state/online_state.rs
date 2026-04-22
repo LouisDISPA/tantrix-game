@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use futures_channel::mpsc::UnboundedSender;
 use tantrix_game::{Color, Move};
 use tantrix_net::{SessionCommand, SessionRole};
-use tantrix_proto::{EndReason, GameSnapshot, LobbyState, PeerId, RejectCode};
+use tantrix_proto::{GameSnapshot, LobbyState, PeerId, RejectCode};
 
 /// Top-level lifecycle of the online session.
 #[derive(Debug, Clone)]
@@ -22,13 +22,10 @@ pub enum OnlinePhase {
         snapshot: GameSnapshot,
         last_move: Option<Move>,
     },
-    /// Terminal state. `reason` is retained for a future end-of-game
-    /// screen even though the current HUD only shows the snapshot.
-    Ended {
-        #[allow(dead_code)]
-        reason: EndReason,
-        snapshot: GameSnapshot,
-    },
+    /// Terminal state. The snapshot carries the final board and seats;
+    /// the win/loss `EndReason` will be added back once the end-of-game
+    /// screen is implemented.
+    Ended { snapshot: GameSnapshot },
     /// Fatal error; the session task has exited.
     Failed { reason: String },
 }
@@ -95,9 +92,13 @@ pub struct OnlineCtx {
 /// A cloneable handle to the session's command sender. Boxed separately so
 /// the `Signal` type parameter stays small and `Copy`.
 #[derive(Clone)]
-pub struct CommandSender(pub UnboundedSender<SessionCommand>);
+pub struct CommandSender(UnboundedSender<SessionCommand>);
 
 impl CommandSender {
+    pub fn new(tx: UnboundedSender<SessionCommand>) -> Self {
+        Self(tx)
+    }
+
     pub fn send(&self, cmd: SessionCommand) {
         let _ = self.0.unbounded_send(cmd);
     }

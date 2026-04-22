@@ -15,6 +15,7 @@ mod client;
 mod host;
 mod roomcode;
 mod session;
+mod socket;
 
 pub use client::open_client_session;
 pub use host::open_host_session;

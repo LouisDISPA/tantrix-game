@@ -1,19 +1,16 @@
 //! Client-side session: thin mirror of the host's authoritative state.
 
 use std::future::Future;
-use std::time::Duration;
 
-use futures::StreamExt;
 use futures::future::FutureExt;
-use futures::select;
+use futures::{StreamExt, select};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::warn;
-use matchbox_socket::{ChannelConfig, PeerId as MatchboxPeerId, PeerState, WebRtcSocket, WebRtcSocketBuilder};
-use tantrix_proto::{
-    HostMessage, PeerId, PeerMessage, decode, encode, PROTO_VERSION,
-};
+use matchbox_socket::{PeerId as MatchboxPeerId, PeerState};
+use tantrix_proto::{HostMessage, PeerId, PeerMessage, decode, encode, PROTO_VERSION};
 
 use crate::session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
+use crate::socket::{open as open_socket, wait_for_peer_id};
 
 pub fn open_client_session(
     room_url: String,
@@ -39,35 +36,21 @@ async fn run_client(
     mut commands_rx: UnboundedReceiver<SessionCommand>,
     events_tx: UnboundedSender<SessionEvent>,
 ) {
-    let (mut socket, loop_fut) = WebRtcSocketBuilder::new(room_url)
-        .add_channel(ChannelConfig::reliable())
-        .build();
-    let mut loop_fut = loop_fut.fuse();
+    let (mut socket, mut channel, mut loop_fut) = open_socket(room_url);
 
-    // Wait for our own peer id.
-    let my_mb_id = loop {
-        if let Some(id) = socket.id() {
-            break id;
-        }
-        select! {
-            res = &mut loop_fut => {
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                    reason: match res {
-                        Ok(()) => "signaling closed before id assigned".into(),
-                        Err(e) => format!("signaling error: {e}"),
-                    },
-                });
-                return;
-            }
-            _ = futures_timer::Delay::new(Duration::from_millis(50)).fuse() => {}
-        }
+    let Some(my_mb_id) = wait_for_peer_id(
+        &mut socket,
+        &mut loop_fut,
+        &events_tx,
+        "signaling closed before id assigned",
+    )
+    .await
+    else {
+        return;
     };
 
-    // Wait for the first peer in the room — that's the host.
+    // Wait for the first peer connection — that's the host.
     let host_mb_id = loop {
-        if let Some(id) = first_connected_peer(&mut socket) {
-            break id;
-        }
         select! {
             res = &mut loop_fut => {
                 let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
@@ -78,63 +61,57 @@ async fn run_client(
                 });
                 return;
             }
+            update = socket.next().fuse() => match update {
+                Some((peer, PeerState::Connected)) => break peer,
+                Some((_, PeerState::Disconnected)) => continue,
+                None => return,
+            },
             cmd = commands_rx.next() => match cmd {
                 Some(SessionCommand::Leave) | None => return,
                 Some(_) => {} // discard pre-connect intents
             },
-            _ = futures_timer::Delay::new(Duration::from_millis(50)).fuse() => {}
         }
     };
 
-    // Send Hello and wait for Welcome. Keep draining peer state updates in
-    // case the host's connection takes an extra tick to stabilise.
+    // Send Hello and wait for messages from the host.
     let hello = encode(&PeerMessage::Hello {
         nickname,
         proto_version: PROTO_VERSION,
     });
-    let _ = socket
-        .channel_mut(0)
-        .try_send(hello.into_boxed_slice(), host_mb_id);
+    let _ = channel.try_send(hello.into_boxed_slice(), host_mb_id);
 
     let mut welcomed = false;
 
     loop {
-        for (_peer, ps) in socket.try_update_peers().unwrap_or_default() {
-            // We only care about the host's connection status.
-            let _ = ps;
-        }
-
-        let inbound = socket.channel_mut(0).receive();
-        for (peer, packet) in inbound {
-            if peer != host_mb_id {
-                // Ignore traffic from other peers — this is a host-auth
-                // session, they have nothing to tell us.
-                continue;
-            }
-            let msg: HostMessage = match decode(&packet) {
-                Ok(m) => m,
-                Err(e) => {
-                    warn!("client: bad host message: {e}");
-                    continue;
-                }
-            };
-            if handle_host_message(msg, &events_tx, &mut welcomed, &my_mb_id, &host_mb_id) {
-                // Session ended normally.
-                socket.close();
-                return;
-            }
-        }
-
         select! {
             cmd = commands_rx.next() => match cmd {
                 Some(SessionCommand::Leave) | None => break,
                 Some(other) => {
                     let wire = encode(&intent_from_command(other));
-                    let _ = socket
-                        .channel_mut(0)
-                        .try_send(wire.into_boxed_slice(), host_mb_id);
+                    let _ = channel.try_send(wire.into_boxed_slice(), host_mb_id);
                 }
             },
+            packet = channel.next().fuse() => match packet {
+                Some((peer, bytes)) => {
+                    if peer != host_mb_id {
+                        continue;
+                    }
+                    let msg: HostMessage = match decode(&bytes) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            warn!("client: bad host message: {e}");
+                            continue;
+                        }
+                    };
+                    if handle_host_message(msg, &events_tx, &mut welcomed, &my_mb_id, &host_mb_id) {
+                        channel.close();
+                        socket.close();
+                        return;
+                    }
+                }
+                None => break,
+            },
+            _ = socket.next().fuse() => {} // ignore extra peer updates (only host matters)
             res = &mut loop_fut => {
                 let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
                     reason: match res {
@@ -144,20 +121,11 @@ async fn run_client(
                 });
                 break;
             }
-            _ = futures_timer::Delay::new(Duration::from_millis(50)).fuse() => {}
         }
     }
 
+    channel.close();
     socket.close();
-}
-
-fn first_connected_peer(socket: &mut WebRtcSocket) -> Option<MatchboxPeerId> {
-    for (peer, state) in socket.try_update_peers().unwrap_or_default() {
-        if matches!(state, PeerState::Connected) {
-            return Some(peer);
-        }
-    }
-    socket.connected_peers().next()
 }
 
 fn intent_from_command(cmd: SessionCommand) -> PeerMessage {

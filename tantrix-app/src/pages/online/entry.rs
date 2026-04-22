@@ -4,9 +4,8 @@ use dioxus::prelude::*;
 use dioxus_router::Navigator;
 use tantrix_net::{generate_room_code, ROOM_CODE_LEN};
 
-use crate::route::Route;
+use crate::route::{Route, RoleParam};
 
-/// Landing page: pick "Host" or "Join".
 #[component]
 pub fn OnlineEntry() -> Element {
     let nav = navigator();
@@ -36,7 +35,7 @@ pub fn OnlineEntry() -> Element {
                     div { class: "online-actions",
                         button {
                             class: "title-btn title-btn-primary",
-                            onclick: move |_| try_host(nickname, error, nav),
+                            onclick: move |_| navigate(nickname, error, nav, RoleParam::Host, None),
                             div { class: "title-btn-inner", "Host a new room" }
                         }
 
@@ -54,14 +53,14 @@ pub fn OnlineEntry() -> Element {
                                     },
                                     onkeydown: move |e| {
                                         if e.key() == Key::Enter {
-                                            try_join(nickname, code_input, error, nav);
+                                            navigate(nickname, error, nav, RoleParam::Client, Some(code_input.read().clone()));
                                         }
                                     },
                                 }
                             }
                             button {
                                 class: "title-btn title-btn-primary",
-                                onclick: move |_| try_join(nickname, code_input, error, nav),
+                                onclick: move |_| navigate(nickname, error, nav, RoleParam::Client, Some(code_input.read().clone())),
                                 div { class: "title-btn-inner", "Join room" }
                             }
                         }
@@ -93,8 +92,8 @@ pub fn JoinRoom(code: String) -> Element {
     let code_is_valid = code_upper.len() == ROOM_CODE_LEN
         && code_upper.bytes().all(|b| b.is_ascii_uppercase());
     let join_code = code_upper.clone();
-    let join_code_for_enter = join_code.clone();
-    let join_code_for_click = join_code.clone();
+    let code_for_enter = join_code.clone();
+    let code_for_click = join_code.clone();
 
     rsx! {
         div { class: "title-screen",
@@ -118,14 +117,14 @@ pub fn JoinRoom(code: String) -> Element {
                                 oninput: move |e| { let mut n = nickname; n.set(e.value()); },
                                 onkeydown: move |e| {
                                     if e.key() == Key::Enter {
-                                        try_submit(nickname, error, nav, join_code_for_enter.clone());
+                                        navigate(nickname, error, nav, RoleParam::Client, Some(code_for_enter.clone()));
                                     }
                                 },
                             }
                         }
                         button {
                             class: "title-btn title-btn-primary",
-                            onclick: move |_| try_submit(nickname, error, nav, join_code_for_click.clone()),
+                            onclick: move |_| navigate(nickname, error, nav, RoleParam::Client, Some(code_for_click.clone())),
                             div { class: "title-btn-inner", "Join" }
                         }
                     }
@@ -145,62 +144,37 @@ pub fn JoinRoom(code: String) -> Element {
     }
 }
 
-fn try_host(
+/// Single entry point for both Host and Join flows. `code` is `Some` when
+/// joining (must be 6 chars); `None` when hosting (a fresh code is generated).
+fn navigate(
     nickname: Signal<String>,
     mut error: Signal<Option<String>>,
     nav: Navigator,
+    role: RoleParam,
+    code: Option<String>,
 ) {
-    let nick = nickname.read().clone();
-    if nick.trim().is_empty() {
+    let nick = nickname.read().trim().to_string();
+    if nick.is_empty() {
         error.set(Some("Enter a nickname first.".into()));
         return;
     }
-    let code = generate_room_code();
-    let _ = nav.push(Route::OnlineRoom {
-        code,
-        nickname: nick,
-        role: "host".into(),
-    });
-}
 
-fn try_join(
-    nickname: Signal<String>,
-    code_input: Signal<String>,
-    mut error: Signal<Option<String>>,
-    nav: Navigator,
-) {
-    let nick = nickname.read().clone();
-    if nick.trim().is_empty() {
-        error.set(Some("Enter a nickname first.".into()));
-        return;
-    }
-    let code = code_input.read().trim().to_ascii_uppercase();
-    if code.len() != ROOM_CODE_LEN {
-        error.set(Some("Room codes are 6 characters.".into()));
-        return;
-    }
-    let _ = nav.push(Route::OnlineRoom {
-        code,
-        nickname: nick,
-        role: "client".into(),
-    });
-}
+    let code = match code {
+        Some(raw) => {
+            let upper = raw.trim().to_ascii_uppercase();
+            if upper.len() != ROOM_CODE_LEN {
+                error.set(Some("Room codes are 6 characters.".into()));
+                return;
+            }
+            upper
+        }
+        None => generate_room_code(),
+    };
 
-fn try_submit(
-    nickname: Signal<String>,
-    mut error: Signal<Option<String>>,
-    nav: Navigator,
-    code: String,
-) {
-    let nick = nickname.read().clone();
-    if nick.trim().is_empty() {
-        error.set(Some("Enter a nickname first.".into()));
-        return;
-    }
     let _ = nav.push(Route::OnlineRoom {
         code,
         nickname: nick,
-        role: "client".into(),
+        role,
     });
 }
 

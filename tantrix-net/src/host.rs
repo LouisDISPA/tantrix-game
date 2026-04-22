@@ -2,15 +2,13 @@
 
 use std::collections::HashMap;
 use std::future::Future;
-use std::time::Duration;
 
 use enum_map::EnumMap;
-use futures::StreamExt;
 use futures::future::FutureExt;
-use futures::select;
+use futures::{StreamExt, select};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::{debug, warn};
-use matchbox_socket::{ChannelConfig, PeerId as MatchboxPeerId, PeerState, WebRtcSocket, WebRtcSocketBuilder};
+use matchbox_socket::{PeerId as MatchboxPeerId, PeerState, WebRtcChannel};
 use tantrix_game::{Color, Game, Hand, Player};
 use tantrix_proto::{
     EndReason, GameSnapshot, HostMessage, LobbyState, PeerId, PeerMessage, RejectCode, Seat,
@@ -18,6 +16,7 @@ use tantrix_proto::{
 };
 
 use crate::session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
+use crate::socket::{open as open_socket, wait_for_peer_id};
 
 pub fn open_host_session(
     room_url: String,
@@ -80,11 +79,7 @@ impl HostState {
     }
 
     fn wire_seats(&self) -> EnumMap<Color, Option<Seat>> {
-        let mut out: EnumMap<Color, Option<Seat>> = EnumMap::default();
-        for (c, slot) in self.seats.iter() {
-            out[c] = slot.as_ref().map(|s| s.to_wire());
-        }
-        out
+        EnumMap::from_fn(|c| self.seats[c].as_ref().map(|s| s.to_wire()))
     }
 
     fn lobby_state(&self) -> LobbyState {
@@ -148,28 +143,17 @@ async fn run_host(
     mut commands_rx: UnboundedReceiver<SessionCommand>,
     events_tx: UnboundedSender<SessionEvent>,
 ) {
-    let (mut socket, loop_fut) = WebRtcSocketBuilder::new(room_url)
-        .add_channel(ChannelConfig::reliable())
-        .build();
-    let mut loop_fut = loop_fut.fuse();
+    let (mut socket, mut channel, mut loop_fut) = open_socket(room_url);
 
-    // Wait for our own peer id.
-    let my_mb_id = loop {
-        if let Some(id) = socket.id() {
-            break id;
-        }
-        select! {
-            res = &mut loop_fut => {
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                    reason: match res {
-                        Ok(()) => "signaling closed before peer id was assigned".into(),
-                        Err(e) => format!("signaling error: {e}"),
-                    },
-                });
-                return;
-            }
-            _ = futures_timer::Delay::new(Duration::from_millis(50)).fuse() => {}
-        }
+    let Some(my_mb_id) = wait_for_peer_id(
+        &mut socket,
+        &mut loop_fut,
+        &events_tx,
+        "signaling closed before peer id was assigned",
+    )
+    .await
+    else {
+        return;
     };
 
     let my_wire_id = mb_to_wire(&my_mb_id);
@@ -178,45 +162,42 @@ async fn run_host(
     let _ = events_tx.unbounded_send(SessionEvent::Connected {
         role: SessionRole::Host,
         my_peer_id: my_wire_id.clone(),
-        host_peer_id: my_wire_id.clone(),
+        host_peer_id: my_wire_id,
     });
     let _ = events_tx.unbounded_send(SessionEvent::Lobby(state.lobby_state()));
 
-    loop {
-        if state.ended {
-            break;
-        }
-
-        for (peer, ps) in socket.try_update_peers().unwrap_or_default() {
-            match ps {
-                PeerState::Connected => debug!("host: peer {peer} connected"),
-                PeerState::Disconnected => {
-                    debug!("host: peer {peer} disconnected");
-                    handle_peer_disconnect(&mut state, &peer, &events_tx, &mut socket);
-                }
-            }
-        }
-
-        let inbound = socket.channel_mut(0).receive();
-        for (peer, packet) in inbound {
-            let msg: PeerMessage = match decode(&packet) {
-                Ok(m) => m,
-                Err(e) => {
-                    warn!("host: bad peer message from {peer}: {e}");
-                    continue;
-                }
-            };
-            handle_intent(&mut state, peer, msg, &events_tx, &mut socket);
-        }
-
+    // Main loop — event-driven, no polling. Each select arm reacts to the
+    // single event source that actually changed.
+    while !state.ended {
         select! {
             cmd = commands_rx.next() => match cmd {
                 Some(SessionCommand::Leave) | None => break,
                 Some(other) => {
                     let local = intent_from_command(other);
                     let me = state.my_mb_id;
-                    handle_intent(&mut state, me, local, &events_tx, &mut socket);
+                    handle_intent(&mut state, me, local, &events_tx, &mut channel);
                 }
+            },
+            packet = channel.next().fuse() => match packet {
+                Some((peer, bytes)) => {
+                    let msg: PeerMessage = match decode(&bytes) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            warn!("host: bad peer message from {peer}: {e}");
+                            continue;
+                        }
+                    };
+                    handle_intent(&mut state, peer, msg, &events_tx, &mut channel);
+                }
+                None => break,
+            },
+            peer_update = socket.next().fuse() => match peer_update {
+                Some((peer, PeerState::Connected)) => debug!("host: peer {peer} connected"),
+                Some((peer, PeerState::Disconnected)) => {
+                    debug!("host: peer {peer} disconnected");
+                    handle_peer_disconnect(&mut state, &peer, &events_tx, &mut channel);
+                }
+                None => break,
             },
             res = &mut loop_fut => {
                 let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
@@ -227,10 +208,10 @@ async fn run_host(
                 });
                 break;
             }
-            _ = futures_timer::Delay::new(Duration::from_millis(50)).fuse() => {}
         }
     }
 
+    channel.close();
     socket.close();
 }
 
@@ -248,7 +229,7 @@ fn handle_peer_disconnect(
     state: &mut HostState,
     peer: &MatchboxPeerId,
     events_tx: &UnboundedSender<SessionEvent>,
-    socket: &mut WebRtcSocket,
+    channel: &mut WebRtcChannel,
 ) {
     state.peers.remove(peer);
     let seated = state.seated_color(peer);
@@ -266,13 +247,16 @@ fn handle_peer_disconnect(
             let reason = EndReason::PlayerDisconnected { color };
             publish_all(
                 state,
-                socket,
+                channel,
                 events_tx,
                 HostMessage::GameEnded {
                     reason: reason.clone(),
                     snapshot: snap.clone(),
                 },
-                SessionEvent::GameEnded { reason, snapshot: snap },
+                SessionEvent::GameEnded {
+                    reason,
+                    snapshot: snap,
+                },
             );
             state.ended = true;
             return;
@@ -282,7 +266,7 @@ fn handle_peer_disconnect(
     let lobby = state.lobby_state();
     publish_all(
         state,
-        socket,
+        channel,
         events_tx,
         HostMessage::LobbyUpdate { lobby: lobby.clone() },
         SessionEvent::Lobby(lobby),
@@ -294,28 +278,31 @@ fn handle_intent(
     from: MatchboxPeerId,
     msg: PeerMessage,
     events_tx: &UnboundedSender<SessionEvent>,
-    socket: &mut WebRtcSocket,
+    channel: &mut WebRtcChannel,
 ) {
     match msg {
-        PeerMessage::Hello { nickname, proto_version } => {
+        PeerMessage::Hello {
+            nickname,
+            proto_version,
+        } => {
             if proto_version != PROTO_VERSION {
-                send_welcome(socket, state, &from, Some(RejectCode::IncompatibleVersion));
+                send_welcome(channel, state, &from, Some(RejectCode::IncompatibleVersion));
                 return;
             }
             if state.game.is_some() {
-                send_welcome(socket, state, &from, Some(RejectCode::GameInProgress));
+                send_welcome(channel, state, &from, Some(RejectCode::GameInProgress));
                 return;
             }
             if state.peers.len() >= 4 {
-                send_welcome(socket, state, &from, Some(RejectCode::LobbyFull));
+                send_welcome(channel, state, &from, Some(RejectCode::LobbyFull));
                 return;
             }
             state.peers.insert(from, PeerInfo { nickname });
-            send_welcome(socket, state, &from, None);
+            send_welcome(channel, state, &from, None);
             let lobby = state.lobby_state();
             publish_all(
                 state,
-                socket,
+                channel,
                 events_tx,
                 HostMessage::LobbyUpdate { lobby: lobby.clone() },
                 SessionEvent::Lobby(lobby),
@@ -323,7 +310,7 @@ fn handle_intent(
         }
         PeerMessage::PickColor { color } => {
             if state.game.is_some() {
-                send_error(socket, &from, RejectCode::GameInProgress, "game already started");
+                send_error(channel, &from, RejectCode::GameInProgress, "game already started");
                 return;
             }
             for slot in state.seats.values_mut() {
@@ -335,7 +322,7 @@ fn handle_intent(
             }
             if let Some(c) = color {
                 if state.seats[c].is_some() {
-                    send_error(socket, &from, RejectCode::ColorTaken, "color already taken");
+                    send_error(channel, &from, RejectCode::ColorTaken, "color already taken");
                     return;
                 }
                 let nickname = state
@@ -348,7 +335,7 @@ fn handle_intent(
             let lobby = state.lobby_state();
             publish_all(
                 state,
-                socket,
+                channel,
                 events_tx,
                 HostMessage::LobbyUpdate { lobby: lobby.clone() },
                 SessionEvent::Lobby(lobby),
@@ -356,7 +343,7 @@ fn handle_intent(
         }
         PeerMessage::StartGame => {
             if from != state.my_mb_id {
-                send_error(socket, &from, RejectCode::InvalidMove, "only the host can start");
+                send_error(channel, &from, RejectCode::InvalidMove, "only the host can start");
                 return;
             }
             if state.game.is_some() {
@@ -365,7 +352,7 @@ fn handle_intent(
             let seated_count = state.seats.values().filter(|s| s.is_some()).count();
             if seated_count < 2 {
                 send_error(
-                    socket,
+                    channel,
                     &from,
                     RejectCode::InvalidMove,
                     "need at least two seated players",
@@ -373,7 +360,11 @@ fn handle_intent(
                 return;
             }
             let player_for = |c: Color| -> Player {
-                if state.seats[c].is_some() { Player::Someone } else { Player::None }
+                if state.seats[c].is_some() {
+                    Player::Someone
+                } else {
+                    Player::None
+                }
             };
             let game = Game::new(
                 player_for(Color::Red),
@@ -385,36 +376,39 @@ fn handle_intent(
             let snap = state.snapshot().unwrap();
             publish_all(
                 state,
-                socket,
+                channel,
                 events_tx,
                 HostMessage::GameStarted { snapshot: snap.clone() },
                 SessionEvent::GameStarted { snapshot: snap },
             );
         }
         PeerMessage::PlayMove { m } => {
-            if !ensure_turn(state, &from, socket) {
+            if !ensure_turn(state, &from, channel) {
                 return;
             }
             let game = state.game.as_mut().unwrap();
             if let Err(e) = game.play_move(m) {
-                send_error(socket, &from, RejectCode::InvalidMove, &e);
+                send_error(channel, &from, RejectCode::InvalidMove, &e);
                 return;
             }
             let snap = state.snapshot().unwrap();
             publish_all(
                 state,
-                socket,
+                channel,
                 events_tx,
                 HostMessage::StateUpdate {
                     snapshot: snap.clone(),
                     last_move: Some(m),
                 },
-                SessionEvent::StateUpdate { snapshot: snap, last_move: Some(m) },
+                SessionEvent::StateUpdate {
+                    snapshot: snap,
+                    last_move: Some(m),
+                },
             );
-            maybe_end_game(state, socket, events_tx);
+            maybe_end_game(state, channel, events_tx);
         }
         PeerMessage::SkipTurn => {
-            if !ensure_turn(state, &from, socket) {
+            if !ensure_turn(state, &from, channel) {
                 return;
             }
             let game = state.game.as_mut().unwrap();
@@ -422,46 +416,54 @@ fn handle_intent(
             let snap = state.snapshot().unwrap();
             publish_all(
                 state,
-                socket,
+                channel,
                 events_tx,
                 HostMessage::StateUpdate {
                     snapshot: snap.clone(),
                     last_move: None,
                 },
-                SessionEvent::StateUpdate { snapshot: snap, last_move: None },
+                SessionEvent::StateUpdate {
+                    snapshot: snap,
+                    last_move: None,
+                },
             );
-            maybe_end_game(state, socket, events_tx);
+            maybe_end_game(state, channel, events_tx);
         }
         PeerMessage::RequestSnapshot => {
             if let Some(snap) = state.snapshot() {
                 send_to(
-                    socket,
+                    channel,
                     &from,
-                    &HostMessage::StateUpdate { snapshot: snap, last_move: None },
+                    &HostMessage::StateUpdate {
+                        snapshot: snap,
+                        last_move: None,
+                    },
                 );
             } else {
                 send_to(
-                    socket,
+                    channel,
                     &from,
-                    &HostMessage::LobbyUpdate { lobby: state.lobby_state() },
+                    &HostMessage::LobbyUpdate {
+                        lobby: state.lobby_state(),
+                    },
                 );
             }
         }
     }
 }
 
-fn ensure_turn(state: &HostState, from: &MatchboxPeerId, socket: &mut WebRtcSocket) -> bool {
+fn ensure_turn(state: &HostState, from: &MatchboxPeerId, channel: &mut WebRtcChannel) -> bool {
     let Some(game) = state.game.as_ref() else {
-        send_error(socket, from, RejectCode::InvalidMove, "game not started");
+        send_error(channel, from, RejectCode::InvalidMove, "game not started");
         return false;
     };
     let current = game.currently_playing();
     let Some(seat) = state.seats[current].as_ref() else {
-        send_error(socket, from, RejectCode::InvalidMove, "seat is empty");
+        send_error(channel, from, RejectCode::InvalidMove, "seat is empty");
         return false;
     };
     if &seat.mb_id != from {
-        send_error(socket, from, RejectCode::NotYourTurn, "not your turn");
+        send_error(channel, from, RejectCode::NotYourTurn, "not your turn");
         return false;
     }
     true
@@ -469,10 +471,12 @@ fn ensure_turn(state: &HostState, from: &MatchboxPeerId, socket: &mut WebRtcSock
 
 fn maybe_end_game(
     state: &mut HostState,
-    socket: &mut WebRtcSocket,
+    channel: &mut WebRtcChannel,
     events_tx: &UnboundedSender<SessionEvent>,
 ) {
-    let Some(game) = state.game.as_ref() else { return };
+    let Some(game) = state.game.as_ref() else {
+        return;
+    };
     if !game.is_game_over() {
         return;
     }
@@ -483,15 +487,25 @@ fn maybe_end_game(
         .filter_map(|(c, s)| s.as_ref().map(|_| c))
         .collect();
     let top = active.iter().map(|&c| scores[c].score).max().unwrap_or(0);
-    let winners: Vec<Color> = active.iter().copied().filter(|c| scores[*c].score == top).collect();
+    let winners: Vec<Color> = active
+        .iter()
+        .copied()
+        .filter(|c| scores[*c].score == top)
+        .collect();
     let snap = state.snapshot().unwrap();
     let reason = EndReason::Completed { winners };
     publish_all(
         state,
-        socket,
+        channel,
         events_tx,
-        HostMessage::GameEnded { reason: reason.clone(), snapshot: snap.clone() },
-        SessionEvent::GameEnded { reason, snapshot: snap },
+        HostMessage::GameEnded {
+            reason: reason.clone(),
+            snapshot: snap.clone(),
+        },
+        SessionEvent::GameEnded {
+            reason,
+            snapshot: snap,
+        },
     );
     state.ended = true;
 }
@@ -501,38 +515,34 @@ fn maybe_end_game(
 /// through the data channel.
 fn publish_all(
     state: &HostState,
-    socket: &mut WebRtcSocket,
+    channel: &mut WebRtcChannel,
     events_tx: &UnboundedSender<SessionEvent>,
     wire: HostMessage,
     local: SessionEvent,
 ) {
     let bytes = encode(&wire);
     for peer in state.peers.keys().copied().filter(|p| *p != state.my_mb_id) {
-        let _ = socket
-            .channel_mut(0)
-            .try_send(bytes.clone().into_boxed_slice(), peer);
+        let _ = channel.try_send(bytes.clone().into_boxed_slice(), peer);
     }
     let _ = events_tx.unbounded_send(local);
 }
 
-fn send_to(socket: &mut WebRtcSocket, peer: &MatchboxPeerId, msg: &HostMessage) {
+fn send_to(channel: &mut WebRtcChannel, peer: &MatchboxPeerId, msg: &HostMessage) {
     let bytes = encode(msg);
-    let _ = socket
-        .channel_mut(0)
-        .try_send(bytes.into_boxed_slice(), *peer);
+    let _ = channel.try_send(bytes.into_boxed_slice(), *peer);
 }
 
 fn send_welcome(
-    socket: &mut WebRtcSocket,
+    channel: &mut WebRtcChannel,
     state: &HostState,
     peer: &MatchboxPeerId,
     rejected: Option<RejectCode>,
 ) {
     if peer == &state.my_mb_id {
-        return; // the host does not welcome themselves
+        return;
     }
     send_to(
-        socket,
+        channel,
         peer,
         &HostMessage::Welcome {
             your_peer_id: mb_to_wire(peer),
@@ -544,16 +554,17 @@ fn send_welcome(
 }
 
 fn send_error(
-    socket: &mut WebRtcSocket,
+    channel: &mut WebRtcChannel,
     peer: &MatchboxPeerId,
     code: RejectCode,
     message: &str,
 ) {
-    // The host's own errors surface through the event bus in `handle_intent`.
-    // No need to serialize them back to ourselves.
     send_to(
-        socket,
+        channel,
         peer,
-        &HostMessage::Error { code, message: message.into() },
+        &HostMessage::Error {
+            code,
+            message: message.into(),
+        },
     );
 }

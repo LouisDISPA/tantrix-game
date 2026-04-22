@@ -8,23 +8,21 @@ use tantrix_net::SessionRole;
 use crate::pages::online::driver::spawn_session;
 use crate::pages::online::game::OnlineGameView;
 use crate::pages::online::lobby::OnlineLobbyView;
+use crate::route::RoleParam;
 use crate::state::online_state::{OnlineCtx, OnlinePhase, OnlineState};
 
 #[component]
-pub fn OnlineRoom(code: String, nickname: String, role: String) -> Element {
-    let role_parsed = match role.as_str() {
-        "host" => SessionRole::Host,
-        _ => SessionRole::Client,
-    };
+pub fn OnlineRoom(code: String, nickname: String, role: RoleParam) -> Element {
+    let session_role = role.as_session_role();
 
-    let state = use_signal(|| OnlineState::new(code.clone(), role_parsed, nickname.clone()));
+    let state = use_signal(|| OnlineState::new(code.clone(), session_role, nickname.clone()));
     let sender = use_signal(|| None);
     let ctx = OnlineCtx { state, sender };
     use_context_provider(|| ctx);
 
     // Kick off the session exactly once per mount.
     use_hook(|| {
-        spawn_session(ctx, code.clone(), role_parsed, nickname.clone());
+        spawn_session(ctx, code.clone(), session_role, nickname.clone());
     });
 
     let phase = state.read().phase.clone();
@@ -41,8 +39,7 @@ pub fn OnlineRoom(code: String, nickname: String, role: String) -> Element {
 fn ConnectingView() -> Element {
     let ctx = use_context::<OnlineCtx>();
     let code = ctx.state.read().room_code.clone();
-    let role = ctx.state.read().role;
-    let label = match role {
+    let label = match ctx.state.read().role {
         SessionRole::Host => "Creating room…",
         SessionRole::Client => "Joining room…",
     };

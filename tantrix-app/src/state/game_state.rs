@@ -5,6 +5,7 @@ use tantrix_game::{
     Bag, Board, Color, EnumMap, Hand, Move, Player, PlayerScore, Position, Rotation, TurnTracker,
     TILES_IN_HAND,
 };
+use tantrix_proto::GameSnapshot;
 
 use super::config::GameConfig;
 use super::online_state::CommandSender;
@@ -77,6 +78,33 @@ impl GameState {
             hands,
             players,
             turn_tracker,
+            hand_info: Vec::new(),
+        };
+        state.refresh_hand_info();
+        state
+    }
+
+    /// Rebuild from an authoritative snapshot received over the wire. The
+    /// bag's contents are stubbed (only its count matters for the UI), and
+    /// each seated color is mapped to `Player::Someone`.
+    pub fn from_snapshot(snap: &GameSnapshot) -> Self {
+        let players: EnumMap<Color, Player> = EnumMap::from_fn(|c| {
+            if snap.seats[c].is_some() {
+                Player::Someone
+            } else {
+                Player::None
+            }
+        });
+
+        let mut state = GameState {
+            board: snap.board.clone(),
+            bag: Bag::with_count(snap.bag_count),
+            hands: snap.hands.clone(),
+            players,
+            turn_tracker: TurnTracker::from_parts(
+                snap.current_player,
+                snap.playing_colors.iter().copied(),
+            ),
             hand_info: Vec::new(),
         };
         state.refresh_hand_info();

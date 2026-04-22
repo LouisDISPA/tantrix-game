@@ -1,12 +1,16 @@
 //! Lobby: shows joined peers, lets each player claim a color, and lets the
 //! host start the game.
 
+use std::time::Duration;
+
 use dioxus::prelude::*;
 use tantrix_game::Color;
 use tantrix_net::SessionCommand;
 use tantrix_proto::LobbyState;
 
 use crate::state::online_state::{OnlineCtx, OnlinePhase};
+use crate::svg::paths::color_name as color_slug;
+use crate::util::sleep;
 
 const COLORS: [Color; 4] = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
 
@@ -109,7 +113,7 @@ fn ShareUrlChip(url: String, copied: Signal<bool>) -> Element {
                 let mut c = copied;
                 c.set(true);
                 spawn(async move {
-                    gloo_sleep(1500).await;
+                    sleep(Duration::from_millis(1500)).await;
                     c.set(false);
                 });
             },
@@ -141,10 +145,9 @@ fn PeerList(lobby: LobbyState) -> Element {
             for (nickname, color, is_host) in rows {
                 li { class: "lobby-peer-row",
                     span { class: "lobby-peer-dot",
-                        style: if let Some(c) = color {
-                            format!("background: var(--color-{});", color_slug(c))
-                        } else {
-                            String::from("background: var(--border-color);")
+                        style: match color {
+                            Some(c) => format!("background: var(--color-{});", color_slug(c)),
+                            None => "background: var(--border-color);".to_string(),
                         },
                     }
                     span { class: "lobby-peer-name", "{nickname}" }
@@ -194,7 +197,7 @@ fn ColorSeat(color: Color, lobby: LobbyState, my_color: Option<Color>) -> Elemen
                 }
             }
             div { class: "lobby-color-meta",
-                span { class: "lobby-color-label", "{color_name(color)}" }
+                span { class: "lobby-color-label", "{color}" }
                 if let Some(name) = seat.as_ref().map(|s| s.nickname.clone()) {
                     span { class: "lobby-color-player", "{name}" }
                 } else {
@@ -207,24 +210,6 @@ fn ColorSeat(color: Color, lobby: LobbyState, my_color: Option<Color>) -> Elemen
                 span { class: "lobby-color-tag dim", "Taken" }
             }
         }
-    }
-}
-
-fn color_name(c: Color) -> &'static str {
-    match c {
-        Color::Red => "Red",
-        Color::Blue => "Blue",
-        Color::Yellow => "Yellow",
-        Color::Green => "Green",
-    }
-}
-
-fn color_slug(c: Color) -> &'static str {
-    match c {
-        Color::Red => "red",
-        Color::Blue => "blue",
-        Color::Yellow => "yellow",
-        Color::Green => "green",
     }
 }
 
@@ -254,11 +239,4 @@ fn copy_to_clipboard(text: String) {
     }
     #[cfg(not(target_arch = "wasm32"))]
     let _ = text;
-}
-
-async fn gloo_sleep(ms: u32) {
-    #[cfg(feature = "web")]
-    gloo_timers::future::TimeoutFuture::new(ms).await;
-    #[cfg(not(feature = "web"))]
-    let _ = ms;
 }
