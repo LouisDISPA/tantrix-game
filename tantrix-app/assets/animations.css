@@ -127,3 +127,8 @@
     0%, 100% { transform: translateY(0)     rotate(0deg)   scale(1); }
     50%       { transform: translateY(-20px) rotate(2.5deg) scale(1.06); }
 }
+
+@keyframes hud-forced-ring {
+    0%, 100% { filter: drop-shadow(0 0 0px var(--color-red)); }
+    50%       { filter: drop-shadow(0 0 8px var(--color-red)); }
+}
