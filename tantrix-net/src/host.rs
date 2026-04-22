@@ -221,6 +221,7 @@ fn intent_from_command(cmd: SessionCommand) -> PeerMessage {
         SessionCommand::StartGame => PeerMessage::StartGame,
         SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
         SessionCommand::SkipTurn => PeerMessage::SkipTurn,
+        SessionCommand::UpdateNickname(n) => PeerMessage::UpdateNickname { nickname: n },
         SessionCommand::Leave => PeerMessage::RequestSnapshot, // never actually dispatched
     }
 }
@@ -428,6 +429,43 @@ fn handle_intent(
                 },
             );
             maybe_end_game(state, channel, events_tx);
+        }
+        PeerMessage::UpdateNickname { nickname } => {
+            let trimmed = nickname.trim();
+            if trimmed.is_empty() {
+                send_error(channel, &from, RejectCode::InvalidMove, "nickname cannot be empty");
+                return;
+            }
+            let new_nick = trimmed.to_string();
+            if let Some(info) = state.peers.get_mut(&from) {
+                info.nickname = new_nick.clone();
+            }
+            for slot in state.seats.values_mut() {
+                if let Some(seat) = slot {
+                    if seat.mb_id == from {
+                        seat.nickname = new_nick.clone();
+                    }
+                }
+            }
+            if state.game.is_some() {
+                let snap = state.snapshot().expect("game in progress");
+                publish_all(
+                    state,
+                    channel,
+                    events_tx,
+                    HostMessage::StateUpdate { snapshot: snap.clone(), last_move: None },
+                    SessionEvent::StateUpdate { snapshot: snap, last_move: None },
+                );
+            } else {
+                let lobby = state.lobby_state();
+                publish_all(
+                    state,
+                    channel,
+                    events_tx,
+                    HostMessage::LobbyUpdate { lobby: lobby.clone() },
+                    SessionEvent::Lobby(lobby),
+                );
+            }
         }
         PeerMessage::RequestSnapshot => {
             if let Some(snap) = state.snapshot() {

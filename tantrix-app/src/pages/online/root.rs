@@ -1,6 +1,9 @@
-//! `/online/:code/:role/:nickname` — root component that owns the session.
+//! `/online/:code/:role` — root component that owns the session.
 //!
 //! Renders the Lobby or the OnlineGame depending on the current phase.
+//! The player's nickname lives in component state (seeded from
+//! `nickname::load_or_generate`) — not the URL — and can be edited from
+//! the lobby via `SessionCommand::UpdateNickname`.
 
 use dioxus::prelude::*;
 use tantrix_net::SessionRole;
@@ -9,20 +12,23 @@ use crate::pages::online::driver::spawn_session;
 use crate::pages::online::game::OnlineGameView;
 use crate::pages::online::lobby::OnlineLobbyView;
 use crate::route::RoleParam;
+use crate::state::nickname;
 use crate::state::online_state::{OnlineCtx, OnlinePhase, OnlineState};
 
 #[component]
-pub fn OnlineRoom(code: String, nickname: String, role: RoleParam) -> Element {
+pub fn OnlineRoom(code: String, role: RoleParam) -> Element {
     let session_role = role.as_session_role();
+    let initial_nickname = nickname::load_or_generate();
+    nickname::persist(&initial_nickname);
 
-    let state = use_signal(|| OnlineState::new(code.clone(), session_role, nickname.clone()));
+    let state = use_signal(|| OnlineState::new(code.clone(), session_role, initial_nickname.clone()));
     let sender = use_signal(|| None);
     let ctx = OnlineCtx { state, sender };
     use_context_provider(|| ctx);
 
     // Kick off the session exactly once per mount.
     use_hook(|| {
-        spawn_session(ctx, code.clone(), session_role, nickname.clone());
+        spawn_session(ctx, code.clone(), session_role, initial_nickname.clone());
     });
 
     let phase = state.read().phase.clone();

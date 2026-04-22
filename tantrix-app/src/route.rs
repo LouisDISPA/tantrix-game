@@ -58,12 +58,8 @@ pub enum Route {
     LocalGame {},
     #[route("/online")]
     OnlineEntry {},
-    #[route("/online/:code/:role/:nickname")]
-    OnlineRoom {
-        code: String,
-        role: RoleParam,
-        nickname: String,
-    },
+    #[route("/online/:code/:role")]
+    OnlineRoom { code: String, role: RoleParam },
     #[route("/join/:code")]
     JoinRoom { code: String },
 }

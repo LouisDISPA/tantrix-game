@@ -114,6 +114,11 @@ pub enum PeerMessage {
     SkipTurn,
     /// Pull the latest snapshot (e.g. after reconnect).
     RequestSnapshot,
+    /// Change my display name. Host updates `peers` and any seat binding
+    /// and rebroadcasts the lobby so other clients see the new label.
+    UpdateNickname {
+        nickname: String,
+    },
 }
 
 /// The host's broadcast to one or all peers.

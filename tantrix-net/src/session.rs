@@ -22,6 +22,8 @@ pub enum SessionCommand {
     PlayMove(Move),
     /// Pass because there are no legal moves.
     SkipTurn,
+    /// Change the local player's display name.
+    UpdateNickname(String),
     /// Leave the room. After this the session task exits.
     Leave,
 }

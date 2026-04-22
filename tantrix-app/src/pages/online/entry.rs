@@ -1,15 +1,17 @@
 //! `/online` and `/join/:code` entry pages.
+//!
+//! Both are thin redirects: the nickname is generated automatically (see
+//! `state::nickname`) and editable once the lobby has loaded.
 
 use dioxus::prelude::*;
-use dioxus_router::Navigator;
 use tantrix_net::{generate_room_code, ROOM_CODE_LEN};
 
 use crate::route::{Route, RoleParam};
 
+/// `/online` landing page: host a fresh room or enter a code to join.
 #[component]
 pub fn OnlineEntry() -> Element {
     let nav = navigator();
-    let nickname = use_signal(default_nickname);
     let code_input = use_signal(String::new);
     let error = use_signal(|| Option::<String>::None);
 
@@ -22,20 +24,15 @@ pub fn OnlineEntry() -> Element {
                 }
 
                 div { class: "online-entry",
-                    label { class: "online-field",
-                        span { "Nickname" }
-                        input {
-                            r#type: "text",
-                            maxlength: "20",
-                            value: "{nickname}",
-                            oninput: move |e| { let mut n = nickname; n.set(e.value()); },
-                        }
-                    }
-
                     div { class: "online-actions",
                         button {
                             class: "title-btn title-btn-primary",
-                            onclick: move |_| navigate(nickname, error, nav, RoleParam::Host, None),
+                            onclick: move |_| {
+                                let _ = nav.push(Route::OnlineRoom {
+                                    code: generate_room_code(),
+                                    role: RoleParam::Host,
+                                });
+                            },
                             div { class: "title-btn-inner", "Host a new room" }
                         }
 
@@ -53,14 +50,14 @@ pub fn OnlineEntry() -> Element {
                                     },
                                     onkeydown: move |e| {
                                         if e.key() == Key::Enter {
-                                            navigate(nickname, error, nav, RoleParam::Client, Some(code_input.read().clone()));
+                                            try_join(code_input, error, nav);
                                         }
                                     },
                                 }
                             }
                             button {
                                 class: "title-btn title-btn-primary",
-                                onclick: move |_| navigate(nickname, error, nav, RoleParam::Client, Some(code_input.read().clone())),
+                                onclick: move |_| try_join(code_input, error, nav),
                                 div { class: "title-btn-inner", "Join room" }
                             }
                         }
@@ -81,19 +78,29 @@ pub fn OnlineEntry() -> Element {
     }
 }
 
-/// Deep-link `/join/ABCDEF` — collects nickname then redirects to the room.
+/// Deep-link `/join/ABCXYZ` — validates the code, then drops straight into
+/// the lobby with an auto-generated nickname.
 #[component]
 pub fn JoinRoom(code: String) -> Element {
     let nav = navigator();
-    let nickname = use_signal(default_nickname);
-    let error = use_signal(|| Option::<String>::None);
     let code_upper = code.trim().to_ascii_uppercase();
 
     let code_is_valid = code_upper.len() == ROOM_CODE_LEN
         && code_upper.bytes().all(|b| b.is_ascii_uppercase());
-    let join_code = code_upper.clone();
-    let code_for_enter = join_code.clone();
-    let code_for_click = join_code.clone();
+
+    // Auto-redirect into the room on first mount if the code looks sane.
+    use_hook({
+        let code = code_upper.clone();
+        let valid = code_is_valid;
+        move || {
+            if valid {
+                let _ = nav.push(Route::OnlineRoom {
+                    code,
+                    role: RoleParam::Client,
+                });
+            }
+        }
+    });
 
     rsx! {
         div { class: "title-screen",
@@ -104,39 +111,15 @@ pub fn JoinRoom(code: String) -> Element {
                 }
 
                 div { class: "online-entry",
-                    if !code_is_valid {
-                        p { class: "online-error", "This link doesn't look like a valid room code." }
+                    if code_is_valid {
+                        p { class: "lobby-waiting", "Connecting…" }
                     } else {
-                        label { class: "online-field",
-                            span { "Nickname" }
-                            input {
-                                r#type: "text",
-                                maxlength: "20",
-                                value: "{nickname}",
-                                autofocus: true,
-                                oninput: move |e| { let mut n = nickname; n.set(e.value()); },
-                                onkeydown: move |e| {
-                                    if e.key() == Key::Enter {
-                                        navigate(nickname, error, nav, RoleParam::Client, Some(code_for_enter.clone()));
-                                    }
-                                },
-                            }
-                        }
+                        p { class: "online-error", "This link doesn't look like a valid room code." }
                         button {
                             class: "title-btn title-btn-primary",
-                            onclick: move |_| navigate(nickname, error, nav, RoleParam::Client, Some(code_for_click.clone())),
-                            div { class: "title-btn-inner", "Join" }
+                            onclick: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
+                            div { class: "title-btn-inner", "Back to online menu" }
                         }
-                    }
-
-                    if let Some(err) = error.read().clone() {
-                        p { class: "online-error", "{err}" }
-                    }
-
-                    button {
-                        class: "title-btn-link",
-                        onclick: move |_| { let _ = nav.push(Route::MainMenu {}); },
-                        "← Back to menu"
                     }
                 }
             }
@@ -144,40 +127,18 @@ pub fn JoinRoom(code: String) -> Element {
     }
 }
 
-/// Single entry point for both Host and Join flows. `code` is `Some` when
-/// joining (must be 6 chars); `None` when hosting (a fresh code is generated).
-fn navigate(
-    nickname: Signal<String>,
+fn try_join(
+    code_input: Signal<String>,
     mut error: Signal<Option<String>>,
-    nav: Navigator,
-    role: RoleParam,
-    code: Option<String>,
+    nav: dioxus_router::Navigator,
 ) {
-    let nick = nickname.read().trim().to_string();
-    if nick.is_empty() {
-        error.set(Some("Enter a nickname first.".into()));
+    let code = code_input.read().trim().to_ascii_uppercase();
+    if code.len() != ROOM_CODE_LEN {
+        error.set(Some("Room codes are 6 characters.".into()));
         return;
     }
-
-    let code = match code {
-        Some(raw) => {
-            let upper = raw.trim().to_ascii_uppercase();
-            if upper.len() != ROOM_CODE_LEN {
-                error.set(Some("Room codes are 6 characters.".into()));
-                return;
-            }
-            upper
-        }
-        None => generate_room_code(),
-    };
-
     let _ = nav.push(Route::OnlineRoom {
         code,
-        nickname: nick,
-        role,
+        role: RoleParam::Client,
     });
-}
-
-fn default_nickname() -> String {
-    "Player".to_string()
 }

@@ -15,7 +15,7 @@ gloo-timers = { version = "0.3", features = ["futures"], optional = true }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 futures = "0.3"
 futures-channel = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Location", "Navigator", "Clipboard"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Navigator", "Clipboard", "Storage"] }
 wasm-bindgen-futures = "0.4"
 
 [features]

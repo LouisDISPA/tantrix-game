@@ -246,20 +246,30 @@
     drop-shadow(0 0 12px var(--glow-yellow));
 }
 
-/* Disabled buttons */
-.title-btn-disabled {
+/* Disabled buttons — covers both the legacy `.title-btn-disabled` class
+   used by fixed-content buttons and the native `[disabled]` attribute
+   used by dynamic buttons like the lobby's Start button. */
+.title-btn-disabled,
+.title-btn-primary[disabled],
+.title-btn-primary:disabled {
   background: var(--btn-disabled-bg);
   color: var(--btn-disabled-text);
   cursor: not-allowed;
   box-shadow: none;
+  opacity: 0.75;
 }
 
-.title-btn-disabled:hover {
+.title-btn-disabled:hover,
+.title-btn-primary[disabled]:hover,
+.title-btn-primary:disabled:hover {
   box-shadow: none;
   filter: none;
+  transform: none;
 }
 
-.title-btn-disabled:active {
+.title-btn-disabled:active,
+.title-btn-primary[disabled]:active,
+.title-btn-primary:disabled:active {
   transform: none;
   box-shadow: none;
 }
@@ -791,8 +801,47 @@
   border: 1px dashed var(--border-color);
 }
 
+/* ---------- Nickname editor ---------- */
+
+.lobby-nickname-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: inherit;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lobby-nickname-input:focus {
+  outline: none;
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 3px var(--border-subtle);
+}
+
 /* ---------- Color selection ---------- */
 
+.lobby-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lobby-color-row > .lobby-color-chip {
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+
+@media (max-width: 520px) {
+  .lobby-color-row > .lobby-color-chip {
+    flex: 1 1 100%;
+  }
+}
+
+/* Back-compat: the original grid class for anything still referencing it. */
 .lobby-color-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

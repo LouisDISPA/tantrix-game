@@ -134,6 +134,7 @@ fn intent_from_command(cmd: SessionCommand) -> PeerMessage {
         SessionCommand::StartGame => PeerMessage::StartGame,
         SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
         SessionCommand::SkipTurn => PeerMessage::SkipTurn,
+        SessionCommand::UpdateNickname(n) => PeerMessage::UpdateNickname { nickname: n },
         SessionCommand::Leave => PeerMessage::RequestSnapshot, // never dispatched
     }
 }
