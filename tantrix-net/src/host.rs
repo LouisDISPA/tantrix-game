@@ -1,6 +1,12 @@
 //! Host-side session: owns the authoritative `Game` and the lobby.
+//!
+//! Peers are tracked by a stable [`SessionToken`] (a client-generated UUID
+//! persisted in `localStorage`), *not* by the ephemeral matchbox `PeerId`.
+//! This lets a peer reload the page, get a fresh matchbox id, and have the
+//! host rebind them to their seat — or, if the game is already running and
+//! they're new, drop them in as a spectator.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 
 use enum_map::EnumMap;
@@ -11,9 +17,10 @@ use log::{debug, warn};
 use matchbox_socket::{PeerId as MatchboxPeerId, PeerState, WebRtcChannel};
 use tantrix_game::{Color, Game, Hand, Player};
 use tantrix_proto::{
-    EndReason, GameSnapshot, HostMessage, LobbyState, PeerId, PeerMessage, RejectCode, Seat,
-    decode, encode, PROTO_VERSION,
+    EndReason, GameSnapshot, HostMessage, LobbyState, Participant, ParticipantRole, PeerId,
+    PeerMessage, PROTO_VERSION, RejectCode, Seat, SessionToken, decode, encode,
 };
+use uuid::Uuid;
 
 use crate::session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
 use crate::socket::{open as open_socket, wait_for_peer_id};
@@ -36,71 +43,121 @@ pub fn open_host_session(
     )
 }
 
-#[derive(Clone)]
-struct PeerInfo {
+/// Authoritative entry per session token. Survives disconnect; only purged
+/// when the game ends or the host tears down.
+#[derive(Clone, Debug)]
+struct ParticipantRecord {
     nickname: String,
+    role: ParticipantRole,
+    /// Live matchbox id for this participant, or `None` if currently
+    /// disconnected. Seat (token-keyed) is preserved regardless.
+    current_peer: Option<MatchboxPeerId>,
+    kicked: bool,
 }
 
 struct HostState {
     my_mb_id: MatchboxPeerId,
-    /// All peers (including the host) known by their matchbox id.
-    peers: HashMap<MatchboxPeerId, PeerInfo>,
+    my_token: SessionToken,
+    /// Authoritative roster keyed by stable token.
+    participants: HashMap<SessionToken, ParticipantRecord>,
+    /// Live-peer reverse lookup. An entry is removed when the peer
+    /// disconnects — the `ParticipantRecord` itself stays put.
+    peer_to_token: HashMap<MatchboxPeerId, SessionToken>,
+    /// Matchbox ids we've kicked — drop any subsequent packets from them.
+    kicked_peers: HashSet<MatchboxPeerId>,
     game: Option<Game>,
-    seats: EnumMap<Color, Option<SeatBinding>>,
+    seats: EnumMap<Color, Option<SessionToken>>,
+    /// `true` after `StartGame`. New joiners from that point become
+    /// spectators; seat changes are rejected.
+    locked_for_game: bool,
     ended: bool,
-}
-
-#[derive(Clone)]
-struct SeatBinding {
-    mb_id: MatchboxPeerId,
-    nickname: String,
-}
-
-impl SeatBinding {
-    fn to_wire(&self) -> Seat {
-        Seat {
-            peer_id: mb_to_wire(&self.mb_id),
-            nickname: self.nickname.clone(),
-        }
-    }
 }
 
 impl HostState {
     fn new(my_mb_id: MatchboxPeerId, nickname: String) -> Self {
-        let mut peers = HashMap::new();
-        peers.insert(my_mb_id, PeerInfo { nickname });
+        let my_token = SessionToken(Uuid::new_v4().to_string());
+        debug!("host: my token = {}", my_token.as_str());
+        let mut participants = HashMap::new();
+        participants.insert(
+            my_token.clone(),
+            ParticipantRecord {
+                nickname,
+                role: ParticipantRole::Host,
+                current_peer: Some(my_mb_id),
+                kicked: false,
+            },
+        );
+        let mut peer_to_token = HashMap::new();
+        peer_to_token.insert(my_mb_id, my_token.clone());
         Self {
             my_mb_id,
-            peers,
+            my_token,
+            participants,
+            peer_to_token,
+            kicked_peers: HashSet::new(),
             game: None,
             seats: EnumMap::default(),
+            locked_for_game: false,
             ended: false,
         }
     }
 
+    /// The matchbox id that currently owns `token`, if any.
+    fn peer_for_token(&self, token: &SessionToken) -> Option<MatchboxPeerId> {
+        self.participants
+            .get(token)
+            .and_then(|r| r.current_peer)
+    }
+
+    fn token_for_peer(&self, peer: &MatchboxPeerId) -> Option<&SessionToken> {
+        self.peer_to_token.get(peer)
+    }
+
     fn wire_seats(&self) -> EnumMap<Color, Option<Seat>> {
-        EnumMap::from_fn(|c| self.seats[c].as_ref().map(|s| s.to_wire()))
+        EnumMap::from_fn(|c| {
+            self.seats[c].as_ref().and_then(|tok| {
+                self.participants.get(tok).map(|r| Seat {
+                    peer_id: token_to_wire(tok),
+                    nickname: r.nickname.clone(),
+                })
+            })
+        })
+    }
+
+    /// Build the on-the-wire `Participant` list — everyone currently in the
+    /// roster except kicked entries. `seated_color` is resolved from the
+    /// authoritative `seats` map so the UI dot always agrees with whoever
+    /// actually holds the seat, regardless of the participant's `role`.
+    fn wire_participants(&self) -> Vec<Participant> {
+        self.participants
+            .iter()
+            .filter(|(_, r)| !r.kicked)
+            .map(|(tok, r)| Participant {
+                peer_id: token_to_wire(tok),
+                token: tok.clone(),
+                nickname: r.nickname.clone(),
+                role: r.role.clone(),
+                seated_color: self.seated_color_for_token(tok),
+                connected: r.current_peer.is_some(),
+            })
+            .collect()
     }
 
     fn lobby_state(&self) -> LobbyState {
-        let unseated: Vec<Seat> = self
-            .peers
+        let participants = self.wire_participants();
+        let unseated: Vec<Seat> = participants
             .iter()
-            .filter(|(mb, _)| {
-                self.seats
-                    .values()
-                    .all(|s| s.as_ref().is_none_or(|seat| seat.mb_id != **mb))
-            })
-            .map(|(mb, info)| Seat {
-                peer_id: mb_to_wire(mb),
-                nickname: info.nickname.clone(),
+            .filter(|p| matches!(p.role, ParticipantRole::Unseated))
+            .map(|p| Seat {
+                peer_id: p.peer_id.clone(),
+                nickname: p.nickname.clone(),
             })
             .collect();
-
         LobbyState {
-            host: mb_to_wire(&self.my_mb_id),
+            host: token_to_wire(&self.my_token),
             seats: self.wire_seats(),
             unseated,
+            participants,
         }
     }
 
@@ -118,23 +175,34 @@ impl HostState {
             current_player: game.currently_playing(),
             playing_colors,
             seats: self.wire_seats(),
+            participants: self.wire_participants(),
         })
     }
 
-    fn seated_color(&self, peer: &MatchboxPeerId) -> Option<Color> {
+    fn seated_color_for_token(&self, token: &SessionToken) -> Option<Color> {
         for (color, slot) in self.seats.iter() {
-            if let Some(seat) = slot {
-                if &seat.mb_id == peer {
-                    return Some(color);
-                }
+            if slot.as_ref() == Some(token) {
+                return Some(color);
             }
         }
         None
     }
+
+    fn find_token_by_peer_id_str(&self, peer_id: &PeerId) -> Option<SessionToken> {
+        // `peer_id` on the wire carries the token string.
+        let tok = SessionToken::new(peer_id.as_str());
+        if self.participants.contains_key(&tok) {
+            Some(tok)
+        } else {
+            None
+        }
+    }
 }
 
-fn mb_to_wire(id: &MatchboxPeerId) -> PeerId {
-    PeerId(id.to_string())
+/// Wire `PeerId` used for an in-room member is the stringified session
+/// token, so UI references ("kick this peer") survive a reconnect.
+fn token_to_wire(token: &SessionToken) -> PeerId {
+    PeerId(token.as_str().to_string())
 }
 
 async fn run_host(
@@ -156,8 +224,8 @@ async fn run_host(
         return;
     };
 
-    let my_wire_id = mb_to_wire(&my_mb_id);
     let mut state = HostState::new(my_mb_id, nickname);
+    let my_wire_id = token_to_wire(&state.my_token);
 
     let _ = events_tx.unbounded_send(SessionEvent::Connected {
         role: SessionRole::Host,
@@ -166,8 +234,6 @@ async fn run_host(
     });
     let _ = events_tx.unbounded_send(SessionEvent::Lobby(state.lobby_state()));
 
-    // Main loop — event-driven, no polling. Each select arm reacts to the
-    // single event source that actually changed.
     while !state.ended {
         select! {
             cmd = commands_rx.next() => match cmd {
@@ -180,6 +246,9 @@ async fn run_host(
             },
             packet = channel.next().fuse() => match packet {
                 Some((peer, bytes)) => {
+                    if state.kicked_peers.contains(&peer) {
+                        continue;
+                    }
                     let msg: PeerMessage = match decode(&bytes) {
                         Ok(m) => m,
                         Err(e) => {
@@ -222,6 +291,7 @@ fn intent_from_command(cmd: SessionCommand) -> PeerMessage {
         SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
         SessionCommand::SkipTurn => PeerMessage::SkipTurn,
         SessionCommand::UpdateNickname(n) => PeerMessage::UpdateNickname { nickname: n },
+        SessionCommand::Kick(t) => PeerMessage::Kick { target: t },
         SessionCommand::Leave => PeerMessage::RequestSnapshot, // never actually dispatched
     }
 }
@@ -232,46 +302,54 @@ fn handle_peer_disconnect(
     events_tx: &UnboundedSender<SessionEvent>,
     channel: &mut WebRtcChannel,
 ) {
-    state.peers.remove(peer);
-    let seated = state.seated_color(peer);
-    for slot in state.seats.values_mut() {
-        if let Some(seat) = slot {
-            if &seat.mb_id == peer {
-                *slot = None;
-            }
-        }
+    // Translate peer → token, then mark the record disconnected but keep it.
+    let Some(token) = state.peer_to_token.remove(peer) else {
+        return;
+    };
+    state.kicked_peers.remove(peer);
+    if let Some(record) = state.participants.get_mut(&token) {
+        record.current_peer = None;
     }
 
+    // Broadcast updated roster so everyone sees the connection dot flip.
+    broadcast_roster_change(state, channel, events_tx);
+}
+
+/// After a roster-affecting change (join, leave, kick, nickname update),
+/// push a `LobbyUpdate` if we're still in the lobby or a `StateUpdate`
+/// with `last_move: None` if a game is running.
+fn broadcast_roster_change(
+    state: &HostState,
+    channel: &mut WebRtcChannel,
+    events_tx: &UnboundedSender<SessionEvent>,
+) {
     if state.game.is_some() {
-        if let Some(color) = seated {
-            let snap = state.snapshot().expect("game in progress");
-            let reason = EndReason::PlayerDisconnected { color };
-            publish_all(
-                state,
-                channel,
-                events_tx,
-                HostMessage::GameEnded {
-                    reason: reason.clone(),
-                    snapshot: snap.clone(),
-                },
-                SessionEvent::GameEnded {
-                    reason,
-                    snapshot: snap,
-                },
-            );
-            state.ended = true;
+        let Some(snap) = state.snapshot() else {
             return;
-        }
+        };
+        publish_all(
+            state,
+            channel,
+            events_tx,
+            HostMessage::StateUpdate {
+                snapshot: snap.clone(),
+                last_move: None,
+            },
+            SessionEvent::StateUpdate {
+                snapshot: snap,
+                last_move: None,
+            },
+        );
+    } else {
+        let lobby = state.lobby_state();
+        publish_all(
+            state,
+            channel,
+            events_tx,
+            HostMessage::LobbyUpdate { lobby: lobby.clone() },
+            SessionEvent::Lobby(lobby),
+        );
     }
-
-    let lobby = state.lobby_state();
-    publish_all(
-        state,
-        channel,
-        events_tx,
-        HostMessage::LobbyUpdate { lobby: lobby.clone() },
-        SessionEvent::Lobby(lobby),
-    );
 }
 
 fn handle_intent(
@@ -285,40 +363,36 @@ fn handle_intent(
         PeerMessage::Hello {
             nickname,
             proto_version,
+            session_token,
         } => {
-            if proto_version != PROTO_VERSION {
-                send_welcome(channel, state, &from, Some(RejectCode::IncompatibleVersion));
-                return;
-            }
-            if state.game.is_some() {
-                send_welcome(channel, state, &from, Some(RejectCode::GameInProgress));
-                return;
-            }
-            if state.peers.len() >= 4 {
-                send_welcome(channel, state, &from, Some(RejectCode::LobbyFull));
-                return;
-            }
-            state.peers.insert(from, PeerInfo { nickname });
-            send_welcome(channel, state, &from, None);
-            let lobby = state.lobby_state();
-            publish_all(
+            handle_hello(
                 state,
-                channel,
+                from,
+                nickname,
+                proto_version,
+                session_token,
                 events_tx,
-                HostMessage::LobbyUpdate { lobby: lobby.clone() },
-                SessionEvent::Lobby(lobby),
+                channel,
             );
         }
         PeerMessage::PickColor { color } => {
-            if state.game.is_some() {
+            if state.locked_for_game {
                 send_error(channel, &from, RejectCode::GameInProgress, "game already started");
                 return;
             }
+            let Some(token) = state.token_for_peer(&from).cloned() else {
+                return;
+            };
+            // Release any seat they currently hold.
             for slot in state.seats.values_mut() {
-                if let Some(seat) = slot {
-                    if seat.mb_id == from {
-                        *slot = None;
-                    }
+                if slot.as_ref() == Some(&token) {
+                    *slot = None;
+                }
+            }
+            // Reset role to Unseated; re-seat below if a color is chosen.
+            if let Some(r) = state.participants.get_mut(&token) {
+                if !matches!(r.role, ParticipantRole::Host) {
+                    r.role = ParticipantRole::Unseated;
                 }
             }
             if let Some(c) = color {
@@ -326,21 +400,14 @@ fn handle_intent(
                     send_error(channel, &from, RejectCode::ColorTaken, "color already taken");
                     return;
                 }
-                let nickname = state
-                    .peers
-                    .get(&from)
-                    .map(|p| p.nickname.clone())
-                    .unwrap_or_else(|| "Player".into());
-                state.seats[c] = Some(SeatBinding { mb_id: from, nickname });
+                state.seats[c] = Some(token.clone());
+                if let Some(r) = state.participants.get_mut(&token) {
+                    if !matches!(r.role, ParticipantRole::Host) {
+                        r.role = ParticipantRole::Seated(c);
+                    }
+                }
             }
-            let lobby = state.lobby_state();
-            publish_all(
-                state,
-                channel,
-                events_tx,
-                HostMessage::LobbyUpdate { lobby: lobby.clone() },
-                SessionEvent::Lobby(lobby),
-            );
+            broadcast_roster_change(state, channel, events_tx);
         }
         PeerMessage::StartGame => {
             if from != state.my_mb_id {
@@ -374,6 +441,13 @@ fn handle_intent(
                 player_for(Color::Green),
             );
             state.game = Some(game);
+            state.locked_for_game = true;
+            // Everyone still listed as Unseated becomes a Spectator.
+            for record in state.participants.values_mut() {
+                if matches!(record.role, ParticipantRole::Unseated) {
+                    record.role = ParticipantRole::Spectator;
+                }
+            }
             let snap = state.snapshot().unwrap();
             publish_all(
                 state,
@@ -437,35 +511,16 @@ fn handle_intent(
                 return;
             }
             let new_nick = trimmed.to_string();
-            if let Some(info) = state.peers.get_mut(&from) {
-                info.nickname = new_nick.clone();
+            let Some(token) = state.token_for_peer(&from).cloned() else {
+                return;
+            };
+            if let Some(r) = state.participants.get_mut(&token) {
+                r.nickname = new_nick;
             }
-            for slot in state.seats.values_mut() {
-                if let Some(seat) = slot {
-                    if seat.mb_id == from {
-                        seat.nickname = new_nick.clone();
-                    }
-                }
-            }
-            if state.game.is_some() {
-                let snap = state.snapshot().expect("game in progress");
-                publish_all(
-                    state,
-                    channel,
-                    events_tx,
-                    HostMessage::StateUpdate { snapshot: snap.clone(), last_move: None },
-                    SessionEvent::StateUpdate { snapshot: snap, last_move: None },
-                );
-            } else {
-                let lobby = state.lobby_state();
-                publish_all(
-                    state,
-                    channel,
-                    events_tx,
-                    HostMessage::LobbyUpdate { lobby: lobby.clone() },
-                    SessionEvent::Lobby(lobby),
-                );
-            }
+            broadcast_roster_change(state, channel, events_tx);
+        }
+        PeerMessage::Kick { target } => {
+            handle_kick(state, from, target, events_tx, channel);
         }
         PeerMessage::RequestSnapshot => {
             if let Some(snap) = state.snapshot() {
@@ -490,34 +545,199 @@ fn handle_intent(
     }
 }
 
+fn handle_hello(
+    state: &mut HostState,
+    from: MatchboxPeerId,
+    nickname: String,
+    proto_version: u32,
+    session_token: SessionToken,
+    events_tx: &UnboundedSender<SessionEvent>,
+    channel: &mut WebRtcChannel,
+) {
+    if proto_version != PROTO_VERSION {
+        send_welcome(channel, state, &from, Some(RejectCode::IncompatibleVersion));
+        return;
+    }
+    debug!(
+        "host: Hello from mb={} token={} nick={}",
+        from,
+        session_token.as_str(),
+        nickname
+    );
+
+    // Existing participant under this token?
+    if let Some(record) = state.participants.get(&session_token).cloned() {
+        if record.kicked {
+            send_welcome(channel, state, &from, Some(RejectCode::Kicked));
+            return;
+        }
+        // Rebind: same token, new matchbox peer.
+        // If a previous peer still held this token, forget the old mapping.
+        if let Some(old_peer) = record.current_peer {
+            state.peer_to_token.remove(&old_peer);
+        }
+        {
+            let r = state.participants.get_mut(&session_token).unwrap();
+            r.current_peer = Some(from);
+            // Keep the nickname the host already has on file. Reloads
+            // regenerate a random Hello nickname; rebinding to that would
+            // rename the returning player every reconnect. The player can
+            // still change it via `UpdateNickname` after rejoining.
+            let _ = nickname;
+        }
+        state.peer_to_token.insert(from, session_token.clone());
+
+        send_welcome(channel, state, &from, None);
+        // Replay current game state so the returning client can resume.
+        if let Some(snap) = state.snapshot() {
+            send_to(
+                channel,
+                &from,
+                &HostMessage::GameStarted { snapshot: snap },
+            );
+        }
+        broadcast_roster_change(state, channel, events_tx);
+        return;
+    }
+
+    // New participant.
+    let trimmed = nickname.trim();
+    let nick = if trimmed.is_empty() {
+        "Player".to_string()
+    } else {
+        trimmed.to_string()
+    };
+    let role = if state.locked_for_game {
+        ParticipantRole::Spectator
+    } else {
+        ParticipantRole::Unseated
+    };
+    state.participants.insert(
+        session_token.clone(),
+        ParticipantRecord {
+            nickname: nick,
+            role,
+            current_peer: Some(from),
+            kicked: false,
+        },
+    );
+    state.peer_to_token.insert(from, session_token);
+
+    send_welcome(channel, state, &from, None);
+    if let Some(snap) = state.snapshot() {
+        send_to(
+            channel,
+            &from,
+            &HostMessage::GameStarted { snapshot: snap },
+        );
+    }
+    broadcast_roster_change(state, channel, events_tx);
+}
+
+fn handle_kick(
+    state: &mut HostState,
+    from: MatchboxPeerId,
+    target: PeerId,
+    events_tx: &UnboundedSender<SessionEvent>,
+    channel: &mut WebRtcChannel,
+) {
+    if from != state.my_mb_id {
+        send_error(channel, &from, RejectCode::InvalidMove, "only the host can kick");
+        return;
+    }
+    let Some(token) = state.find_token_by_peer_id_str(&target) else {
+        return;
+    };
+    if token == state.my_token {
+        // Can't kick self.
+        return;
+    }
+    // Capture the target's live peer (if any) before we clear the record.
+    let target_peer = state.peer_for_token(&token);
+
+    // If they were seated in a running game, retire their color cleanly.
+    let seated_color = state.seated_color_for_token(&token);
+    if let Some(color) = seated_color {
+        state.seats[color] = None;
+        if let Some(game) = state.game.as_mut() {
+            let _ = game.retire_color(color);
+        }
+    }
+
+    if let Some(record) = state.participants.get_mut(&token) {
+        record.kicked = true;
+        record.role = ParticipantRole::Spectator;
+        record.current_peer = None;
+    }
+    if let Some(peer) = target_peer {
+        state.peer_to_token.remove(&peer);
+        state.kicked_peers.insert(peer);
+    }
+
+    // Tell everyone — including the kicked peer — so the UI flips.
+    let wire = HostMessage::Kicked {
+        target: target.clone(),
+        reason: "Removed by host".into(),
+    };
+    let bytes = encode(&wire);
+    for peer in state.peer_to_token.keys().copied() {
+        if peer != state.my_mb_id {
+            let _ = channel.try_send(bytes.clone().into_boxed_slice(), peer);
+        }
+    }
+    if let Some(peer) = target_peer {
+        let _ = channel.try_send(bytes.clone().into_boxed_slice(), peer);
+    }
+
+    // After a kick, drop the participant record entirely so the roster
+    // reflects reality (we already notified them directly).
+    state.participants.remove(&token);
+
+    // Retiring a seat can end the game (one player left) or just reduce
+    // the turn cycle. Check before broadcasting so the roster update
+    // shipped to clients already reflects the new playing_colors.
+    if maybe_end_game(state, channel, events_tx) {
+        return;
+    }
+    broadcast_roster_change(state, channel, events_tx);
+}
+
 fn ensure_turn(state: &HostState, from: &MatchboxPeerId, channel: &mut WebRtcChannel) -> bool {
     let Some(game) = state.game.as_ref() else {
         send_error(channel, from, RejectCode::InvalidMove, "game not started");
         return false;
     };
     let current = game.currently_playing();
-    let Some(seat) = state.seats[current].as_ref() else {
+    let Some(seat_token) = state.seats[current].as_ref() else {
         send_error(channel, from, RejectCode::InvalidMove, "seat is empty");
         return false;
     };
-    if &seat.mb_id != from {
+    let from_token = state.token_for_peer(from);
+    if from_token != Some(seat_token) {
         send_error(channel, from, RejectCode::NotYourTurn, "not your turn");
         return false;
     }
     true
 }
 
+/// If the game is over (by completion or because only one player remains
+/// after retirement), broadcast the ending and return `true`.
 fn maybe_end_game(
     state: &mut HostState,
     channel: &mut WebRtcChannel,
     events_tx: &UnboundedSender<SessionEvent>,
-) {
+) -> bool {
     let Some(game) = state.game.as_ref() else {
-        return;
+        return false;
     };
-    if !game.is_game_over() {
-        return;
+    let playing = game.playing_colors();
+    let natural_end = game.is_game_over();
+    let only_one_left = playing.len() <= 1;
+
+    if !natural_end && !only_one_left {
+        return false;
     }
+
     let scores = game.scores();
     let active: Vec<Color> = state
         .seats
@@ -546,6 +766,7 @@ fn maybe_end_game(
         },
     );
     state.ended = true;
+    true
 }
 
 /// Broadcast a host message to every remote peer, and emit the corresponding
@@ -559,8 +780,10 @@ fn publish_all(
     local: SessionEvent,
 ) {
     let bytes = encode(&wire);
-    for peer in state.peers.keys().copied().filter(|p| *p != state.my_mb_id) {
-        let _ = channel.try_send(bytes.clone().into_boxed_slice(), peer);
+    for peer in state.peer_to_token.keys().copied() {
+        if peer != state.my_mb_id {
+            let _ = channel.try_send(bytes.clone().into_boxed_slice(), peer);
+        }
     }
     let _ = events_tx.unbounded_send(local);
 }
@@ -579,12 +802,18 @@ fn send_welcome(
     if peer == &state.my_mb_id {
         return;
     }
+    // `your_peer_id` uses the token-as-PeerId mapping so the client
+    // stores a stable identifier that matches what the host broadcasts.
+    let your_id = state
+        .token_for_peer(peer)
+        .map(token_to_wire)
+        .unwrap_or_else(|| PeerId(peer.to_string()));
     send_to(
         channel,
         peer,
         &HostMessage::Welcome {
-            your_peer_id: mb_to_wire(peer),
-            host_peer_id: mb_to_wire(&state.my_mb_id),
+            your_peer_id: your_id,
+            host_peer_id: token_to_wire(&state.my_token),
             lobby: state.lobby_state(),
             rejected,
         },

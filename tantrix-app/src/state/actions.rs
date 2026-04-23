@@ -2,15 +2,20 @@
 //!
 //! Functions here take a `GameCtx` (one `Copy` struct) and drive the state
 //! machine: select a tile, click a position, pick a rotation, play a move,
-//! then advance the turn. If the next player is an AI, `advance_turn` spawns
-//! [`run_ai_loop`] to take care of their move.
+//! then advance the turn.
+//!
+//! Turn-advance does *not* spawn the AI loop itself. Spawning from a leaf
+//! component's click handler ties the task to whichever component was
+//! firing (e.g. a `HandTile` that may unmount when the hand shrinks),
+//! which would cancel the AI task mid-move. Instead, `advance_turn` just
+//! flips the phase to `WaitingForAi`; the `LocalGame` page owns a
+//! `use_effect` that reacts to that phase and spawns the AI loop in its
+//! own stable scope.
 
-use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 use tantrix_game::{Move, Player, Position, Rotation};
 use tantrix_net::SessionCommand;
 
-use crate::state::ai_service::run_ai_loop;
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
@@ -38,6 +43,14 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
     // Online play: forward the intent and let the host's StateUpdate drive
     // the next render. The local GameState stays untouched until then.
     if let Some(sender) = ctx.online.read().as_ref().cloned() {
+        // Only the peer who owns the current seat may dispatch a move.
+        // Spectators (and non-current seats) can hover to preview but
+        // their click handlers are gated upstream — this is the
+        // belt-and-suspenders check.
+        if *ctx.my_color.read() != Some(player_color) {
+            ui_state.write().reset_selection();
+            return;
+        }
         sender.send(SessionCommand::PlayMove(m));
         ui_state.write().reset_selection();
         return;
@@ -115,12 +128,9 @@ pub fn advance_turn(ctx: GameCtx) {
     };
 
     if needs_ai {
+        // Signal the AI's turn. `LocalGame`'s `use_effect` owns the spawn
+        // so the task lives in the page scope, not this onclick's leaf.
         ui_state.phase().set(TurnPhase::WaitingForAi);
-
-        spawn_forever(async move {
-            run_ai_loop(ctx).await;
-            settle_turn(ctx);
-        });
     } else {
         settle_turn(ctx);
     }
@@ -128,7 +138,7 @@ pub fn advance_turn(ctx: GameCtx) {
 
 /// After control returns to a human (or the game ends), skip past any stuck
 /// players, adjust the phase + message, and clear stale selections.
-fn settle_turn(ctx: GameCtx) {
+pub fn settle_turn(ctx: GameCtx) {
     let mut game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 

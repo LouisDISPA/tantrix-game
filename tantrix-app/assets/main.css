@@ -49,6 +49,15 @@ html, body {
     --glow-green:  color-mix(in oklch, var(--color-green)  calc(var(--glow-alpha) * 100%), transparent);
 }
 
+/* Per-color utility classes. Tag any element with `.color-<slug>` to set
+   the scoped color-driven custom properties (--player-color, --seat-color,
+   --turn-color) that descendants read. Lets components encode their player
+   color via a class instead of an inline `style`. */
+.color-red    { --player-color: var(--color-red);    --seat-color: var(--color-red);    --turn-color: var(--color-red); }
+.color-blue   { --player-color: var(--color-blue);   --seat-color: var(--color-blue);   --turn-color: var(--color-blue); }
+.color-yellow { --player-color: var(--color-yellow); --seat-color: var(--color-yellow); --turn-color: var(--color-yellow); }
+.color-green  { --player-color: var(--color-green);  --seat-color: var(--color-green);  --turn-color: var(--color-green); }
+
 /* ===== Theme Variables ===== */
 
 [data-theme="light"] {

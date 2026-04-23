@@ -8,19 +8,35 @@ tantrix-game = { path = "../tantrix-game" }
 tantrix-ai = { path = "../tantrix-ai" }
 tantrix-proto = { path = "../tantrix-proto" }
 tantrix-net = { path = "../tantrix-net" }
-dioxus = { version = "0.7", features = ["router"] }
+dioxus = { version = "0.7", features = ["router", "fullstack"] }
 rand = "0.10"
 tokio = { version = "1", default-features = false, features = ["time"], optional = true }
 gloo-timers = { version = "0.3", features = ["futures"], optional = true }
 getrandom = { version = "0.4", features = ["wasm_js"] }
 futures = "0.3"
 futures-channel = "0.3"
+log = "0.4"
 web-sys = { version = "0.3", features = ["Window", "Location", "Navigator", "Clipboard", "Storage"] }
 wasm-bindgen-futures = "0.4"
+
+# Server-only: Axum + embedded matchbox signaling server. Pulled in by the
+# `server` feature so wasm builds don't compile them.
+axum = { version = "0.8", optional = true }
+matchbox_signaling = { version = "0.14", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 [features]
 default = ["web"]
 web = ["dioxus/web", "dep:gloo-timers"]
+server = [
+    "dioxus/server",
+    "dep:tokio",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
+    "dep:axum",
+    "dep:matchbox_signaling",
+    "dep:tracing-subscriber",
+]
 desktop = ["dioxus/desktop", "dep:tokio"]
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]

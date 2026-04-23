@@ -1,20 +1,25 @@
 //! Bridge between a `tantrix_net::SessionHandle` and the reactive
-//! `OnlineCtx` context provided to child components.
+//! `Store<OnlineState>` owned by `OnlineRoom`.
 
 use dioxus::prelude::*;
 use futures::StreamExt;
 use tantrix_net::{
     SessionEvent, SessionHandle, SessionRole, open_client_session, open_host_session,
 };
+use tantrix_proto::RejectCode;
 
-use crate::state::online_state::{CommandSender, OnlineCtx, OnlinePhase, OnlineState, reject_message};
+use crate::state::online_state::{
+    CommandSender, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
+};
+use crate::state::session_token;
 use crate::state::signaling::signaling_url;
 
 /// Open a session (host or client) for the given room and pump events into
-/// the `OnlineCtx::state` signal. The spawned tasks live as long as the
-/// component is mounted.
+/// the `OnlineState` store. The spawned tasks live as long as the component
+/// that owns the store is mounted.
 pub fn spawn_session(
-    ctx: OnlineCtx,
+    store: Store<OnlineState>,
+    mut sender: Signal<Option<CommandSender>>,
     room_code: String,
     role: SessionRole,
     nickname: String,
@@ -27,13 +32,13 @@ pub fn spawn_session(
             (h, futures::future::Either::Left(f))
         }
         SessionRole::Client => {
-            let (h, f) = open_client_session(url, nickname);
+            let token = session_token::load_or_create(&room_code);
+            let (h, f) = open_client_session(url, nickname, token);
             (h, futures::future::Either::Right(f))
         }
     };
 
     // Publish the command sender so child components can dispatch actions.
-    let mut sender = ctx.sender;
     sender.set(Some(CommandSender::new(handle.commands)));
 
     // Drive the network task.
@@ -43,55 +48,77 @@ pub fn spawn_session(
 
     // Pipe events into state.
     let mut events = handle.events;
-    let mut state = ctx.state;
+    let room_for_events = room_code.clone();
     spawn(async move {
         while let Some(event) = events.next().await {
-            apply_event(&mut state, event);
+            apply_event(store, event, &room_for_events);
+        }
+        // The event stream closed without a terminal `Disconnected` — the
+        // network task exited early. Park the UI on the Failed screen so
+        // the user isn't stuck on the connecting spinner.
+        let current = store.phase().read().clone();
+        if !matches!(current, OnlinePhase::Failed { .. } | OnlinePhase::Ended { .. }) {
+            store.phase().set(OnlinePhase::Failed {
+                reason: FailureReason::Transport("Connection closed unexpectedly.".into()),
+            });
         }
     });
 }
 
-fn apply_event(state: &mut Signal<OnlineState>, event: SessionEvent) {
-    let mut s = state.write();
+/// Per-field writes: each event only wakes the specific Store-field
+/// subscribers it actually changes. Unrelated UI stays asleep.
+fn apply_event(store: Store<OnlineState>, event: SessionEvent, room_code: &str) {
     match event {
         SessionEvent::Connected {
             role: _,
             my_peer_id,
             host_peer_id,
         } => {
-            s.my_peer_id = Some(my_peer_id);
-            s.host_peer_id = Some(host_peer_id);
+            store.my_peer_id().set(Some(my_peer_id));
+            store.host_peer_id().set(Some(host_peer_id));
         }
         SessionEvent::Lobby(lobby) => {
-            s.phase = OnlinePhase::Lobby { lobby };
-            s.last_error = None;
+            store.phase().set(OnlinePhase::Lobby { lobby });
+            store.last_error().set(None);
         }
         SessionEvent::GameStarted { snapshot } => {
-            s.phase = OnlinePhase::Playing {
+            store.phase().set(OnlinePhase::Playing {
                 snapshot,
                 last_move: None,
-            };
-            s.last_error = None;
+            });
+            store.last_error().set(None);
         }
         SessionEvent::StateUpdate { snapshot, last_move } => {
-            s.phase = OnlinePhase::Playing { snapshot, last_move };
+            store.phase().set(OnlinePhase::Playing { snapshot, last_move });
         }
         SessionEvent::GameEnded { reason: _, snapshot } => {
-            s.phase = OnlinePhase::Ended { snapshot };
+            store.phase().set(OnlinePhase::Ended { snapshot });
         }
         SessionEvent::Error { code, message } => {
-            let friendly = code
-                .as_ref()
-                .map(|c| reject_message(c).to_string())
-                .unwrap_or(message);
-            s.last_error = Some(friendly);
+            if matches!(code, Some(RejectCode::Kicked)) {
+                // Drop our stored token so a fresh rejoin mints a new one
+                // instead of immediately re-tripping the kick-seen record.
+                session_token::clear(room_code);
+            }
+            if let Some(code) = code {
+                store.last_error().set(Some(code));
+            } else {
+                log::warn!("online: Error event without code: {message}");
+            }
         }
         SessionEvent::Disconnected { reason } => {
-            // Prefer a friendly per-code message (e.g. "This room is
-            // already full.") over the generic disconnect reason when
-            // the host sent a reject right before closing.
-            let shown = s.last_error.clone().unwrap_or(reason);
-            s.phase = OnlinePhase::Failed { reason: shown };
+            // Prefer a structured host-reject over the generic transport
+            // reason. Consume last_error (take) so a later reconnect isn't
+            // seeded with a stale value.
+            let last_error = store.last_error().read().clone();
+            let failure = match last_error {
+                Some(code) => {
+                    store.last_error().set(None);
+                    FailureReason::Rejected(code)
+                }
+                None => FailureReason::Transport(reason),
+            };
+            store.phase().set(OnlinePhase::Failed { reason: failure });
         }
     }
 }

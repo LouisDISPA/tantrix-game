@@ -8,6 +8,9 @@ mod state;
 mod svg;
 mod util;
 
+#[cfg(feature = "server")]
+mod server;
+
 use route::Route;
 use state::theme::THEME;
 
@@ -17,6 +20,12 @@ const HAND_CSS: Asset = asset!("/assets/hand.css");
 const MENU_CSS: Asset = asset!("/assets/menu.css");
 const ANIMATIONS_CSS: Asset = asset!("/assets/animations.css");
 
+#[cfg(feature = "server")]
+fn main() {
+    server::run();
+}
+
+#[cfg(not(feature = "server"))]
 fn main() {
     dioxus::launch(app);
 }

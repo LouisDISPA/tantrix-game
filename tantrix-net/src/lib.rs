@@ -24,3 +24,4 @@ pub use session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
 
 pub use matchbox_socket::PeerId as MatchboxPeerId;
 pub use tantrix_proto;
+pub use tantrix_proto::SessionToken;

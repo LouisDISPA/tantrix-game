@@ -3,8 +3,11 @@
 mod driver;
 mod entry;
 mod game;
+mod hud_badge;
 mod lobby;
-mod root;
+mod participants_drawer;
+mod room;
+mod screens;
 
 pub use entry::{JoinRoom, OnlineEntry};
-pub use root::OnlineRoom;
+pub use room::OnlineRoom;

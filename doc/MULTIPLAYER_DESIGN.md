@@ -206,6 +206,40 @@ would have added a mandatory frame loop, fixed-size input packing,
 and per-frame state cloning — all for zero benefit. See the answer
 log under commit `1f6c704` for the longer rationale.
 
+## Roster model (tokens, spectators, kick)
+
+The host tracks every room member via a **client-generated session
+token** — a UUID v4 stored in `localStorage` keyed by room code — not
+the ephemeral matchbox `PeerId`. The token ships inside
+`PeerMessage::Hello` and lets the host rebind a reload across a new
+matchbox socket. Seats are keyed by token and reserved for the lifetime
+of the game; a disconnected player keeps their seat until the host
+manually kicks them.
+
+Four participant roles live on the wire (`ParticipantRole`):
+
+- `Host` — the room owner.
+- `Seated(Color)` — has claimed a color and will play this game.
+- `Unseated` — joined but still picking a color (lobby only).
+- `Spectator` — joined after `StartGame` fired, or was an `Unseated`
+  peer when the host hit start.
+
+`LobbyState` and `GameSnapshot` both carry a `Vec<Participant>` with
+connection status so the host UI can render the participants drawer
+and the Kick button. There is no hard player cap — the first 2–4
+peers who pick colors play; everyone else spectates.
+
+### Kick
+
+Host-only. Dispatched via `SessionCommand::Kick(PeerId)` →
+`PeerMessage::Kick { target }` → `HostMessage::Kicked { target, reason }`
+broadcast. If the target held a seat mid-game the host calls
+`Game::retire_color` to drop them cleanly from the turn cycle
+(`tantrix-game/src/lib.rs`). A single remaining player ends the game.
+Kicked peers receive `Kicked` with their own id, clear the stored
+token, and tear down. Kick is not a ban — reopening the share link
+mints a new token and joins as a spectator; that's intentional.
+
 ## Limits and open questions
 
 - **Host drop ends the game.** No host migration. With deterministic
@@ -217,11 +251,14 @@ log under commit `1f6c704` for the longer rationale.
   Players behind symmetric NATs may fail to establish data channels.
   Add TURN by extending the `RtcIceServerConfig` in
   `tantrix-net::socket::open` when needed.
-- **No spectators.** Lobby caps at four (the four Tantrix colors). A
-  fifth peer is rejected with `RejectCode::LobbyFull`.
-- **No reconnect across reload.** Refreshing the page mints a new
-  `PeerId`. The host treats it as a stranger and rejects with
-  `GameInProgress`.
+- **Disconnected seats block the turn.** A dropped player who never
+  returns freezes the game on their turn; the host has to kick to
+  move on. Adding a "waiting for X…" countdown in the UI would be a
+  useful nudge.
+- **Stale tokens are never reaped.** A flood of visitors could grow
+  the `participants` map unboundedly over a long session. At our
+  player counts it's not a practical concern; if it becomes one,
+  purge disconnected spectators after N minutes.
 - **No room enumeration.** Discovery is share-link only; matchbox
   doesn't expose a room list and we haven't built one. A public lobby
   page would mean adding a thin axum service.
@@ -235,8 +272,11 @@ log under commit `1f6c704` for the longer rationale.
 | Client state machine | `tantrix-net/src/client.rs` |
 | Socket + id-wait helper | `tantrix-net/src/socket.rs` |
 | Room codes / nickname | `tantrix-net/src/roomcode.rs`, `tantrix-app/src/state/nickname.rs` |
+| Session token (localStorage) | `tantrix-app/src/state/session_token.rs` |
 | Routes | `tantrix-app/src/route.rs` |
 | Online pages | `tantrix-app/src/pages/online/{root,entry,lobby,game,driver}.rs` |
 | Online ↔ UI bridge | `tantrix-app/src/state/online_state.rs` |
 | Move dispatch override | `tantrix-app/src/state/actions.rs::execute_move` |
 | HUD with connection state | `tantrix-app/src/components/status_bar.rs` |
+| Participants drawer + kick | `tantrix-app/src/components/participants_panel.rs` |
+| Retire seated color | `tantrix-game::Game::retire_color` |

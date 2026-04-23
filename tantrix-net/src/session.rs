@@ -24,6 +24,8 @@ pub enum SessionCommand {
     SkipTurn,
     /// Change the local player's display name.
     UpdateNickname(String),
+    /// Host-only: remove another participant from the room.
+    Kick(PeerId),
     /// Leave the room. After this the session task exits.
     Leave,
 }

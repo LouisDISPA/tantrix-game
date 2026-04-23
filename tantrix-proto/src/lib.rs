@@ -15,7 +15,7 @@ use tantrix_game::{Board, Color, Hand, Move};
 
 /// Protocol version. Host and clients refuse to start a game if their values
 /// differ; bump this whenever the wire format breaks compatibility.
-pub const PROTO_VERSION: u32 = 1;
+pub const PROTO_VERSION: u32 = 2;
 
 /// Opaque peer identifier. Mirrors the string form of `matchbox`'s `PeerId`
 /// so the protocol stays transport-agnostic.
@@ -32,11 +32,63 @@ impl PeerId {
     }
 }
 
+/// Client-generated, per-room persistent identity. Survives reload and
+/// reconnect so the host can rebind a returning peer to its seat without
+/// relying on the ephemeral matchbox `PeerId`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionToken(pub String);
+
+impl SessionToken {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A seated player in the lobby or an active game.
+///
+/// Kept on the wire for backward-friendly UI rendering. The authoritative
+/// roster is [`Participant`]; `Seat` is the subset visible in `LobbyState`
+/// / `GameSnapshot` for code paths that only care about colored seats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Seat {
     pub peer_id: PeerId,
     pub nickname: String,
+}
+
+/// Role of a participant in the room.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParticipantRole {
+    /// A colored seat in the current / upcoming game.
+    Seated(Color),
+    /// Watching only; can never submit moves.
+    Spectator,
+    /// The host. Implicitly the authoritative peer.
+    Host,
+    /// Joined but not yet seated (lobby only, before the game starts).
+    Unseated,
+}
+
+/// A single member of the room — seated, spectator, or host — with the
+/// information needed to render the participants panel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Participant {
+    pub peer_id: PeerId,
+    pub token: SessionToken,
+    pub nickname: String,
+    pub role: ParticipantRole,
+    /// Which color (if any) this participant is currently seated in. Mirrors
+    /// `seats[c] == this.peer_id` so the UI can render a consistent color
+    /// dot regardless of the `role` enum (e.g. a host who picked a color
+    /// still has `role = Host` but `seated_color = Some(..)`).
+    pub seated_color: Option<Color>,
+    /// `true` if the host currently holds a live transport channel to this
+    /// peer. Disconnected-but-remembered participants have `false` and
+    /// keep their seat reserved.
+    pub connected: bool,
 }
 
 /// Lobby snapshot: who's in the room and which colors are claimed.
@@ -49,6 +101,9 @@ pub struct LobbyState {
     pub seats: EnumMap<Color, Option<Seat>>,
     /// Players connected but not yet seated.
     pub unseated: Vec<Seat>,
+    /// Authoritative roster (seated + unseated + spectators). Superset of
+    /// `seats` + `unseated`; drives the participants panel.
+    pub participants: Vec<Participant>,
 }
 
 /// Authoritative game snapshot. Sent on every state transition; clients
@@ -56,7 +111,7 @@ pub struct LobbyState {
 ///
 /// The bag's contents are intentionally hidden — only `bag_count` ships —
 /// so a malicious client can't peek at future draws.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameSnapshot {
     pub board: Board,
     pub hands: EnumMap<Color, Hand>,
@@ -64,6 +119,9 @@ pub struct GameSnapshot {
     pub current_player: Color,
     pub playing_colors: Vec<Color>,
     pub seats: EnumMap<Color, Option<Seat>>,
+    /// Full roster including spectators and disconnected-but-remembered
+    /// seated players. Drives the in-game participants panel.
+    pub participants: Vec<Participant>,
 }
 
 /// Why a game ended.
@@ -71,8 +129,6 @@ pub struct GameSnapshot {
 pub enum EndReason {
     /// All tiles placed; `winners` holds the tied top-scoring colors.
     Completed { winners: Vec<Color> },
-    /// A seated player disconnected past the reconnect window.
-    PlayerDisconnected { color: Color },
     /// Host closed the room.
     HostLeft,
 }
@@ -80,12 +136,12 @@ pub enum EndReason {
 /// Client-side rejection reasons the host sends back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RejectCode {
-    LobbyFull,
     ColorTaken,
     IncompatibleVersion,
     NotYourTurn,
     InvalidMove,
     GameInProgress,
+    Kicked,
 }
 
 // ---------------------------------------------------------------------------
@@ -95,10 +151,12 @@ pub enum RejectCode {
 /// A non-host peer's message to the host.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PeerMessage {
-    /// First message after the data channel opens.
+    /// First message after the data channel opens. The `session_token` lets
+    /// the host rebind a returning peer to an existing seat across reload.
     Hello {
         nickname: String,
         proto_version: u32,
+        session_token: SessionToken,
     },
     /// Claim or release a color. `color: None` = leave the seat.
     PickColor {
@@ -114,10 +172,14 @@ pub enum PeerMessage {
     SkipTurn,
     /// Pull the latest snapshot (e.g. after reconnect).
     RequestSnapshot,
-    /// Change my display name. Host updates `peers` and any seat binding
+    /// Change my display name. Host updates the roster and any seat binding
     /// and rebroadcasts the lobby so other clients see the new label.
     UpdateNickname {
         nickname: String,
+    },
+    /// Host-only: remove a participant from the room.
+    Kick {
+        target: PeerId,
     },
 }
 
@@ -140,7 +202,7 @@ pub enum HostMessage {
     GameStarted {
         snapshot: GameSnapshot,
     },
-    /// New authoritative state after a move / skip.
+    /// New authoritative state after a move / skip / roster change.
     StateUpdate {
         snapshot: GameSnapshot,
         last_move: Option<Move>,
@@ -149,6 +211,12 @@ pub enum HostMessage {
     GameEnded {
         reason: EndReason,
         snapshot: GameSnapshot,
+    },
+    /// Host removed someone. Every peer receives this; the targeted peer
+    /// should close its session and clear its stored token for the room.
+    Kicked {
+        target: PeerId,
+        reason: String,
     },
     /// Per-peer rejection for the most recent intent.
     Error {

@@ -1,6 +1,12 @@
+pub mod alert_banner;
 pub mod board;
+pub mod color_chip;
+pub mod nickname_input;
+pub mod participant_row;
 pub mod player_hand;
+pub mod room_code_badge;
 pub mod scores_panel;
+pub mod share_chip;
 pub mod status_bar;
 pub mod tile;
 pub mod title_decoration;

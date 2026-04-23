@@ -3,7 +3,7 @@ use tantrix_game::Color;
 
 use crate::state::game_state::{determine_winners, GameCtx};
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
-use crate::svg::paths::color_css_var;
+use crate::svg::paths::color_name as color_slug;
 
 /// A single row in the scores list. Takes only the player color — the score,
 /// winner flag, active (click-locked) flag, and click/hover dispatch are all
@@ -23,14 +23,13 @@ fn ScoreRow(color: Color) -> Element {
     });
     let is_active = use_memo(move || ui_state.highlighted_color()() == Some(color));
 
-    let cv = color_css_var(color);
+    let color_class = format!("color-{}", color_slug(color));
 
     rsx! {
         div {
-            class: "results-row",
+            class: "results-row {color_class}",
             class: if is_winner() { "results-row-winner" },
             class: if is_active() { "results-row-active" },
-            style: "--player-color: {cv}",
             onclick: move |_| {
                 let current = *ui_state.highlighted_color().read();
                 if current == Some(color) {
@@ -79,14 +78,13 @@ pub fn ScoresPanel(children: Element) -> Element {
                         div { class: "results-tie-names",
                             for (i , & color) in winners.iter().enumerate() {
                                 {
-                                    let cv = color_css_var(color);
+                                    let color_class = format!("color-{}", color_slug(color));
                                     rsx! {
                                         if i > 0 {
                                             span { class: "results-tie-separator", " & " }
                                         }
                                         span {
-                                            class: "results-winner-name",
-                                            style: "--player-color: {cv}",
+                                            class: "results-winner-name {color_class}",
                                             "{color}"
                                         }
                                     }
@@ -96,12 +94,11 @@ pub fn ScoresPanel(children: Element) -> Element {
                     } else {
                         {
                             let winner_color = winners[0];
-                            let winner_var = color_css_var(winner_color);
+                            let winner_class = format!("color-{}", color_slug(winner_color));
                             rsx! {
                                 div { class: "results-winner-label", "Winner" }
                                 div {
-                                    class: "results-winner-name",
-                                    style: "--player-color: {winner_var}",
+                                    class: "results-winner-name {winner_class}",
                                     "{winner_color}"
                                 }
                             }

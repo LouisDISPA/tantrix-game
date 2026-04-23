@@ -36,18 +36,18 @@ pub fn HandTile(color: Color, index: usize) -> Element {
         ctx.ui_state.new_tile()() == Some((color, index))
     });
 
-    // Non-current players' tiles aren't interactive; current-player disabled
-    // tiles aren't either. In online games we additionally restrict control
-    // to the seat the local user occupies — other seats are spectator-only
-    // for them, even on the current player's turn.
-    let is_current = use_memo(move || {
-        let gs = ctx.game_state.read();
-        if gs.turn_tracker.current() != color {
+    // Hover works on the current player's tiles for anyone watching — so
+    // spectators can see where moves would land — but only the peer who
+    // actually owns the seat gets to commit a move.
+    let is_active_seat = use_memo(move || ctx.game_state.read().turn_tracker.current() == color);
+    let can_play = use_memo(move || {
+        if !is_active_seat() {
             return false;
         }
-        match *ctx.my_color.read() {
-            Some(mine) => mine == color,
-            None => true,
+        match (*ctx.my_color.read(), ctx.online.read().is_some()) {
+            (Some(mine), _) => mine == color, // online, own this seat
+            (None, false) => true,            // local game: any current-player tile is live
+            (None, true) => false,            // online spectator: look, don't touch
         }
     });
 
@@ -70,7 +70,7 @@ pub fn HandTile(color: Color, index: usize) -> Element {
                 };
                 let outline_points = hex_polygon_points(cx, cy, OUTLINE_HEX);
                 let state_class = state.css_class();
-                let interactive = state.is_interactive() && is_current();
+                let interactive = state.is_interactive() && can_play();
 
                 rsx! {
                     div {
@@ -83,12 +83,12 @@ pub fn HandTile(color: Color, index: usize) -> Element {
                             }
                         },
                         onmouseenter: move |_| {
-                            if is_current() {
+                            if is_active_seat() {
                                 hovered.set(Hovered::HandTile(index));
                             }
                         },
                         onmouseleave: move |_| {
-                            if is_current() {
+                            if is_active_seat() {
                                 hovered.set(Hovered::None);
                             }
                         },

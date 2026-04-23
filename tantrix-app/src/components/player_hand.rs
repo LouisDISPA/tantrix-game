@@ -3,7 +3,7 @@ use tantrix_game::Color;
 
 use crate::components::tile::HandTile;
 use crate::state::game_state::GameCtx;
-use crate::svg::paths::color_css_var;
+use crate::svg::paths::color_name as color_slug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HandPosition {
@@ -44,7 +44,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
 
     let is_current = ctx.game_state.read().turn_tracker.current() == color;
     let hand_len = ctx.game_state.read().hands[color].iter().count();
-    let color_var = color_css_var(color);
+    let color_class = format!("color-{}", color_slug(color));
 
     let pos_class = position.css_class();
     let area_class = position.area_class();
@@ -60,10 +60,9 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
 
     rsx! {
         div {
-            class: "player-hand {pos_class} {area_class}",
+            class: "player-hand {pos_class} {area_class} {color_class}",
             class: if is_current { "active" },
             class: if is_mine { "mine" },
-            style: "--player-color: {color_var}",
 
             div { class: "hand-header",
                 if is_current {

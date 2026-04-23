@@ -7,7 +7,9 @@ use futures::{StreamExt, select};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::warn;
 use matchbox_socket::{PeerId as MatchboxPeerId, PeerState};
-use tantrix_proto::{HostMessage, PeerId, PeerMessage, decode, encode, PROTO_VERSION};
+use tantrix_proto::{
+    HostMessage, PeerId, PeerMessage, PROTO_VERSION, RejectCode, SessionToken, decode, encode,
+};
 
 use crate::session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
 use crate::socket::{open as open_socket, wait_for_peer_id};
@@ -15,11 +17,12 @@ use crate::socket::{open as open_socket, wait_for_peer_id};
 pub fn open_client_session(
     room_url: String,
     nickname: String,
+    session_token: SessionToken,
 ) -> (SessionHandle, impl Future<Output = ()>) {
     let (commands_tx, commands_rx) = futures_channel::mpsc::unbounded();
     let (events_tx, events_rx) = futures_channel::mpsc::unbounded();
 
-    let fut = run_client(room_url, nickname, commands_rx, events_tx);
+    let fut = run_client(room_url, nickname, session_token, commands_rx, events_tx);
 
     (
         SessionHandle {
@@ -33,6 +36,7 @@ pub fn open_client_session(
 async fn run_client(
     room_url: String,
     nickname: String,
+    session_token: SessionToken,
     mut commands_rx: UnboundedReceiver<SessionCommand>,
     events_tx: UnboundedSender<SessionEvent>,
 ) {
@@ -77,10 +81,14 @@ async fn run_client(
     let hello = encode(&PeerMessage::Hello {
         nickname,
         proto_version: PROTO_VERSION,
+        session_token: session_token.clone(),
     });
     let _ = channel.try_send(hello.into_boxed_slice(), host_mb_id);
 
     let mut welcomed = false;
+    // The wire PeerId the host assigned to us — populated on Welcome and
+    // used to recognise `Kicked { target: self }` broadcasts.
+    let mut my_wire_id: Option<PeerId> = None;
 
     loop {
         select! {
@@ -103,7 +111,14 @@ async fn run_client(
                             continue;
                         }
                     };
-                    if handle_host_message(msg, &events_tx, &mut welcomed, &my_mb_id, &host_mb_id) {
+                    if handle_host_message(
+                        msg,
+                        &events_tx,
+                        &mut welcomed,
+                        &my_mb_id,
+                        &host_mb_id,
+                        &mut my_wire_id,
+                    ) {
                         channel.close();
                         socket.close();
                         return;
@@ -135,6 +150,7 @@ fn intent_from_command(cmd: SessionCommand) -> PeerMessage {
         SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
         SessionCommand::SkipTurn => PeerMessage::SkipTurn,
         SessionCommand::UpdateNickname(n) => PeerMessage::UpdateNickname { nickname: n },
+        SessionCommand::Kick(target) => PeerMessage::Kick { target },
         SessionCommand::Leave => PeerMessage::RequestSnapshot, // never dispatched
     }
 }
@@ -148,6 +164,7 @@ fn handle_host_message(
     welcomed: &mut bool,
     my_id: &MatchboxPeerId,
     host_id: &MatchboxPeerId,
+    my_wire_id: &mut Option<PeerId>,
 ) -> bool {
     match msg {
         HostMessage::Welcome {
@@ -157,15 +174,21 @@ fn handle_host_message(
             rejected,
         } => {
             if let Some(code) = rejected {
+                let reason = match code {
+                    RejectCode::Kicked => "You were removed from the room.".into(),
+                    RejectCode::IncompatibleVersion => {
+                        "The host is running a different game version.".into()
+                    }
+                    _ => "rejected by host".into(),
+                };
                 let _ = events_tx.unbounded_send(SessionEvent::Error {
                     code: Some(code),
                     message: "host rejected the connection".into(),
                 });
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                    reason: "rejected by host".into(),
-                });
+                let _ = events_tx.unbounded_send(SessionEvent::Disconnected { reason });
                 return true;
             }
+            *my_wire_id = Some(your_peer_id.clone());
             if !*welcomed {
                 *welcomed = true;
                 let _ = events_tx.unbounded_send(SessionEvent::Connected {
@@ -178,24 +201,41 @@ fn handle_host_message(
             false
         }
         HostMessage::LobbyUpdate { lobby } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id);
+            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
             let _ = events_tx.unbounded_send(SessionEvent::Lobby(lobby));
             false
         }
         HostMessage::GameStarted { snapshot } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id);
+            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
             let _ = events_tx.unbounded_send(SessionEvent::GameStarted { snapshot });
             false
         }
         HostMessage::StateUpdate { snapshot, last_move } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id);
+            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
             let _ = events_tx.unbounded_send(SessionEvent::StateUpdate { snapshot, last_move });
             false
         }
         HostMessage::GameEnded { reason, snapshot } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id);
+            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
             let _ = events_tx.unbounded_send(SessionEvent::GameEnded { reason, snapshot });
             true
+        }
+        HostMessage::Kicked { target, reason } => {
+            if my_wire_id.as_ref() == Some(&target) {
+                let _ = events_tx.unbounded_send(SessionEvent::Error {
+                    code: Some(RejectCode::Kicked),
+                    message: reason.clone(),
+                });
+                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
+                    reason: format!("Removed from the room: {reason}"),
+                });
+                true
+            } else {
+                // Another participant was kicked — host will follow up with
+                // a fresh LobbyUpdate / StateUpdate, so nothing else to do
+                // here.
+                false
+            }
         }
         HostMessage::Error { code, message } => {
             let _ = events_tx.unbounded_send(SessionEvent::Error {
@@ -212,12 +252,18 @@ fn ensure_welcomed(
     events_tx: &UnboundedSender<SessionEvent>,
     my_id: &MatchboxPeerId,
     host_id: &MatchboxPeerId,
+    my_wire_id: &mut Option<PeerId>,
 ) {
     if !*welcomed {
         *welcomed = true;
+        let fallback = PeerId(my_id.to_string());
+        let assigned = my_wire_id.clone().unwrap_or_else(|| fallback.clone());
+        if my_wire_id.is_none() {
+            *my_wire_id = Some(assigned.clone());
+        }
         let _ = events_tx.unbounded_send(SessionEvent::Connected {
             role: SessionRole::Client,
-            my_peer_id: PeerId(my_id.to_string()),
+            my_peer_id: assigned,
             host_peer_id: PeerId(host_id.to_string()),
         });
     }

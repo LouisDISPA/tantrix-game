@@ -108,12 +108,3 @@ pub fn color_css_class(color: Color) -> &'static str {
     }
 }
 
-/// CSS color variable name for a game color.
-pub fn color_css_var(color: Color) -> &'static str {
-    match color {
-        Color::Red => "var(--color-red)",
-        Color::Blue => "var(--color-blue)",
-        Color::Yellow => "var(--color-yellow)",
-        Color::Green => "var(--color-green)",
-    }
-}

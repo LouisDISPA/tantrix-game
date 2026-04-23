@@ -78,7 +78,7 @@ impl Move {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Board {
     moves: ArrayVec<Move, NUMBER_OF_TILE>,
 }
@@ -530,7 +530,7 @@ impl Bag {
 
 // --- Hand ---
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hand {
     tiles: ArrayVec<Tile, TILES_IN_HAND>,
 }
@@ -739,6 +739,34 @@ impl Game {
     pub fn skip_turn(&mut self) {
         self.turn_tracker.next();
         self.current_moves = None;
+    }
+
+    /// Remove `color` from the turn cycle mid-game. Used when a seated
+    /// participant is kicked: their seat and hand go away, and the cycle
+    /// rotates past them cleanly.
+    ///
+    /// Returns `Err` if the color wasn't currently playing, or if removing
+    /// it would leave fewer than one player in the cycle.
+    pub fn retire_color(&mut self, color: Color) -> Result<(), &'static str> {
+        let cycle = &self.turn_tracker.color_cycle;
+        let Some(idx) = cycle.iter().position(|&c| c == color) else {
+            return Err("color is not in the turn cycle");
+        };
+        if cycle.len() <= 1 {
+            return Err("cannot retire the last remaining player");
+        }
+        self.turn_tracker.color_cycle.remove(idx);
+        // Keep `currently_playing` pointing at the same player, or at the
+        // next one if we just removed the current index.
+        if self.turn_tracker.currently_playing > idx {
+            self.turn_tracker.currently_playing -= 1;
+        } else if self.turn_tracker.currently_playing >= self.turn_tracker.color_cycle.len() {
+            self.turn_tracker.currently_playing = 0;
+        }
+        self.players[color] = Player::None;
+        self.hands[color] = Hand::default();
+        self.current_moves = None;
+        Ok(())
     }
 
     pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
@@ -1275,5 +1303,63 @@ mod tests {
     fn test_winner_not_over() {
         let game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
         assert_eq!(game.winner(), None);
+    }
+
+    #[test]
+    fn retire_color_drops_from_cycle() {
+        let mut game = Game::new(
+            Player::Someone,
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+        );
+        let initial = game.playing_colors().to_vec();
+        assert_eq!(initial.len(), 3);
+        let retire = initial[1];
+
+        game.retire_color(retire).unwrap();
+
+        let remaining = game.playing_colors().to_vec();
+        assert_eq!(remaining.len(), 2);
+        assert!(!remaining.contains(&retire));
+        assert_eq!(*game.get_player(retire), Player::None);
+        assert!(game.get_hand(retire).is_empty());
+    }
+
+    #[test]
+    fn retire_color_advances_current_correctly() {
+        // Force a deterministic cycle by retiring only colors not currently
+        // in play: retiring the *current* player should roll to the next.
+        let mut game = Game::new(
+            Player::Someone,
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+        );
+        let current_before = game.currently_playing();
+        game.retire_color(current_before).unwrap();
+        let current_after = game.currently_playing();
+        assert_ne!(current_after, current_before);
+        assert!(game.playing_colors().contains(&current_after));
+    }
+
+    #[test]
+    fn retire_color_rejects_last_player() {
+        let mut game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        let first = game.playing_colors()[0];
+        game.retire_color(first).unwrap();
+        let last = game.playing_colors()[0];
+        assert!(game.retire_color(last).is_err());
+    }
+
+    #[test]
+    fn retire_color_rejects_unknown_color() {
+        let mut game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        // Find a color not in the cycle — at least one of the four must be absent.
+        let absent = [Color::Red, Color::Blue, Color::Yellow, Color::Green]
+            .into_iter()
+            .find(|c| !game.playing_colors().contains(c))
+            .expect("2-player game always has two absent colors");
+        assert!(game.retire_color(absent).is_err());
     }
 }

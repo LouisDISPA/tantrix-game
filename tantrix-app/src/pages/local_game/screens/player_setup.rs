@@ -5,7 +5,7 @@ use crate::route::Route;
 use crate::state::config::{GameConfig, PlayerKind};
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::ui_state::{Screen, UiState};
-use crate::svg::paths::color_css_var;
+use crate::svg::paths::color_name as color_slug;
 
 #[component]
 pub fn PlayerSetup() -> Element {
@@ -37,7 +37,7 @@ pub fn PlayerSetup() -> Element {
                         for & (color , kind) in cfg.players.iter() {
                             {
                                 let is_active = kind != PlayerKind::Off;
-                                let color_var = color_css_var(color);
+                                let color_class = format!("color-{}", color_slug(color));
                                 let toggle_class = match kind {
                                     PlayerKind::Off => "player-toggle off",
                                     PlayerKind::Human => "player-toggle human",
@@ -45,9 +45,8 @@ pub fn PlayerSetup() -> Element {
                                 };
                                 rsx! {
                                     div {
-                                        class: "player-slot",
+                                        class: "player-slot {color_class}",
                                         class: if is_active { "active" },
-                                        style: "--player-color: {color_var}",
                                         div { class: "color-swatch" }
                                         div { class: "player-label", "{color}" }
                                         button {
