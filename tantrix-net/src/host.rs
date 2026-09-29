@@ -234,18 +234,21 @@ async fn run_host(
     });
     let _ = events_tx.unbounded_send(SessionEvent::Lobby(state.lobby_state()));
 
-    while !state.ended {
+    // Keep the socket alive after GameEnded so the queued final snapshot can
+    // reach clients. A channel send only queues bytes; closing here can drop it.
+    loop {
         select! {
             cmd = commands_rx.next() => match cmd {
                 Some(SessionCommand::Leave) | None => break,
-                Some(other) => {
+                Some(other) if !state.ended => {
                     let local = intent_from_command(other);
                     let me = state.my_mb_id;
                     handle_intent(&mut state, me, local, &events_tx, &mut channel);
                 }
+                Some(_) => {}
             },
             packet = channel.next().fuse() => match packet {
-                Some((peer, bytes)) => {
+                Some((peer, bytes)) if !state.ended => {
                     if state.kicked_peers.contains(&peer) {
                         continue;
                     }
@@ -258,13 +261,16 @@ async fn run_host(
                     };
                     handle_intent(&mut state, peer, msg, &events_tx, &mut channel);
                 }
+                Some(_) => {}
                 None => break,
             },
             peer_update = socket.next().fuse() => match peer_update {
                 Some((peer, PeerState::Connected)) => debug!("host: peer {peer} connected"),
                 Some((peer, PeerState::Disconnected)) => {
                     debug!("host: peer {peer} disconnected");
-                    handle_peer_disconnect(&mut state, &peer, &events_tx, &mut channel);
+                    if !state.ended {
+                        handle_peer_disconnect(&mut state, &peer, &events_tx, &mut channel);
+                    }
                 }
                 None => break,
             },
