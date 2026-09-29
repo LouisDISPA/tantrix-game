@@ -3,12 +3,12 @@
 use std::future::Future;
 
 use futures::future::FutureExt;
-use futures::{StreamExt, select};
+use futures::{select, StreamExt};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::warn;
 use matchbox_socket::{PeerId as MatchboxPeerId, PeerState};
 use tantrix_proto::{
-    HostMessage, PeerId, PeerMessage, PROTO_VERSION, RejectCode, SessionToken, decode, encode,
+    decode, encode, HostMessage, PeerId, PeerMessage, RejectCode, SessionToken, PROTO_VERSION,
 };
 
 use crate::session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
@@ -210,9 +210,15 @@ fn handle_host_message(
             let _ = events_tx.unbounded_send(SessionEvent::GameStarted { snapshot });
             false
         }
-        HostMessage::StateUpdate { snapshot, last_move } => {
+        HostMessage::StateUpdate {
+            snapshot,
+            last_move,
+        } => {
             ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
-            let _ = events_tx.unbounded_send(SessionEvent::StateUpdate { snapshot, last_move });
+            let _ = events_tx.unbounded_send(SessionEvent::StateUpdate {
+                snapshot,
+                last_move,
+            });
             false
         }
         HostMessage::GameEnded { reason, snapshot } => {

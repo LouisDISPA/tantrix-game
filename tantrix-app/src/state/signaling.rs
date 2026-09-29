@@ -15,7 +15,9 @@ const OVERRIDE_URL: Option<&str> = option_env!("TANTRIX_SIGNALING_URL");
 
 /// Signaling URL for a given room code: `{base}/{ROOMCODE}`.
 pub fn signaling_url(room_code: &str) -> String {
-    let base = OVERRIDE_URL.map(str::to_string).unwrap_or_else(default_base);
+    let base = OVERRIDE_URL
+        .map(str::to_string)
+        .unwrap_or_else(default_base);
     format!("{}/{}", base.trim_end_matches('/'), room_code)
 }
 

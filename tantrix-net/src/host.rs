@@ -11,14 +11,14 @@ use std::future::Future;
 
 use enum_map::EnumMap;
 use futures::future::FutureExt;
-use futures::{StreamExt, select};
+use futures::{select, StreamExt};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use log::{debug, warn};
 use matchbox_socket::{PeerId as MatchboxPeerId, PeerState, WebRtcChannel};
 use tantrix_game::{Color, Game, Hand, Player};
 use tantrix_proto::{
-    EndReason, GameSnapshot, HostMessage, LobbyState, Participant, ParticipantRole, PeerId,
-    PeerMessage, PROTO_VERSION, RejectCode, Seat, SessionToken, decode, encode,
+    decode, encode, EndReason, GameSnapshot, HostMessage, LobbyState, Participant, ParticipantRole,
+    PeerId, PeerMessage, RejectCode, Seat, SessionToken, PROTO_VERSION,
 };
 use uuid::Uuid;
 
@@ -104,9 +104,7 @@ impl HostState {
 
     /// The matchbox id that currently owns `token`, if any.
     fn peer_for_token(&self, token: &SessionToken) -> Option<MatchboxPeerId> {
-        self.participants
-            .get(token)
-            .and_then(|r| r.current_peer)
+        self.participants.get(token).and_then(|r| r.current_peer)
     }
 
     fn token_for_peer(&self, peer: &MatchboxPeerId) -> Option<&SessionToken> {
@@ -129,7 +127,8 @@ impl HostState {
     /// authoritative `seats` map so the UI dot always agrees with whoever
     /// actually holds the seat, regardless of the participant's `role`.
     fn wire_participants(&self) -> Vec<Participant> {
-        self.participants
+        let mut participants: Vec<Participant> = self
+            .participants
             .iter()
             .filter(|(_, r)| !r.kicked)
             .map(|(tok, r)| Participant {
@@ -140,7 +139,16 @@ impl HostState {
                 seated_color: self.seated_color_for_token(tok),
                 connected: r.current_peer.is_some(),
             })
-            .collect()
+            .collect();
+        participants.sort_by(|a, b| {
+            let a_rank = participant_sort_rank(a);
+            let b_rank = participant_sort_rank(b);
+            a_rank
+                .cmp(&b_rank)
+                .then_with(|| a.nickname.cmp(&b.nickname))
+                .then_with(|| a.token.as_str().cmp(b.token.as_str()))
+        });
+        participants
     }
 
     fn lobby_state(&self) -> LobbyState {
@@ -188,6 +196,27 @@ impl HostState {
         None
     }
 
+    fn seated_count(&self) -> usize {
+        self.seats.values().filter(|s| s.is_some()).count()
+    }
+
+    fn connected_seated_count(&self) -> usize {
+        self.seats
+            .values()
+            .filter_map(|slot| slot.as_ref())
+            .filter(|token| {
+                self.participants
+                    .get(*token)
+                    .and_then(|record| record.current_peer)
+                    .is_some()
+            })
+            .count()
+    }
+
+    fn all_seated_connected(&self) -> bool {
+        self.seated_count() == self.connected_seated_count()
+    }
+
     fn find_token_by_peer_id_str(&self, peer_id: &PeerId) -> Option<SessionToken> {
         // `peer_id` on the wire carries the token string.
         let tok = SessionToken::new(peer_id.as_str());
@@ -203,6 +232,15 @@ impl HostState {
 /// token, so UI references ("kick this peer") survive a reconnect.
 fn token_to_wire(token: &SessionToken) -> PeerId {
     PeerId(token.as_str().to_string())
+}
+
+fn participant_sort_rank(p: &Participant) -> u8 {
+    match &p.role {
+        ParticipantRole::Host => 0,
+        ParticipantRole::Seated(_) => 1,
+        ParticipantRole::Unseated => 2,
+        ParticipantRole::Spectator => 3,
+    }
 }
 
 async fn run_host(
@@ -352,7 +390,9 @@ fn broadcast_roster_change(
             state,
             channel,
             events_tx,
-            HostMessage::LobbyUpdate { lobby: lobby.clone() },
+            HostMessage::LobbyUpdate {
+                lobby: lobby.clone(),
+            },
             SessionEvent::Lobby(lobby),
         );
     }
@@ -383,7 +423,12 @@ fn handle_intent(
         }
         PeerMessage::PickColor { color } => {
             if state.locked_for_game {
-                send_error(channel, &from, RejectCode::GameInProgress, "game already started");
+                send_error(
+                    channel,
+                    &from,
+                    RejectCode::GameInProgress,
+                    "game already started",
+                );
                 return;
             }
             let Some(token) = state.token_for_peer(&from).cloned() else {
@@ -403,7 +448,12 @@ fn handle_intent(
             }
             if let Some(c) = color {
                 if state.seats[c].is_some() {
-                    send_error(channel, &from, RejectCode::ColorTaken, "color already taken");
+                    send_error(
+                        channel,
+                        &from,
+                        RejectCode::ColorTaken,
+                        "color already taken",
+                    );
                     return;
                 }
                 state.seats[c] = Some(token.clone());
@@ -417,19 +467,33 @@ fn handle_intent(
         }
         PeerMessage::StartGame => {
             if from != state.my_mb_id {
-                send_error(channel, &from, RejectCode::InvalidMove, "only the host can start");
+                send_error(
+                    channel,
+                    &from,
+                    RejectCode::InvalidMove,
+                    "only the host can start",
+                );
                 return;
             }
             if state.game.is_some() {
                 return;
             }
-            let seated_count = state.seats.values().filter(|s| s.is_some()).count();
+            let seated_count = state.seated_count();
             if seated_count < 2 {
                 send_error(
                     channel,
                     &from,
                     RejectCode::InvalidMove,
                     "need at least two seated players",
+                );
+                return;
+            }
+            if !state.all_seated_connected() {
+                send_error(
+                    channel,
+                    &from,
+                    RejectCode::InvalidMove,
+                    "all seated players must be connected",
                 );
                 return;
             }
@@ -445,7 +509,8 @@ fn handle_intent(
                 player_for(Color::Blue),
                 player_for(Color::Yellow),
                 player_for(Color::Green),
-            );
+            )
+            .expect("host validates at least two seated players before starting");
             state.game = Some(game);
             state.locked_for_game = true;
             // Everyone still listed as Unseated becomes a Spectator.
@@ -459,9 +524,12 @@ fn handle_intent(
                 state,
                 channel,
                 events_tx,
-                HostMessage::GameStarted { snapshot: snap.clone() },
+                HostMessage::GameStarted {
+                    snapshot: snap.clone(),
+                },
                 SessionEvent::GameStarted { snapshot: snap },
             );
+            auto_skip_stuck_players(state, channel, events_tx);
         }
         PeerMessage::PlayMove { m } => {
             if !ensure_turn(state, &from, channel) {
@@ -469,7 +537,7 @@ fn handle_intent(
             }
             let game = state.game.as_mut().unwrap();
             if let Err(e) = game.play_move(m) {
-                send_error(channel, &from, RejectCode::InvalidMove, &e);
+                send_error(channel, &from, RejectCode::InvalidMove, &e.to_string());
                 return;
             }
             let snap = state.snapshot().unwrap();
@@ -486,13 +554,24 @@ fn handle_intent(
                     last_move: Some(m),
                 },
             );
-            maybe_end_game(state, channel, events_tx);
+            if !maybe_end_game(state, channel, events_tx) {
+                auto_skip_stuck_players(state, channel, events_tx);
+            }
         }
         PeerMessage::SkipTurn => {
             if !ensure_turn(state, &from, channel) {
                 return;
             }
             let game = state.game.as_mut().unwrap();
+            if !game.get_possible_moves().is_empty() {
+                send_error(
+                    channel,
+                    &from,
+                    RejectCode::InvalidMove,
+                    "cannot skip while legal moves exist",
+                );
+                return;
+            }
             game.skip_turn();
             let snap = state.snapshot().unwrap();
             publish_all(
@@ -508,12 +587,19 @@ fn handle_intent(
                     last_move: None,
                 },
             );
-            maybe_end_game(state, channel, events_tx);
+            if !maybe_end_game(state, channel, events_tx) {
+                auto_skip_stuck_players(state, channel, events_tx);
+            }
         }
         PeerMessage::UpdateNickname { nickname } => {
             let trimmed = nickname.trim();
             if trimmed.is_empty() {
-                send_error(channel, &from, RejectCode::InvalidMove, "nickname cannot be empty");
+                send_error(
+                    channel,
+                    &from,
+                    RejectCode::InvalidMove,
+                    "nickname cannot be empty",
+                );
                 return;
             }
             let new_nick = trimmed.to_string();
@@ -596,11 +682,7 @@ fn handle_hello(
         send_welcome(channel, state, &from, None);
         // Replay current game state so the returning client can resume.
         if let Some(snap) = state.snapshot() {
-            send_to(
-                channel,
-                &from,
-                &HostMessage::GameStarted { snapshot: snap },
-            );
+            send_to(channel, &from, &HostMessage::GameStarted { snapshot: snap });
         }
         broadcast_roster_change(state, channel, events_tx);
         return;
@@ -631,11 +713,7 @@ fn handle_hello(
 
     send_welcome(channel, state, &from, None);
     if let Some(snap) = state.snapshot() {
-        send_to(
-            channel,
-            &from,
-            &HostMessage::GameStarted { snapshot: snap },
-        );
+        send_to(channel, &from, &HostMessage::GameStarted { snapshot: snap });
     }
     broadcast_roster_change(state, channel, events_tx);
 }
@@ -648,7 +726,12 @@ fn handle_kick(
     channel: &mut WebRtcChannel,
 ) {
     if from != state.my_mb_id {
-        send_error(channel, &from, RejectCode::InvalidMove, "only the host can kick");
+        send_error(
+            channel,
+            &from,
+            RejectCode::InvalidMove,
+            "only the host can kick",
+        );
         return;
     }
     let Some(token) = state.find_token_by_peer_id_str(&target) else {
@@ -726,6 +809,62 @@ fn ensure_turn(state: &HostState, from: &MatchboxPeerId, channel: &mut WebRtcCha
     true
 }
 
+fn auto_skip_stuck_players(
+    state: &mut HostState,
+    channel: &mut WebRtcChannel,
+    events_tx: &UnboundedSender<SessionEvent>,
+) {
+    let Some(max_skips) = state.game.as_ref().map(|game| game.playing_colors().len()) else {
+        return;
+    };
+    let mut skips = 0;
+    for _ in 0..max_skips {
+        let should_skip = {
+            let Some(game) = state.game.as_mut() else {
+                return;
+            };
+            if game.is_game_over() || !game.get_possible_moves().is_empty() {
+                false
+            } else {
+                game.skip_turn();
+                true
+            }
+        };
+        if !should_skip {
+            break;
+        }
+        skips += 1;
+        let Some(snap) = state.snapshot() else {
+            return;
+        };
+        publish_all(
+            state,
+            channel,
+            events_tx,
+            HostMessage::StateUpdate {
+                snapshot: snap.clone(),
+                last_move: None,
+            },
+            SessionEvent::StateUpdate {
+                snapshot: snap,
+                last_move: None,
+            },
+        );
+    }
+    if skips == max_skips {
+        let no_player_can_move = state
+            .game
+            .as_mut()
+            .map(|game| !game.is_game_over() && game.get_possible_moves().is_empty())
+            .unwrap_or(false);
+        if no_player_can_move {
+            finish_game(state, channel, events_tx);
+            return;
+        }
+    }
+    maybe_end_game(state, channel, events_tx);
+}
+
 /// If the game is over (by completion or because only one player remains
 /// after retirement), broadcast the ending and return `true`.
 fn maybe_end_game(
@@ -744,6 +883,18 @@ fn maybe_end_game(
         return false;
     }
 
+    finish_game(state, channel, events_tx);
+    true
+}
+
+fn finish_game(
+    state: &mut HostState,
+    channel: &mut WebRtcChannel,
+    events_tx: &UnboundedSender<SessionEvent>,
+) {
+    let Some(game) = state.game.as_ref() else {
+        return;
+    };
     let scores = game.scores();
     let active: Vec<Color> = state
         .seats
@@ -772,7 +923,6 @@ fn maybe_end_game(
         },
     );
     state.ended = true;
-    true
 }
 
 /// Broadcast a host message to every remote peer, and emit the corresponding
@@ -826,12 +976,7 @@ fn send_welcome(
     );
 }
 
-fn send_error(
-    channel: &mut WebRtcChannel,
-    peer: &MatchboxPeerId,
-    code: RejectCode,
-    message: &str,
-) {
+fn send_error(channel: &mut WebRtcChannel, peer: &MatchboxPeerId, code: RejectCode, message: &str) {
     send_to(
         channel,
         peer,

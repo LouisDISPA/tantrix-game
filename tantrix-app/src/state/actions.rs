@@ -38,7 +38,12 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
             .unwrap_or(false);
         (color, tile, forced)
     };
-    let m = Move { tile, position: pos, rotation, forced };
+    let m = Move {
+        tile,
+        position: pos,
+        rotation,
+        forced,
+    };
 
     // Online play: forward the intent and let the host's StateUpdate drive
     // the next render. The local GameState stays untouched until then.
@@ -62,7 +67,9 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
         return;
     }
 
-    ui_state.write().after_move(player_color, tile_idx, m.position);
+    ui_state
+        .write()
+        .after_move(player_color, tile_idx, m.position);
     advance_turn(ctx);
 }
 
@@ -123,8 +130,7 @@ pub fn advance_turn(ctx: GameCtx) {
 
     let needs_ai = {
         let gs = ctx.game_state.read();
-        !gs.is_game_over()
-            && matches!(gs.players[gs.turn_tracker.current()], Player::Ai(_))
+        !gs.is_game_over() && matches!(gs.players[gs.turn_tracker.current()], Player::Ai(_))
     };
 
     if needs_ai {

@@ -3,8 +3,8 @@ use std::fmt;
 use std::ops::Deref;
 
 use arrayvec::ArrayVec;
-pub use enum_map::EnumMap;
 use enum_map::enum_map;
+pub use enum_map::EnumMap;
 use rand::prelude::SliceRandom;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +24,7 @@ pub trait TantrixAi: Send + Sync {
         board: &Board,
         hands: &EnumMap<Color, Hand>,
         current_player: Color,
+        active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move;
 }
@@ -72,6 +73,48 @@ pub struct Move {
     pub forced: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoveError {
+    NoLegalMoves,
+    TileNotInHand,
+    InvalidMove,
+    BoardFull,
+}
+
+impl fmt::Display for MoveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MoveError::NoLegalMoves => write!(f, "No legal moves available"),
+            MoveError::TileNotInHand => write!(f, "Tile not in hand"),
+            MoveError::InvalidMove => write!(f, "Invalid move"),
+            MoveError::BoardFull => write!(f, "Board is full"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayedMove {
+    pub m: Move,
+    pub hand_index: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupError {
+    NotEnoughPlayers,
+    EmptyTurnCycle,
+    CurrentPlayerNotInCycle,
+}
+
+impl fmt::Display for SetupError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SetupError::NotEnoughPlayers => write!(f, "A game needs at least two players"),
+            SetupError::EmptyTurnCycle => write!(f, "Turn cycle cannot be empty"),
+            SetupError::CurrentPlayerNotInCycle => write!(f, "Current player is not in turn cycle"),
+        }
+    }
+}
+
 impl Move {
     pub fn color(&self, dir: Direction) -> Color {
         self.tile.color(dir - self.rotation)
@@ -110,7 +153,7 @@ impl Board {
         pos.around().filter(|(p, _)| !self.is_available(p)).count() as u8
     }
 
-    pub fn possition_is_forced(&self, pos: &Position) -> bool {
+    pub fn position_is_forced(&self, pos: &Position) -> bool {
         self.neighbor_count(pos) >= 3
     }
 
@@ -133,9 +176,9 @@ impl Board {
             for (adj_pos, adj_dir) in neighbor_pos.around() {
                 if adj_pos == m.position {
                     // The tile being placed
-                    colors.push(m.color(adj_dir.oposite()));
+                    colors.push(m.color(adj_dir.opposite()));
                 } else if let Some(adj_move) = self.get_move(&adj_pos) {
-                    colors.push(adj_move.color(adj_dir.oposite()));
+                    colors.push(adj_move.color(adj_dir.opposite()));
                 }
             }
             // If all colors are identical, no tile could ever fit
@@ -150,11 +193,14 @@ impl Board {
     /// For each forced position, finds boundary directions (empty dirs adjacent to occupied
     /// dirs) and traces straight-line rays outward. A ray continues while the position is
     /// on the contour and is not itself forced.
-    pub fn controlled_positions(&self, contour_positions: &BTreeSet<Position>) -> BTreeSet<Position> {
+    pub fn controlled_positions(
+        &self,
+        contour_positions: &BTreeSet<Position>,
+    ) -> BTreeSet<Position> {
         let mut controlled = BTreeSet::new();
 
         for &pos in contour_positions {
-            if !self.possition_is_forced(&pos) {
+            if !self.position_is_forced(&pos) {
                 continue;
             }
 
@@ -171,7 +217,7 @@ impl Board {
                 if !occupied[d] && (occupied[(d + 5) % 6] || occupied[(d + 1) % 6]) {
                     let dir = Direction::from(d as i8);
                     let mut p = pos.neighbor(dir);
-                    while contour_positions.contains(&p) && !self.possition_is_forced(&p) {
+                    while contour_positions.contains(&p) && !self.position_is_forced(&p) {
                         controlled.insert(p);
                         p = p.neighbor(dir);
                     }
@@ -185,14 +231,11 @@ impl Board {
     /// Compute all valid moves for tiles in the given hand.
     /// `bag_is_empty` controls whether restriction rules (controlled sides, same-color triples) apply.
     pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool) -> Vec<Move> {
-        let mut contour_positions = self.countour_positions();
+        let mut contour_positions = self.contour_positions();
 
         if !bag_is_empty {
             let controlled = self.controlled_positions(&contour_positions);
-            contour_positions = contour_positions
-                .difference(&controlled)
-                .cloned()
-                .collect();
+            contour_positions = contour_positions.difference(&controlled).cloned().collect();
         }
 
         let mut moves: Vec<Move> = hand
@@ -247,7 +290,7 @@ impl Board {
             let Some((da, db)) = color_link(&next_move, color) else {
                 return (count, false);
             };
-            let arrival = current_exit.oposite();
+            let arrival = current_exit.opposite();
             let next_exit = if da == arrival {
                 db
             } else if db == arrival {
@@ -287,7 +330,7 @@ impl Board {
             let Some((da, db)) = color_link(&next_move, color) else {
                 return (positions, false);
             };
-            let arrival = current_exit.oposite();
+            let arrival = current_exit.opposite();
             let next_exit = if da == arrival {
                 db
             } else if db == arrival {
@@ -398,7 +441,7 @@ impl Board {
         }
     }
 
-    pub fn countour_positions(&self) -> BTreeSet<Position> {
+    pub fn contour_positions(&self) -> BTreeSet<Position> {
         if self.is_empty() {
             BTreeSet::from([Position::CENTER])
         } else {
@@ -420,7 +463,7 @@ impl Board {
 
         let around_colors = position
             .around()
-            .filter_map(|(pos, dir)| self.get_move(&pos).map(|m| (dir, m.color(dir.oposite()))));
+            .filter_map(|(pos, dir)| self.get_move(&pos).map(|m| (dir, m.color(dir.opposite()))));
 
         for (color_position, color) in around_colors {
             for piece_rotation in enum_iterator::all::<Rotation>() {
@@ -439,9 +482,40 @@ impl Board {
                 tile,
                 rotation,
                 position,
-                forced: self.possition_is_forced(&position),
+                forced: self.position_is_forced(&position),
             })
     }
+}
+
+pub fn play_move_parts(
+    board: &mut Board,
+    hand: &mut Hand,
+    bag: &mut Bag,
+    m: Move,
+) -> Result<PlayedMove, MoveError> {
+    if !hand.contains(&m.tile) {
+        return Err(MoveError::TileNotInHand);
+    }
+
+    let legal_moves = board.possible_moves(hand, bag.is_empty());
+    if legal_moves.is_empty() {
+        return Err(MoveError::NoLegalMoves);
+    }
+
+    let Some(canonical) = legal_moves.into_iter().find(|legal| {
+        legal.tile == m.tile && legal.position == m.position && legal.rotation == m.rotation
+    }) else {
+        return Err(MoveError::InvalidMove);
+    };
+
+    board
+        .insert_move(canonical)
+        .map_err(|_| MoveError::BoardFull)?;
+    let hand_index = hand.play_tile(canonical.tile, bag);
+    Ok(PlayedMove {
+        m: canonical,
+        hand_index,
+    })
 }
 
 pub enum Player {
@@ -528,6 +602,12 @@ impl Bag {
     }
 }
 
+impl Default for Bag {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // --- Hand ---
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -536,7 +616,6 @@ pub struct Hand {
 }
 
 impl Hand {
-
     /// Remove a tile from hand and draw a replacement from the bag.
     /// Returns the index where the tile was removed.
     pub fn play_tile(&mut self, tile: Tile, bag: &mut Bag) -> usize {
@@ -583,17 +662,20 @@ pub struct TurnTracker {
 }
 
 impl TurnTracker {
-    pub fn new(players: &EnumMap<Color, Player>) -> Self {
+    pub fn new(players: &EnumMap<Color, Player>) -> Result<Self, SetupError> {
         let mut color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = players
             .iter()
             .filter(|(_, p)| *p != &Player::None)
             .map(|(c, _)| c)
             .collect();
+        if color_cycle.is_empty() {
+            return Err(SetupError::EmptyTurnCycle);
+        }
         color_cycle.shuffle(&mut rand::rng());
-        TurnTracker {
+        Ok(TurnTracker {
             currently_playing: 0,
             color_cycle,
-        }
+        })
     }
 
     pub fn current(&self) -> Color {
@@ -612,16 +694,21 @@ impl TurnTracker {
     /// Build a TurnTracker pointing at `current` with the given ordered
     /// color cycle. Used by clients that receive an authoritative snapshot
     /// and need to reconstruct turn state without reshuffling.
-    pub fn from_parts(current: Color, colors: impl IntoIterator<Item = Color>) -> Self {
+    pub fn from_parts(
+        current: Color,
+        colors: impl IntoIterator<Item = Color>,
+    ) -> Result<Self, SetupError> {
         let color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = colors.into_iter().collect();
-        let currently_playing = color_cycle
-            .iter()
-            .position(|&c| c == current)
-            .unwrap_or(0);
-        TurnTracker {
+        if color_cycle.is_empty() {
+            return Err(SetupError::EmptyTurnCycle);
+        }
+        let Some(currently_playing) = color_cycle.iter().position(|&c| c == current) else {
+            return Err(SetupError::CurrentPlayerNotInCycle);
+        };
+        Ok(TurnTracker {
             currently_playing,
             color_cycle,
-        }
+        })
     }
 }
 
@@ -642,7 +729,12 @@ pub struct Game {
 }
 
 impl Game {
-    pub fn new(red: Player, blue: Player, yellow: Player, green: Player) -> Self {
+    pub fn new(
+        red: Player,
+        blue: Player,
+        yellow: Player,
+        green: Player,
+    ) -> Result<Self, SetupError> {
         let board = Default::default();
         let mut bag = Bag::new();
 
@@ -654,21 +746,25 @@ impl Game {
         players[Color::Yellow] = yellow;
         players[Color::Green] = green;
 
-        let turn_tracker = TurnTracker::new(&players);
+        let active_count = players.values().filter(|p| **p != Player::None).count();
+        if active_count < 2 {
+            return Err(SetupError::NotEnoughPlayers);
+        }
+        let turn_tracker = TurnTracker::new(&players)?;
 
         let mut hands: EnumMap<Color, Hand> = Default::default();
         for &color in turn_tracker.playing_colors() {
             hands[color].deal(&mut bag, TILES_IN_HAND);
         }
 
-        Self {
+        Ok(Self {
             board,
             bag,
             players,
             turn_tracker,
             hands,
             current_moves: None,
-        }
+        })
     }
 
     pub fn currently_playing(&self) -> Color {
@@ -697,23 +793,16 @@ impl Game {
         }
     }
 
-    pub fn play_move(&mut self, m: impl Into<Move>) -> Result<(), String> {
+    pub fn play_move(&mut self, m: impl Into<Move>) -> Result<(), MoveError> {
         let current_player = self.currently_playing();
         let m: Move = m.into();
-
-        if !self.hands[current_player].contains(&m.tile) {
-            return Err("Tile not in hand".to_string());
-        }
-
-        let has_forced_move = self.get_possible_moves().iter().any(|pm| pm.forced);
-        let move_is_forced = self.board.possition_is_forced(&m.position);
-        if has_forced_move && !move_is_forced {
-            return Err("Must play a forced move".to_string());
-        }
-
-        self.board.insert_move(m)?;
-        self.hands[current_player].play_tile(m.tile, &mut self.bag);
-        if !move_is_forced {
+        let played = play_move_parts(
+            &mut self.board,
+            &mut self.hands[current_player],
+            &mut self.bag,
+            m,
+        )?;
+        if !played.m.forced {
             self.turn_tracker.next();
         }
         self.current_moves = None;
@@ -801,7 +890,13 @@ impl Game {
         let current = self.currently_playing();
         if let Player::Ai(ref ai) = self.players[current] {
             let board = self.board.clone();
-            Some(ai.choose_move(&board, &self.hands, current, &possible))
+            Some(ai.choose_move(
+                &board,
+                &self.hands,
+                current,
+                self.turn_tracker.playing_colors(),
+                &possible,
+            ))
         } else {
             None
         }
@@ -834,7 +929,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
 
-    use crate::{Board, Color, Direction, Game, Move, Player, Position, Rotation, Tile};
+    use crate::{Board, Color, Direction, Game, Move, MoveError, Player, Position, Rotation, Tile};
 
     /// Get the neighbor of a position in a given direction.
     fn neighbor(pos: Position, dir: Direction) -> Position {
@@ -843,7 +938,8 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let mut game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        let mut game =
+            Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
 
         let active_color = game.currently_playing();
         let _player_tiles = game.get_hand(active_color);
@@ -876,9 +972,9 @@ mod tests {
             }
         }
 
-        assert_eq!(Direction::Left.oposite(), Direction::Right);
-        assert_eq!(Direction::Right.oposite(), Direction::Left);
-        assert_eq!(Direction::TopLeft.oposite(), Direction::BottomRight);
+        assert_eq!(Direction::Left.opposite(), Direction::Right);
+        assert_eq!(Direction::Right.opposite(), Direction::Left);
+        assert_eq!(Direction::TopLeft.opposite(), Direction::BottomRight);
 
         assert_eq!(Direction::Left - Rotation::R60, Direction::BottomLeft);
         assert_eq!(Direction::BottomLeft + Rotation::R60, Direction::Left);
@@ -1014,9 +1110,9 @@ mod tests {
             })
             .unwrap();
 
-        let countour = board.countour_positions();
+        let contour = board.contour_positions();
         // Placing at Right would give CENTER a 4th neighbor → illegal (controlled side)
-        let controlled = board.controlled_positions(&countour);
+        let controlled = board.controlled_positions(&contour);
         assert!(
             controlled.contains(&right),
             "right should be on a controlled side (CENTER is forced with 3 neighbors)"
@@ -1066,10 +1162,10 @@ mod tests {
             })
             .unwrap();
 
-        let countour = board.countour_positions();
+        let contour = board.contour_positions();
         // CENTER is now a forced space (3 neighbors).
         // Right is adjacent to CENTER and on the contour → controlled side → should be blocked
-        let controlled = board.controlled_positions(&countour);
+        let controlled = board.controlled_positions(&contour);
         assert!(
             controlled.contains(&right),
             "should reject move along controlled side of forced space"
@@ -1300,8 +1396,42 @@ mod tests {
     }
 
     #[test]
+    fn game_play_move_rejects_illegal_rotation() {
+        let mut game =
+            Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
+        let first = game.get_possible_moves()[0];
+        game.play_move(first).unwrap();
+
+        let possible = game.get_possible_moves().to_vec();
+        let illegal = possible
+            .iter()
+            .find_map(|m| {
+                enum_iterator::all::<Rotation>()
+                    .find(|&rotation| {
+                        !possible.iter().any(|legal| {
+                            legal.tile == m.tile
+                                && legal.position == m.position
+                                && legal.rotation == rotation
+                        })
+                    })
+                    .map(|rotation| Move { rotation, ..*m })
+            })
+            .expect("post-opening moves should include a constrained position");
+
+        assert_eq!(game.play_move(illegal), Err(MoveError::InvalidMove));
+    }
+
+    #[test]
+    fn game_new_rejects_less_than_two_players() {
+        assert_eq!(
+            Game::new(Player::Someone, Player::None, Player::None, Player::None).unwrap_err(),
+            crate::SetupError::NotEnoughPlayers
+        );
+    }
+
+    #[test]
     fn test_winner_not_over() {
-        let game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        let game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
         assert_eq!(game.winner(), None);
     }
 
@@ -1312,7 +1442,8 @@ mod tests {
             Player::Someone,
             Player::Someone,
             Player::None,
-        );
+        )
+        .unwrap();
         let initial = game.playing_colors().to_vec();
         assert_eq!(initial.len(), 3);
         let retire = initial[1];
@@ -1335,7 +1466,8 @@ mod tests {
             Player::Someone,
             Player::Someone,
             Player::None,
-        );
+        )
+        .unwrap();
         let current_before = game.currently_playing();
         game.retire_color(current_before).unwrap();
         let current_after = game.currently_playing();
@@ -1345,7 +1477,8 @@ mod tests {
 
     #[test]
     fn retire_color_rejects_last_player() {
-        let mut game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        let mut game =
+            Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
         let first = game.playing_colors()[0];
         game.retire_color(first).unwrap();
         let last = game.playing_colors()[0];
@@ -1354,7 +1487,8 @@ mod tests {
 
     #[test]
     fn retire_color_rejects_unknown_color() {
-        let mut game = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        let mut game =
+            Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
         // Find a color not in the cycle — at least one of the four must be absent.
         let absent = [Color::Red, Color::Blue, Color::Yellow, Color::Green]
             .into_iter()

@@ -18,6 +18,7 @@ impl TantrixAi for GreedyAi {
         board: &Board,
         _hands: &EnumMap<Color, Hand>,
         current_player: Color,
+        _active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
         *possible_moves

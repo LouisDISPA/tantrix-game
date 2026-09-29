@@ -32,8 +32,7 @@ pub fn BoardTile(m: Move, hex_size: f64, variant: BoardTileVariant) -> Element {
             .unwrap_or_default()
     });
     let is_game_over = use_is_game_over();
-    let just_placed =
-        use_memo(move || ctx.ui_state.last_placed_position()() == Some(m.position));
+    let just_placed = use_memo(move || ctx.ui_state.last_placed_position()() == Some(m.position));
 
     let style = hex_position_style(m.position, hex_size);
     let is_preview = matches!(variant, BoardTileVariant::Preview);

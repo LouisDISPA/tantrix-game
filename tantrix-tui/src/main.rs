@@ -27,7 +27,8 @@ fn main() -> io::Result<()> {
         Player::Ai(Box::new(RandomAi)),
         Player::None,
         Player::None,
-    );
+    )
+    .expect("TUI starts with two active players");
     let app = App::new(game);
     ratatui::run(|terminal| app.run(terminal))
 }

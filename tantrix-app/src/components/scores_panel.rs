@@ -30,12 +30,27 @@ fn ScoreRow(color: Color) -> Element {
             class: "results-row {color_class}",
             class: if is_winner() { "results-row-winner" },
             class: if is_active() { "results-row-active" },
+            role: "button",
+            tabindex: "0",
+            aria_label: "Highlight score path",
             onclick: move |_| {
                 let current = *ui_state.highlighted_color().read();
                 if current == Some(color) {
                     ui_state.highlighted_color().set(None);
                 } else {
                     ui_state.highlighted_color().set(Some(color));
+                }
+            },
+            onkeydown: move |e| {
+                if matches!(e.key(), Key::Enter)
+                    || matches!(e.key(), Key::Character(c) if c == " ")
+                {
+                    let current = *ui_state.highlighted_color().read();
+                    if current == Some(color) {
+                        ui_state.highlighted_color().set(None);
+                    } else {
+                        ui_state.highlighted_color().set(Some(color));
+                    }
                 }
             },
             onmouseenter: move |_| ui_state.hovered().set(Hovered::ScoringColor(color)),
@@ -80,12 +95,15 @@ pub fn ScoresPanel(children: Element) -> Element {
                                 {
                                     let color_class = format!("color-{}", color_slug(color));
                                     rsx! {
-                                        if i > 0 {
-                                            span { class: "results-tie-separator", " & " }
-                                        }
                                         span {
-                                            class: "results-winner-name {color_class}",
-                                            "{color}"
+                                            key: "{color:?}",
+                                            if i > 0 {
+                                                span { class: "results-tie-separator", " & " }
+                                            }
+                                            span {
+                                                class: "results-winner-name {color_class}",
+                                                "{color}"
+                                            }
                                         }
                                     }
                                 }

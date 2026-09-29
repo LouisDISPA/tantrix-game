@@ -37,7 +37,7 @@ crate that knows about Dioxus.
    6-character room code (`tantrix-net::generate_room_code`, alphabet
    `A-Z` minus `I`/`O`/`Q` for legibility) and navigates to
    `/online/CODE/host`.
-2. `OnlineRoom` (`pages/online/root.rs`) calls
+2. `OnlineRoom` (`pages/online/room.rs`) calls
    `tantrix_net::open_host_session(url, nickname)` and spawns the
    returned future via Dioxus's `spawn`. The session opens a
    reliable-only data channel against `wss://signaling/CODE`.
@@ -52,11 +52,12 @@ crate that knows about Dioxus.
    carrying a `RejectCode` like `LobbyFull`/`IncompatibleVersion`),
    then broadcasts a `LobbyUpdate` to everyone.
 6. Each player picks a color; the host's `Start game` button enables
-   once at least two seats are taken. On click, the host constructs a
+   once at least two seats are taken and all seated players are connected.
+   On click, the host constructs a
    `Game`, broadcasts `GameStarted { snapshot }`, and the UI flips to
    the play view.
 7. Every move follows the same pattern: client sends `PlayMove { m }`,
-   host calls `Game::play_move` (`tantrix-game/src/lib.rs:673`), and
+   host calls strict `Game::play_move`, and
    either rejects with `Error { code: InvalidMove }` or rebroadcasts
    the new `StateUpdate { snapshot, last_move }`.
 
@@ -278,5 +279,5 @@ mints a new token and joins as a spectator; that's intentional.
 | Online ↔ UI bridge | `tantrix-app/src/state/online_state.rs` |
 | Move dispatch override | `tantrix-app/src/state/actions.rs::execute_move` |
 | HUD with connection state | `tantrix-app/src/components/status_bar.rs` |
-| Participants drawer + kick | `tantrix-app/src/components/participants_panel.rs` |
+| Participants drawer + kick | `tantrix-app/src/pages/online/participants_drawer.rs` |
 | Retire seated color | `tantrix-game::Game::retire_color` |

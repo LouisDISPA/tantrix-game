@@ -43,7 +43,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
     let ctx = use_context::<GameCtx>();
 
     let is_current = ctx.game_state.read().turn_tracker.current() == color;
-    let hand_len = ctx.game_state.read().hands[color].iter().count();
+    let hand_tiles = ctx.game_state.read().hands[color].to_vec();
     let color_class = format!("color-{}", color_slug(color));
 
     let pos_class = position.css_class();
@@ -77,12 +77,12 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                 }
             }
 
-            if hand_len == 0 {
+            if hand_tiles.is_empty() {
                 div { class: "hand-empty", "No tiles" }
             } else {
                 div { class: "{tiles_class}",
-                    for i in 0..hand_len {
-                        HandTile { key: "{color:?}-{i}", color, index: i }
+                    for (i, tile) in hand_tiles.iter().copied().enumerate() {
+                        HandTile { key: "{color:?}-{tile:?}", color, index: i }
                     }
                 }
             }

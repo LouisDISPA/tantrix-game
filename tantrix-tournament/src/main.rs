@@ -191,7 +191,8 @@ fn run_game(ai_a: &dyn TantrixAi, ai_b: &dyn TantrixAi) -> GameResult {
         Player::Ai(ai_b.clone_box()),
         Player::None,
         Player::None,
-    );
+    )
+    .expect("tournament games always have two AI players");
     game.advance();
 
     let scores = game.scores();

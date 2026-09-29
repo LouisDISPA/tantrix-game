@@ -23,7 +23,17 @@ pub fn EmptyHex(position: Position, hex_size: f64, forced: bool, faint: bool) ->
             class: if forced { "forced" },
             class: if faint { "faint" },
             style: "{style}",
+            role: "button",
+            tabindex: "0",
+            aria_label: "Place tile",
             onclick: move |_| click_position(ctx, position),
+            onkeydown: move |e| {
+                if matches!(e.key(), Key::Enter)
+                    || matches!(e.key(), Key::Character(c) if c == " ")
+                {
+                    click_position(ctx, position);
+                }
+            },
             onmouseenter: move |_| hovered.set(Hovered::BoardPosition(position)),
             onmouseleave: move |_| hovered.set(Hovered::None),
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",

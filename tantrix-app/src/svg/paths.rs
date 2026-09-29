@@ -107,4 +107,3 @@ pub fn color_css_class(color: Color) -> &'static str {
         Color::Green => "hex-curve-green",
     }
 }
-

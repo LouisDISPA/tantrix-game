@@ -1,7 +1,7 @@
 //! Session lifecycle + reasons a session can end.
 
 use tantrix_game::Move;
-use tantrix_proto::{GameSnapshot, LobbyState, RejectCode};
+use tantrix_proto::{EndReason, GameSnapshot, LobbyState, RejectCode};
 
 /// Top-level lifecycle of the online session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,10 +15,11 @@ pub enum OnlinePhase {
         snapshot: GameSnapshot,
         last_move: Option<Move>,
     },
-    /// Terminal state. The snapshot carries the final board and seats;
-    /// the win/loss `EndReason` will be added back once the end-of-game
-    /// screen is implemented.
-    Ended { snapshot: GameSnapshot },
+    /// Terminal state. The snapshot carries the final board and seats.
+    Ended {
+        reason: EndReason,
+        snapshot: GameSnapshot,
+    },
     /// Fatal error; the session task has exited.
     Failed { reason: FailureReason },
 }

@@ -18,10 +18,7 @@ pub struct ParticipantRowData {
 }
 
 #[component]
-pub fn ParticipantRow(
-    row: ParticipantRowData,
-    on_kick: Option<EventHandler<()>>,
-) -> Element {
+pub fn ParticipantRow(row: ParticipantRowData, on_kick: Option<EventHandler<()>>) -> Element {
     let dot = row.dot.0;
     let tag = row.role_tag;
     let tag_class = if tag == Some("host") { "host" } else { "dim" };

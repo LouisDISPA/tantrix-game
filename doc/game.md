@@ -36,7 +36,9 @@ tantrix-ai   ──┤
 ## Rules
 
 - **Golden rule.** Touching edges must match color. Enforced by
-  `Board::insert_move`.
+  `Board::possible_moves` plus the checked `play_move_parts` /
+  `Game::play_move` mutation path. `Board::insert_move` is a low-level
+  occupancy-only insertion helper.
 - **Forced space.** Empty hex with 3+ filled neighbors. If any forced
   move is possible, the player *must* play one.
 - **Restrictions** (while `bag` is non-empty):
@@ -75,9 +77,9 @@ execute_move     → game_state.write().play_move
 ## AI turn
 
 `advance_turn` checks `Player::Ai(_)` for the current color. If AI, it
-sets `phase = WaitingForAi` and spawns the loop with **`spawn_forever`**
-(see `dioxus-spawn` skill) because the trigger source (`EmptyHex`'s
-onclick) unmounts mid-render.
+sets `phase = WaitingForAi`. `LocalGame` owns a `use_effect` that reacts
+to that phase and spawns the loop from the page scope, so the task is
+cancelled if the page unmounts but not when a clicked tile/hex disappears.
 
 `state/ai_service.rs::run_ai_loop` iterates while the current player is
 still an AI:

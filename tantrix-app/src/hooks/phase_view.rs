@@ -82,7 +82,11 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                     None
                 });
 
-                PhaseView { positions, preview, wheel: None }
+                PhaseView {
+                    positions,
+                    preview,
+                    wheel: None,
+                }
             }
 
             TurnPhase::SelectPosition => {
@@ -107,10 +111,19 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                     let tile = *hand.get(idx)?;
                     let rotations = info.positions.get(&position)?;
                     let rotation = hovered.rotation().unwrap_or(*rotations.first()?);
-                    Some(Move { tile, position, rotation, forced: false })
+                    Some(Move {
+                        tile,
+                        position,
+                        rotation,
+                        forced: false,
+                    })
                 });
 
-                PhaseView { positions, preview, wheel: None }
+                PhaseView {
+                    positions,
+                    preview,
+                    wheel: None,
+                }
             }
 
             TurnPhase::SelectRotation => {
@@ -131,23 +144,48 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                     .collect();
 
                 let Some(position) = selected_position else {
-                    return PhaseView { positions, preview: None, wheel: None };
+                    return PhaseView {
+                        positions,
+                        preview: None,
+                        wheel: None,
+                    };
                 };
                 let Some(tile) = hand.get(idx).copied() else {
-                    return PhaseView { positions, preview: None, wheel: None };
+                    return PhaseView {
+                        positions,
+                        preview: None,
+                        wheel: None,
+                    };
                 };
                 let Some(rotations) = info.positions.get(&position).cloned() else {
-                    return PhaseView { positions, preview: None, wheel: None };
+                    return PhaseView {
+                        positions,
+                        preview: None,
+                        wheel: None,
+                    };
                 };
 
                 let rotation = hovered
                     .rotation()
                     .or_else(|| rotations.first().copied())
                     .unwrap_or(Rotation::None);
-                let preview = Some(Move { tile, position, rotation, forced: false });
-                let wheel = Some(WheelData { tile, position, rotations });
+                let preview = Some(Move {
+                    tile,
+                    position,
+                    rotation,
+                    forced: false,
+                });
+                let wheel = Some(WheelData {
+                    tile,
+                    position,
+                    rotations,
+                });
 
-                PhaseView { positions, preview, wheel }
+                PhaseView {
+                    positions,
+                    preview,
+                    wheel,
+                }
             }
 
             TurnPhase::WaitingForAi | TurnPhase::GameOver => PhaseView::default(),

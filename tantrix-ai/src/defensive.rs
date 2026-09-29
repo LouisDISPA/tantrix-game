@@ -18,6 +18,7 @@ impl TantrixAi for DefensiveAi {
         board: &Board,
         _hands: &EnumMap<Color, Hand>,
         current_player: Color,
+        active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
         *possible_moves
@@ -27,10 +28,11 @@ impl TantrixAi for DefensiveAi {
                 test.insert_move(**m).unwrap();
                 let scores = test.scores();
                 let own = scores[current_player].score as i64;
-                let best_opponent = scores
+                let best_opponent = active_players
                     .iter()
-                    .filter(|(c, _)| *c != current_player)
-                    .map(|(_, s)| s.score as i64)
+                    .copied()
+                    .filter(|&c| c != current_player)
+                    .map(|c| scores[c].score as i64)
                     .max()
                     .unwrap_or(0);
                 own - best_opponent

@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use tantrix_game::{
-    Bag, Board, Color, EnumMap, Hand, Move, Player, PlayerScore, Position, Rotation, TurnTracker,
-    TILES_IN_HAND,
+    play_move_parts, Bag, Board, Color, EnumMap, Hand, Move, MoveError, Player, PlayerScore,
+    Position, Rotation, TurnTracker, TILES_IN_HAND,
 };
 use tantrix_proto::GameSnapshot;
 
@@ -65,7 +65,8 @@ impl GameState {
         let players = EnumMap::from_fn(|color| config.player_for(color));
 
         let mut bag = Bag::new();
-        let turn_tracker = TurnTracker::new(&players);
+        let turn_tracker = TurnTracker::new(&players)
+            .expect("GameConfig always creates at least two active players");
 
         let mut hands: EnumMap<Color, Hand> = Default::default();
         for &color in turn_tracker.playing_colors() {
@@ -104,7 +105,8 @@ impl GameState {
             turn_tracker: TurnTracker::from_parts(
                 snap.current_player,
                 snap.playing_colors.iter().copied(),
-            ),
+            )
+            .expect("authoritative snapshots always include the current player"),
             hand_info: Vec::new(),
         };
         state.refresh_hand_info();
@@ -113,7 +115,9 @@ impl GameState {
 
     pub fn refresh_hand_info(&mut self) {
         let current = self.turn_tracker.current();
-        let all_moves = self.board.possible_moves(&self.hands[current], self.bag.is_empty());
+        let all_moves = self
+            .board
+            .possible_moves(&self.hands[current], self.bag.is_empty());
 
         self.hand_info = self.hands[current]
             .iter()
@@ -134,26 +138,10 @@ impl GameState {
             .collect();
     }
 
-    pub fn play_move(&mut self, m: Move) -> Result<(), String> {
+    pub fn play_move(&mut self, m: Move) -> Result<(), MoveError> {
         let current = self.turn_tracker.current();
-
-        if !self.hands[current].contains(&m.tile) {
-            return Err("Tile not in hand".to_string());
-        }
-
-        let has_forced_move = self
-            .board
-            .possible_moves(&self.hands[current], self.bag.is_empty())
-            .iter()
-            .any(|pm| pm.forced);
-        let move_is_forced = self.board.possition_is_forced(&m.position);
-        if has_forced_move && !move_is_forced {
-            return Err("Must play a forced move".to_string());
-        }
-
-        self.board.insert_move(m)?;
-        self.hands[current].play_tile(m.tile, &mut self.bag);
-        if !move_is_forced {
+        let played = play_move_parts(&mut self.board, &mut self.hands[current], &mut self.bag, m)?;
+        if !played.m.forced {
             self.turn_tracker.next();
         }
         self.refresh_hand_info();
@@ -183,12 +171,20 @@ impl GameState {
             return None;
         }
         let current = self.turn_tracker.current();
-        let possible = self.board.possible_moves(&self.hands[current], self.bag.is_empty());
+        let possible = self
+            .board
+            .possible_moves(&self.hands[current], self.bag.is_empty());
         if possible.is_empty() {
             return None;
         }
         if let Player::Ai(ref ai) = self.players[current] {
-            Some(ai.choose_move(&self.board, &self.hands, current, &possible))
+            Some(ai.choose_move(
+                &self.board,
+                &self.hands,
+                current,
+                self.turn_tracker.playing_colors(),
+                &possible,
+            ))
         } else {
             None
         }

@@ -1,0 +1,37 @@
+name = "tantrix-game"
+main = "src/index.js"
+compatibility_date = "2026-05-12"
+preview_urls = false
+workers_dev = false
+
+[[routes]]
+pattern = "tantrix.louis-dispa.fr"
+custom_domain = true
+
+[assets]
+directory = "../target/dx/tantrix-app/release/web/public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+persist = true
+invocation_logs = true
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+persist = true
+head_sampling_rate = 1

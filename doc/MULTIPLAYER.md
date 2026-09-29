@@ -51,9 +51,9 @@ works too — it just needs its own storage). Two paths:
 **Online**, enter a nickname, type the room code, click **Join room**.
 
 **Option B — share link:** the lobby shows a share URL of the shape
-`/#/join/ABCXYZ`. Navigate to `http://localhost:8080/#/join/ABCXYZ` in the
-second tab; you'll be asked for a nickname then dropped straight into the
-lobby.
+`/join/ABCXYZ`. Navigate to `http://localhost:8080/join/ABCXYZ` in the
+second tab; you'll be dropped straight into the lobby with an auto-generated
+nickname that can be edited there.
 
 Pick a different color in the guest tab. Both tabs should now show both
 players seated.
@@ -61,7 +61,7 @@ players seated.
 ## 5. Start the game
 
 In the **host** tab, the **Start game** button lights up once at least two
-colors are seated. Click it. Both tabs switch to the board view and the
+colors are seated and all seated players are connected. Click it. Both tabs switch to the board view and the
 host's authoritative `Game` drives turns from there on. Play a tile; the
 guest tab should receive the state update and render the move within a
 frame or two.

@@ -18,6 +18,7 @@ impl TantrixAi for FirstMoveAi {
         _board: &Board,
         _hands: &EnumMap<Color, Hand>,
         _current_player: Color,
+        _active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
         possible_moves[0]

@@ -4,7 +4,7 @@
 use dioxus::prelude::*;
 use futures::StreamExt;
 use tantrix_net::{
-    SessionEvent, SessionHandle, SessionRole, open_client_session, open_host_session,
+    open_client_session, open_host_session, SessionEvent, SessionHandle, SessionRole,
 };
 use tantrix_proto::RejectCode;
 
@@ -57,7 +57,10 @@ pub fn spawn_session(
         // network task exited early. Park the UI on the Failed screen so
         // the user isn't stuck on the connecting spinner.
         let current = store.phase().read().clone();
-        if !matches!(current, OnlinePhase::Failed { .. } | OnlinePhase::Ended { .. }) {
+        if !matches!(
+            current,
+            OnlinePhase::Failed { .. } | OnlinePhase::Ended { .. }
+        ) {
             store.phase().set(OnlinePhase::Failed {
                 reason: FailureReason::Transport("Connection closed unexpectedly.".into()),
             });
@@ -88,11 +91,17 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent, room_code: &str) 
             });
             store.last_error().set(None);
         }
-        SessionEvent::StateUpdate { snapshot, last_move } => {
-            store.phase().set(OnlinePhase::Playing { snapshot, last_move });
+        SessionEvent::StateUpdate {
+            snapshot,
+            last_move,
+        } => {
+            store.phase().set(OnlinePhase::Playing {
+                snapshot,
+                last_move,
+            });
         }
-        SessionEvent::GameEnded { reason: _, snapshot } => {
-            store.phase().set(OnlinePhase::Ended { snapshot });
+        SessionEvent::GameEnded { reason, snapshot } => {
+            store.phase().set(OnlinePhase::Ended { reason, snapshot });
         }
         SessionEvent::Error { code, message } => {
             if matches!(code, Some(RejectCode::Kicked)) {

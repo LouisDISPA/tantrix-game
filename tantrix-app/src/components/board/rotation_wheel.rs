@@ -2,9 +2,9 @@ use dioxus::prelude::*;
 use tantrix_game::Move;
 
 use crate::components::tile::HexSvg;
+use crate::hooks::use_phase_view;
 use crate::state::actions::pick_rotation;
 use crate::state::game_state::GameCtx;
-use crate::hooks::use_phase_view;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 
 const HEX_SIZE: f64 = 28.0;
@@ -39,10 +39,21 @@ pub fn RotationWheel() -> Element {
 
                     rsx! {
                         div {
+                            key: "{rot:?}",
                             class: "rotation-bar-slot",
+                            role: "button",
+                            tabindex: "0",
+                            aria_label: "Choose rotation",
                             onclick: move |evt| {
                                 evt.stop_propagation();
                                 pick_rotation(ctx, rot);
+                            },
+                            onkeydown: move |e| {
+                                if matches!(e.key(), Key::Enter)
+                                    || matches!(e.key(), Key::Character(c) if c == " ")
+                                {
+                                    pick_rotation(ctx, rot);
+                                }
                             },
                             onmouseenter: move |_| hovered.set(Hovered::Rotation(rot)),
                             onmouseleave: move |_| hovered.set(Hovered::None),

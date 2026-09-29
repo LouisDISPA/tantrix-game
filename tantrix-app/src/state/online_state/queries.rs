@@ -38,7 +38,7 @@ pub fn participants(phase: &OnlinePhase) -> &[Participant] {
     match phase {
         OnlinePhase::Lobby { lobby } => &lobby.participants,
         OnlinePhase::Playing { snapshot, .. } => &snapshot.participants,
-        OnlinePhase::Ended { snapshot } => &snapshot.participants,
+        OnlinePhase::Ended { snapshot, .. } => &snapshot.participants,
         _ => &[],
     }
 }
@@ -75,12 +75,6 @@ pub fn disconnected_count_of(state: Store<OnlineState>) -> usize {
     let phase = state.phase();
     let phase = phase.read();
     participants(&phase).iter().filter(|p| !p.connected).count()
-}
-
-pub fn participant_at_of(state: Store<OnlineState>, index: usize) -> Option<Participant> {
-    let phase = state.phase();
-    let phase = phase.read();
-    participants(&phase).get(index).cloned()
 }
 
 pub fn is_spectator_of(state: Store<OnlineState>) -> bool {

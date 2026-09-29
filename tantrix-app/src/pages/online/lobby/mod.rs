@@ -37,7 +37,13 @@ pub fn OnlineLobbyView(
         let phase = phase.read();
         seats_filled(&phase)
     });
-    let can_start = use_memo(move || seated_count() >= 2);
+    let connected_seated_count = use_memo(move || {
+        let phase = state.phase();
+        let phase = phase.read();
+        connected_seats_filled(&phase)
+    });
+    let can_start =
+        use_memo(move || seated_count() >= 2 && connected_seated_count() == seated_count());
     let error_message = use_memo(move || {
         let last = state.last_error();
         let last = last.read();
@@ -110,7 +116,7 @@ pub fn OnlineLobbyView(
                                 }
                             },
                             div { class: "title-btn-inner",
-                                if can_start() { "Start game" } else { "Waiting for players…" }
+                                if can_start() { "Start game" } else if seated_count() >= 2 { "Waiting for reconnection…" } else { "Waiting for players…" }
                             }
                         }
                     } else {
@@ -125,6 +131,23 @@ pub fn OnlineLobbyView(
 fn seats_filled(phase: &OnlinePhase) -> usize {
     match phase {
         OnlinePhase::Lobby { lobby } => lobby.seats.values().filter(|s| s.is_some()).count(),
+        _ => 0,
+    }
+}
+
+fn connected_seats_filled(phase: &OnlinePhase) -> usize {
+    match phase {
+        OnlinePhase::Lobby { lobby } => lobby
+            .seats
+            .values()
+            .filter_map(|s| s.as_ref())
+            .filter(|seat| {
+                lobby
+                    .participants
+                    .iter()
+                    .any(|p| p.peer_id == seat.peer_id && p.connected)
+            })
+            .count(),
         _ => 0,
     }
 }

@@ -36,7 +36,7 @@ pub fn HexSvg(
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let css_class = color_css_class(color);
                     rsx! {
-                        path { d: "{path_d}", class: "hex-curve {css_class}" }
+                        path { key: "{color:?}-{d1:?}-{d2:?}", d: "{path_d}", class: "hex-curve {css_class}" }
                     }
                 }
             }
@@ -47,7 +47,7 @@ pub fn HexSvg(
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let name = color_name(color);
                     rsx! {
-                        path { d: "{path_d}", class: "scoring-curve scoring-curve-{name}" }
+                        path { key: "score-{color:?}-{d1:?}-{d2:?}", d: "{path_d}", class: "scoring-curve scoring-curve-{name}" }
                     }
                 }
             }

@@ -7,7 +7,9 @@ use enum_iterator::Sequence;
 use enum_map::Enum;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize,
+)]
 pub struct Position {
     x: i8,
     y: i8,
@@ -119,7 +121,7 @@ impl Direction {
         self as usize
     }
 
-    pub fn oposite(self) -> Self {
+    pub fn opposite(self) -> Self {
         (self as i8 + Self::COUNT / 2).into()
     }
 }

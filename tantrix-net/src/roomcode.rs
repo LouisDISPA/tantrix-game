@@ -23,7 +23,6 @@ pub fn generate_room_code() -> String {
 
 /// Validate a code the user typed. Returns the normalized (uppercased) form
 /// if every character is in the alphabet, else `None`.
-#[allow(dead_code)]
 pub fn normalize_room_code(input: &str) -> Option<String> {
     let upper = input.trim().to_ascii_uppercase();
     if upper.len() != ROOM_CODE_LEN {
@@ -33,5 +32,21 @@ pub fn normalize_room_code(input: &str) -> Option<String> {
         Some(upper)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_room_code;
+
+    #[test]
+    fn normalizes_valid_room_codes() {
+        assert_eq!(normalize_room_code(" abchjm "), Some("ABCHJM".into()));
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_wrong_length_room_codes() {
+        assert_eq!(normalize_room_code("ABCIOQ"), None);
+        assert_eq!(normalize_room_code("ABCDE"), None);
     }
 }

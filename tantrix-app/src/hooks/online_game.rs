@@ -52,7 +52,7 @@ pub fn use_initial_snapshot(state: Store<OnlineState>) -> Option<GameSnapshot> {
     let phase = phase.read();
     match &*phase {
         OnlinePhase::Playing { snapshot, .. } => Some(snapshot.clone()),
-        OnlinePhase::Ended { snapshot } => Some(snapshot.clone()),
+        OnlinePhase::Ended { snapshot, .. } => Some(snapshot.clone()),
         _ => None,
     }
 }
@@ -81,10 +81,11 @@ fn fan_out_snapshots(
         }
 
         let (snapshot, last_move, terminal) = match &*phase {
-            OnlinePhase::Playing { snapshot, last_move } => {
-                (snapshot, last_move.as_ref(), false)
-            }
-            OnlinePhase::Ended { snapshot } => (snapshot, None, true),
+            OnlinePhase::Playing {
+                snapshot,
+                last_move,
+            } => (snapshot, last_move.as_ref(), false),
+            OnlinePhase::Ended { snapshot, .. } => (snapshot, None, true),
             _ => return,
         };
 
@@ -98,12 +99,13 @@ fn fan_out_snapshots(
         let mut ui = ui_state.write();
         if terminal {
             ui.phase = TurnPhase::GameOver;
+            ui.selected_tile = None;
+            ui.selected_position = None;
+            ui.hovered = crate::state::ui_state::Hovered::None;
         } else {
+            ui.reset_selection();
             if let Some(m) = last_move {
                 ui.last_placed_position = Some(m.position);
-            }
-            if ui.phase == TurnPhase::GameOver {
-                ui.phase = TurnPhase::SelectTile;
             }
         }
     });

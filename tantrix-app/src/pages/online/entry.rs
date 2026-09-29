@@ -4,9 +4,9 @@
 //! `state::nickname`) and editable once the lobby has loaded.
 
 use dioxus::prelude::*;
-use tantrix_net::{generate_room_code, ROOM_CODE_LEN};
+use tantrix_net::{generate_room_code, normalize_room_code, ROOM_CODE_LEN};
 
-use crate::route::{Route, RoleParam};
+use crate::route::{RoleParam, Route};
 
 /// `/online` landing page: host a fresh room or enter a code to join.
 #[component]
@@ -84,13 +84,12 @@ pub fn OnlineEntry() -> Element {
 pub fn JoinRoom(code: String) -> Element {
     let nav = navigator();
     let code_upper = code.trim().to_ascii_uppercase();
-
-    let code_is_valid = code_upper.len() == ROOM_CODE_LEN
-        && code_upper.bytes().all(|b| b.is_ascii_uppercase());
+    let normalized_code = normalize_room_code(&code_upper);
+    let code_is_valid = normalized_code.is_some();
 
     // Auto-redirect into the room on first mount if the code looks sane.
     use_hook({
-        let code = code_upper.clone();
+        let code = normalized_code.clone().unwrap_or_default();
         let valid = code_is_valid;
         move || {
             if valid {
@@ -132,11 +131,13 @@ fn try_join(
     mut error: Signal<Option<String>>,
     nav: dioxus_router::Navigator,
 ) {
-    let code = code_input.read().trim().to_ascii_uppercase();
-    if code.len() != ROOM_CODE_LEN {
-        error.set(Some("Room codes are 6 characters.".into()));
+    let raw = code_input.read().clone();
+    let Some(code) = normalize_room_code(&raw) else {
+        error.set(Some(
+            "Room codes use 6 letters and exclude I, O, and Q.".into(),
+        ));
         return;
-    }
+    };
     let _ = nav.push(Route::OnlineRoom {
         code,
         role: RoleParam::Client,

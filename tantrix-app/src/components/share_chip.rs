@@ -50,7 +50,9 @@ pub fn ShareChip(url: ReadSignal<String>) -> Element {
 /// `navigator.clipboard` all resolve to `false`). No-op off the web.
 #[cfg(target_arch = "wasm32")]
 async fn copy_to_clipboard(text: String) -> bool {
-    let Some(win) = web_sys::window() else { return false };
+    let Some(win) = web_sys::window() else {
+        return false;
+    };
     let promise = win.navigator().clipboard().write_text(&text);
     wasm_bindgen_futures::JsFuture::from(promise).await.is_ok()
 }

@@ -1,11 +1,8 @@
 //! Store-aware participants list. Shared by the lobby and the in-game
 //! drawer.
 //!
-//! * `LobbyParticipants` — the `<ul>` shell. Subscribes only to the
-//!   participant count; individual rows re-render independently.
-//! * `LobbyParticipantRow` — one row, keyed by index. Subscribes only to
-//!   its own slot, derives display data, and wires the kick callback.
-//!   Renders the presentational [`ParticipantRow`] leaf.
+//! * `LobbyParticipants` — the `<ul>` shell.
+//! * `LobbyParticipantRow` — one row, keyed by stable participant token.
 
 use dioxus::prelude::*;
 use tantrix_net::{SessionCommand, SessionRole};
@@ -20,16 +17,25 @@ pub fn LobbyParticipants(
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
 ) -> Element {
-    let len = use_memo(move || queries::participant_count_of(state));
+    let participants = use_memo(move || {
+        let phase = state.phase();
+        let phase = phase.read();
+        queries::participants(&phase).to_vec()
+    });
 
     rsx! {
         ul { class: "lobby-peer-list",
-            for index in 0..len() {
+            for participant in participants() {
+                {
+                    let key = participant.token.as_str().to_string();
+                    rsx! {
                 LobbyParticipantRow {
-                    key: "{index}",
-                    index,
+                    key: "{key}",
+                    participant,
                     state,
                     sender,
+                }
+                    }
                 }
             }
         }
@@ -38,16 +44,11 @@ pub fn LobbyParticipants(
 
 #[component]
 pub fn LobbyParticipantRow(
-    index: usize,
+    participant: Participant,
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
 ) -> Element {
-    let participant = use_memo(move || queries::participant_at_of(state, index));
-
-    // Early-out if the index went out of range between renders.
-    let Some(p) = participant.read().clone() else {
-        return rsx! {};
-    };
+    let p = participant;
 
     let is_me = use_memo({
         let peer_id = p.peer_id.clone();

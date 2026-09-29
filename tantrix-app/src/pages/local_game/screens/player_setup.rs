@@ -45,6 +45,7 @@ pub fn PlayerSetup() -> Element {
                                 };
                                 rsx! {
                                     div {
+                                        key: "{color:?}",
                                         class: "player-slot {color_class}",
                                         class: if is_active { "active" },
                                         div { class: "color-swatch" }

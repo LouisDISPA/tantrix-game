@@ -159,28 +159,20 @@ pub enum PeerMessage {
         session_token: SessionToken,
     },
     /// Claim or release a color. `color: None` = leave the seat.
-    PickColor {
-        color: Option<Color>,
-    },
+    PickColor { color: Option<Color> },
     /// Host-only request to transition lobby → game.
     StartGame,
     /// Submit a move for the current turn.
-    PlayMove {
-        m: Move,
-    },
+    PlayMove { m: Move },
     /// Current player has no legal moves and wants to pass.
     SkipTurn,
     /// Pull the latest snapshot (e.g. after reconnect).
     RequestSnapshot,
     /// Change my display name. Host updates the roster and any seat binding
     /// and rebroadcasts the lobby so other clients see the new label.
-    UpdateNickname {
-        nickname: String,
-    },
+    UpdateNickname { nickname: String },
     /// Host-only: remove a participant from the room.
-    Kick {
-        target: PeerId,
-    },
+    Kick { target: PeerId },
 }
 
 /// The host's broadcast to one or all peers.
@@ -195,13 +187,9 @@ pub enum HostMessage {
         rejected: Option<RejectCode>,
     },
     /// Lobby changed (someone joined, picked a color, left, etc.).
-    LobbyUpdate {
-        lobby: LobbyState,
-    },
+    LobbyUpdate { lobby: LobbyState },
     /// Lobby → playing transition. Clients should render the game view.
-    GameStarted {
-        snapshot: GameSnapshot,
-    },
+    GameStarted { snapshot: GameSnapshot },
     /// New authoritative state after a move / skip / roster change.
     StateUpdate {
         snapshot: GameSnapshot,
@@ -214,15 +202,9 @@ pub enum HostMessage {
     },
     /// Host removed someone. Every peer receives this; the targeted peer
     /// should close its session and clear its stored token for the room.
-    Kicked {
-        target: PeerId,
-        reason: String,
-    },
+    Kicked { target: PeerId, reason: String },
     /// Per-peer rejection for the most recent intent.
-    Error {
-        code: RejectCode,
-        message: String,
-    },
+    Error { code: RejectCode, message: String },
 }
 
 // ---------------------------------------------------------------------------

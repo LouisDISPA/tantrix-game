@@ -77,7 +77,10 @@ pub fn hex_position_style(position: Position, hex_size: f64) -> String {
     let half_h = hex_size;
     format!(
         "--hx: {:.1}px; --hy: {:.1}px; --hw: {:.1}px; --hh: {:.1}px;",
-        px - half_w, py - half_h, half_w * 2.0, half_h * 2.0
+        px - half_w,
+        py - half_h,
+        half_w * 2.0,
+        half_h * 2.0
     )
 }
 

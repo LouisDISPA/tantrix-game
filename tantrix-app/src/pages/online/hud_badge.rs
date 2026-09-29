@@ -3,9 +3,7 @@
 
 use dioxus::prelude::*;
 
-use crate::state::online_state::{
-    queries, OnlinePhase, OnlineState, OnlineStateStoreExt,
-};
+use crate::state::online_state::{queries, OnlinePhase, OnlineState, OnlineStateStoreExt};
 
 #[component]
 pub fn OnlineHudBadge(state: Store<OnlineState>) -> Element {

@@ -22,19 +22,11 @@ pub fn HandTile(color: Color, index: usize) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
 
-    let tile = use_memo(move || {
-        ctx.game_state
-            .read()
-            .hands[color]
-            .get(index)
-            .copied()
-    });
+    let tile = use_memo(move || ctx.game_state.read().hands[color].get(index).copied());
 
     let state = use_memo(move || compute_state(ctx, color, index));
 
-    let just_drawn = use_memo(move || {
-        ctx.ui_state.new_tile()() == Some((color, index))
-    });
+    let just_drawn = use_memo(move || ctx.ui_state.new_tile()() == Some((color, index)));
 
     // Hover works on the current player's tiles for anyone watching — so
     // spectators can see where moves would land — but only the peer who
@@ -77,8 +69,19 @@ pub fn HandTile(color: Color, index: usize) -> Element {
                         class: "hand-tile",
                         class: "{state_class}",
                         class: if just_drawn() { "new-tile" },
+                        role: "button",
+                        tabindex: if interactive { "0" } else { "-1" },
+                        aria_label: "Select tile",
                         onclick: move |_| {
                             if interactive {
+                                click_tile(ctx, index);
+                            }
+                        },
+                        onkeydown: move |e| {
+                            if interactive
+                                && (matches!(e.key(), Key::Enter)
+                                    || matches!(e.key(), Key::Character(c) if c == " "))
+                            {
                                 click_tile(ctx, index);
                             }
                         },

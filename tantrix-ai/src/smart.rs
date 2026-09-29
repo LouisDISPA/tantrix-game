@@ -6,7 +6,7 @@ pub struct SmartAi;
 
 /// Score a candidate move with a multi-priority evaluation:
 ///   1. Own score gain (weight 1000) — primary objective
-///   2. Opponent score reduction (weight 100) — block their best chain
+///   2. Opponent score delta (weight 100) — avoid feeding active opponents
 ///   3. Avoid extending opponent's path (weight -50) — don't help them
 fn evaluate(board: &Board, m: &Move, player: Color, opponent: Color) -> i64 {
     let scores_before = board.scores();
@@ -60,14 +60,15 @@ impl TantrixAi for SmartAi {
         board: &Board,
         _hands: &EnumMap<Color, Hand>,
         current_player: Color,
+        active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
-        let opponent = board
-            .scores()
+        let scores = board.scores();
+        let opponent = active_players
             .iter()
-            .filter(|(c, _)| *c != current_player)
-            .max_by_key(|(_, s)| s.score)
-            .map(|(c, _)| c)
+            .copied()
+            .filter(|&c| c != current_player)
+            .max_by_key(|&c| scores[c].score)
             .unwrap_or(current_player);
 
         *possible_moves

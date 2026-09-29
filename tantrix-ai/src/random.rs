@@ -19,6 +19,7 @@ impl TantrixAi for RandomAi {
         _board: &Board,
         _hands: &EnumMap<Color, Hand>,
         _current_player: Color,
+        _active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
         let mut rng = rand::rng();

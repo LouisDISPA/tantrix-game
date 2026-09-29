@@ -16,9 +16,7 @@ use crate::session::SessionEvent;
 /// Create a single-reliable-channel socket for `room_url` and take ownership
 /// of channel 0 up front so the caller can `.next()` it directly in a
 /// `select!` without re-borrowing through the socket.
-pub(crate) fn open(
-    room_url: String,
-) -> (WebRtcSocket, WebRtcChannel, Fuse<MessageLoopFuture>) {
+pub(crate) fn open(room_url: String) -> (WebRtcSocket, WebRtcChannel, Fuse<MessageLoopFuture>) {
     let (mut socket, loop_fut) = WebRtcSocketBuilder::new(room_url)
         .add_channel(ChannelConfig::reliable())
         .build();

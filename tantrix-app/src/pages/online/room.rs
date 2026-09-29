@@ -41,4 +41,3 @@ pub fn OnlineRoom(code: String, role: RoleParam) -> Element {
         OnlinePhase::Failed { reason } => rsx! { FailedView { reason } },
     }
 }
-

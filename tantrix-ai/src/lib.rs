@@ -29,3 +29,30 @@ pub fn all_ais() -> Vec<Box<dyn TantrixAi>> {
         Box::new(SmartAi),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Game, Player};
+
+    use super::all_ais;
+
+    #[test]
+    fn all_ais_choose_from_supplied_legal_moves() {
+        for ai in all_ais() {
+            let mut game = Game::new(
+                Player::Ai(ai.clone_box()),
+                Player::Ai(ai.clone_box()),
+                Player::None,
+                Player::None,
+            )
+            .unwrap();
+            let possible = game.get_possible_moves().to_vec();
+            let chosen = game.ai_choose().unwrap();
+            assert!(
+                possible.contains(&chosen),
+                "{} returned a move outside the legal move set",
+                ai.name()
+            );
+        }
+    }
+}

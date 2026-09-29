@@ -93,11 +93,12 @@ execute_move       → game_state.write().play_move
                    → advance_turn
 advance_turn       → if next player is AI:
                          phase = WaitingForAi
-                         spawn_forever(run_ai_loop + settle_turn)
+                         LocalGame effect spawns run_ai_loop + settle_turn
                      else: settle_turn directly
 run_ai_loop        → loops: ai_choose → animate selection → play_move
 settle_turn        → skip stuck players, set phase/message, reset selection
 ```
 
 All turn actions live in `state/actions.rs` and take a single `GameCtx`.
-The AI loop must use `spawn_forever` (not `spawn`) — see `dioxus-spawn`.
+The AI loop is spawned from `LocalGame`'s page scope so transient tile/hex
+unmounts do not cancel it, while leaving the local-game page still does.

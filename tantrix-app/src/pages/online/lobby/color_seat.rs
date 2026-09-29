@@ -36,8 +36,14 @@ pub fn LobbyColorSeat(
     let seat_label = use_memo(move || seat.read().as_ref().map(|s: &Seat| s.nickname.clone()));
 
     let on_click = move |_| {
-        let Some(s) = sender.read().as_ref().cloned() else { return };
-        let pick = if chip_state() == ColorChipState::Mine { None } else { Some(color) };
+        let Some(s) = sender.read().as_ref().cloned() else {
+            return;
+        };
+        let pick = if chip_state() == ColorChipState::Mine {
+            None
+        } else {
+            Some(color)
+        };
         s.send(SessionCommand::PickColor(pick));
     };
 

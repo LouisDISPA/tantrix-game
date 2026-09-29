@@ -46,12 +46,19 @@ pub async fn run_ai_loop(ctx: GameCtx) {
         }
 
         sleep(Duration::from_millis(500)).await;
+        if !ai_can_continue(ctx, ai_color) {
+            break;
+        }
 
         ui_state.selected_position().set(Some(chosen.position));
         sleep(Duration::from_millis(400)).await;
+        if !ai_can_continue(ctx, ai_color) {
+            break;
+        }
 
-        {
-            let _ = game_state.write().play_move(chosen);
+        if let Err(err) = game_state.write().play_move(chosen) {
+            ui_state.message().set(format!("AI move failed: {err}"));
+            break;
         }
         {
             let mut ui = ui_state.write();
@@ -64,7 +71,21 @@ pub async fn run_ai_loop(ctx: GameCtx) {
         }
 
         sleep(Duration::from_millis(300)).await;
+        if !ai_can_continue(ctx, game_state.read().turn_tracker.current()) {
+            break;
+        }
     }
+}
+
+fn ai_can_continue(ctx: GameCtx, expected_color: tantrix_game::Color) -> bool {
+    let phase_is_ai = *ctx.ui_state.phase().read() == TurnPhase::WaitingForAi;
+    if !phase_is_ai {
+        return false;
+    }
+    let gs = ctx.game_state.read();
+    !gs.is_game_over()
+        && gs.turn_tracker.current() == expected_color
+        && matches!(gs.players[expected_color], Player::Ai(_))
 }
 
 fn find_tile_index(ctx: &GameCtx, chosen: Move) -> Option<usize> {
