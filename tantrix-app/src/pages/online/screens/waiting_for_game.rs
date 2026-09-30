@@ -3,12 +3,17 @@
 
 use dioxus::prelude::*;
 
+use crate::components::menu_card::MenuCard;
+use crate::components::menu_screen::MenuScreen;
+
 #[component]
 pub fn WaitingForGame() -> Element {
     rsx! {
-        div { class: "title-screen",
-            div { class: "title-content",
-                p { class: "title-subtitle", "Waiting for game…" }
+        MenuScreen {
+            MenuCard {
+                title: "Waiting for game…",
+                subtitle: "The match is about to start",
+                p { class: "lobby-waiting", "Waiting for the first game update…" }
             }
         }
     }

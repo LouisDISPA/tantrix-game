@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::components::title_decoration::TitleDecoration;
+use crate::components::color_swatch::ColorSwatch;
+use crate::components::menu_button::MenuButton;
+use crate::components::menu_card::MenuCard;
+use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
 use crate::state::config::{GameConfig, PlayerKind};
 use crate::state::game_state::{GameCtx, GameState};
@@ -17,22 +20,13 @@ pub fn PlayerSetup() -> Element {
     let can_start = cfg.active_count() >= 2;
 
     rsx! {
-        div { class: "title-screen",
-            TitleDecoration {}
-
-            div { class: "title-content",
-                div { class: "setup-card",
-                    div { class: "hex-frame setup-hex-frame" }
-                    button {
-                        class: "setup-back-btn",
-                        onclick: move |_| {
+        MenuScreen {
+                MenuCard {
+                    title: "New Game",
+                    subtitle: "Set up players",
+                    back: move |_| {
                             let _ = nav.push(Route::MainMenu {});
                         },
-                        "\u{2190} Back"
-                    }
-                    div { class: "setup-title", "New Game" }
-                    div { class: "setup-subtitle", "Set up players" }
-
                     div { class: "player-slots",
                         for & (color , kind) in cfg.players.iter() {
                             {
@@ -48,7 +42,7 @@ pub fn PlayerSetup() -> Element {
                                         key: "{color:?}",
                                         class: "player-slot {color_class}",
                                         class: if is_active { "active" },
-                                        div { class: "color-swatch" }
+                                        ColorSwatch { color }
                                         div { class: "player-label", "{color}" }
                                         button {
                                             class: "{toggle_class}",
@@ -62,11 +56,10 @@ pub fn PlayerSetup() -> Element {
                             }
                         }
                     }
-                    button {
-                        class: "setup-start-btn",
-                        class: if !can_start { "disabled" },
+                    MenuButton {
+                        full_width: true,
                         disabled: !can_start,
-                        onclick: move |_| {
+                        on_click: move |_| {
                             let cfg = config.read();
                             let gs = GameState::new(&cfg);
                             ctx.game_state.set(gs);
@@ -76,7 +69,6 @@ pub fn PlayerSetup() -> Element {
                         "Start Game"
                     }
                 }
-            }
         }
     }
 }

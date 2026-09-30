@@ -1,17 +1,20 @@
 use dioxus::prelude::*;
 
-use crate::components::title_decoration::TitleDecoration;
-use crate::route::Route;
+use crate::components::menu_button::MenuButton;
+use crate::components::menu_screen::MenuScreen;
+use crate::route::{MenuVisit, Route};
 
 #[component]
 pub fn MainMenu() -> Element {
     let nav = navigator();
+    let mut visit = use_context::<MenuVisit>();
+    // The router layout survives menu navigation, so only the first visit
+    // uses the longer title entrance.
+    let quick = use_hook(move || *visit.has_seen_main.peek());
+    use_effect(move || visit.has_seen_main.set(true));
 
     rsx! {
-        div { class: "title-screen",
-            TitleDecoration {}
-
-            div { class: "title-content",
+        MenuScreen { quick,
                 div { class: "title-logo-area",
                     div { class: "hex-frame title-hex-frame" }
                     h1 { class: "title-logo", "TANTRIX" }
@@ -19,22 +22,19 @@ pub fn MainMenu() -> Element {
                 }
 
                 div { class: "title-buttons",
-                    button {
-                        class: "title-btn title-btn-primary",
-                        onclick: move |_| {
+                    MenuButton {
+                        on_click: move |_| {
                             let _ = nav.push(Route::LocalGame {});
                         },
-                        div { class: "title-btn-inner", "Local Game" }
+                        "Local Game"
                     }
-                    button {
-                        class: "title-btn title-btn-primary",
-                        onclick: move |_| {
+                    MenuButton {
+                        on_click: move |_| {
                             let _ = nav.push(Route::OnlineEntry {});
                         },
-                        div { class: "title-btn-inner", "Online" }
+                        "Online"
                     }
                 }
-            }
         }
     }
 }

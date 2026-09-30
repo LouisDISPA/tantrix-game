@@ -1,7 +1,11 @@
 pub mod alert_banner;
 pub mod board;
 pub mod color_chip;
+pub mod color_swatch;
 pub mod confirm_dialog;
+pub mod menu_button;
+pub mod menu_card;
+pub mod menu_screen;
 pub mod nickname_input;
 pub mod player_hand;
 pub mod room_code_badge;

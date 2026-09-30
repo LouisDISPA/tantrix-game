@@ -6,6 +6,9 @@
 use dioxus::prelude::*;
 use tantrix_net::{generate_room_code, normalize_room_code, ROOM_CODE_LEN};
 
+use crate::components::menu_button::MenuButton;
+use crate::components::menu_card::MenuCard;
+use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
 use crate::state::room_connection;
 
@@ -17,25 +20,23 @@ pub fn OnlineEntry() -> Element {
     let error = use_signal(|| Option::<String>::None);
 
     rsx! {
-        div { class: "title-screen",
-            div { class: "title-content",
-                div { class: "title-logo-area",
-                    h1 { class: "title-logo", "ONLINE" }
-                    p { class: "title-subtitle", "Play together online" }
-                }
-
+        MenuScreen {
+            MenuCard {
+                title: "Online",
+                subtitle: "Play together online",
+                back: move |_| { let _ = nav.push(Route::MainMenu {}); },
                 div { class: "online-entry",
                     div { class: "online-actions",
-                        button {
-                            class: "title-btn title-btn-primary",
-                            onclick: move |_| {
+                        MenuButton {
+                            full_width: true,
+                            on_click: move |_| {
                                 let code = generate_room_code();
                                 room_connection::mark_create(&code);
                                 let _ = nav.push(Route::OnlineRoom {
                                     code,
                                 });
                             },
-                            div { class: "title-btn-inner", "Create a room" }
+                            "Create a room"
                         }
 
                         div { class: "online-join",
@@ -57,10 +58,10 @@ pub fn OnlineEntry() -> Element {
                                     },
                                 }
                             }
-                            button {
-                                class: "title-btn title-btn-primary",
-                                onclick: move |_| try_join(code_input, error, nav),
-                                div { class: "title-btn-inner", "Join room" }
+                            MenuButton {
+                                full_width: true,
+                                on_click: move |_| try_join(code_input, error, nav),
+                                "Join room"
                             }
                         }
                     }
@@ -69,11 +70,6 @@ pub fn OnlineEntry() -> Element {
                         p { class: "online-error", "{err}" }
                     }
 
-                    button {
-                        class: "title-btn-link",
-                        onclick: move |_| { let _ = nav.push(Route::MainMenu {}); },
-                        "← Back to menu"
-                    }
                 }
             }
         }
@@ -104,22 +100,20 @@ pub fn JoinRoom(code: String) -> Element {
     });
 
     rsx! {
-        div { class: "title-screen",
-            div { class: "title-content",
-                div { class: "title-logo-area",
-                    h1 { class: "title-logo", "JOIN ROOM" }
-                    p { class: "title-subtitle", "Room code: {code_upper}" }
-                }
-
+        MenuScreen {
+            MenuCard {
+                title: "Join Room",
+                subtitle: "Room code",
                 div { class: "online-entry",
+                    p { class: "online-room-code", "{code_upper}" }
                     if code_is_valid {
                         p { class: "lobby-waiting", "Connecting…" }
                     } else {
                         p { class: "online-error", "This link doesn't look like a valid room code." }
-                        button {
-                            class: "title-btn title-btn-primary",
-                            onclick: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
-                            div { class: "title-btn-inner", "Back to online menu" }
+                        MenuButton {
+                            full_width: true,
+                            on_click: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
+                            "Back to online menu"
                         }
                     }
                 }

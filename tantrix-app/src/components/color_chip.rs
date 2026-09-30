@@ -4,6 +4,7 @@
 use dioxus::prelude::*;
 use tantrix_game::Color;
 
+use crate::components::color_swatch::ColorSwatch;
 use crate::svg::paths::color_name as color_slug;
 
 /// Mutually-exclusive visual states for a color chip.
@@ -40,12 +41,7 @@ pub fn ColorChip(
         button {
             class: "lobby-color-chip {state_class} {color_class}",
             onclick: move |_| on_click.call(()),
-            div { class: "lobby-color-hex",
-                div { class: "lobby-color-hex-inner" }
-                if is_mine {
-                    div { class: "lobby-color-check", "✓" }
-                }
-            }
+            ColorSwatch { color, large: true, selected: is_mine }
             div { class: "lobby-color-meta",
                 span { class: "lobby-color-label", "{color}" }
                 if let Some(name) = seat_label().clone() {

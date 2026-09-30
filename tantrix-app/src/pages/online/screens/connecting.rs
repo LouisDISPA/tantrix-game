@@ -8,6 +8,9 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
+use crate::components::menu_button::MenuButton;
+use crate::components::menu_card::MenuCard;
+use crate::components::menu_screen::MenuScreen;
 use crate::state::online_state::{OnlineState, OnlineStateStoreExt};
 use crate::util::sleep;
 
@@ -25,16 +28,16 @@ pub fn ConnectingView(state: Store<OnlineState>, on_retry: EventHandler<()>) -> 
     });
 
     rsx! {
-        div { class: "title-screen",
-            div { class: "title-content",
-                h1 { class: "title-logo", "Joining room…" }
-                p { class: "title-subtitle", "Room {state.room_code()}" }
+        MenuScreen {
+            MenuCard {
+                title: "Joining room…",
+                subtitle: format!("Room {}", state.room_code()),
                 if slow() {
                     p { class: "lobby-waiting", "Still connecting… this is taking longer than usual." }
-                    button {
-                        class: "title-btn title-btn-primary",
-                        onclick: move |_| on_retry.call(()),
-                        div { class: "title-btn-inner", "Retry" }
+                    MenuButton {
+                        full_width: true,
+                        on_click: move |_| on_retry.call(()),
+                        "Retry"
                     }
                 }
             }

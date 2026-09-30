@@ -11,8 +11,12 @@ use tantrix_game::Color;
 use tantrix_net::SessionCommand;
 
 use crate::components::alert_banner::AlertBanner;
+use crate::components::menu_button::MenuButton;
+use crate::components::menu_card::MenuCard;
+use crate::components::menu_screen::MenuScreen;
 use crate::components::room_code_badge::RoomCodeBadge;
 use crate::components::share_chip::ShareChip;
+use crate::route::Route;
 use crate::state::online_state::{
     queries, reject_message, CommandSender, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
@@ -28,6 +32,7 @@ pub fn OnlineLobbyView(
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
 ) -> Element {
+    let nav = navigator();
     let my_color = use_memo(move || queries::my_color_of(state));
     let seated_count = use_memo(move || {
         let phase = state.phase();
@@ -66,10 +71,13 @@ pub fn OnlineLobbyView(
     }
 
     rsx! {
-        div { class: "title-screen lobby-screen",
-            div { class: "title-content lobby-content",
+        MenuScreen { scroll: true,
+            MenuCard {
+                title: "Lobby",
+                subtitle: "Share the room and pick a color",
+                wide: true,
+                back: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
                 div { class: "lobby-header",
-                    h1 { class: "title-logo", "LOBBY" }
                     RoomCodeBadge { code: state.room_code() }
                     ShareChip { url: share_url }
                 }
@@ -105,19 +113,16 @@ pub fn OnlineLobbyView(
                 AlertBanner { message: error_message }
 
                 div { class: "lobby-actions",
-                    button {
-                        class: "title-btn title-btn-primary",
+                    MenuButton {
                         disabled: !can_start(),
-                        onclick: move |_| {
+                        on_click: move |_| {
                             if can_start() {
                                 if let Some(s) = sender.read().as_ref() {
                                     s.send(SessionCommand::StartGame);
                                 }
                             }
                         },
-                        div { class: "title-btn-inner",
-                            if can_start() { "Start game" } else if my_color().is_none() { "Pick a color" } else if seated_count() >= 2 { "Waiting for reconnection…" } else { "Waiting for players…" }
-                        }
+                        if can_start() { "Start game" } else if my_color().is_none() { "Pick a color" } else if seated_count() >= 2 { "Waiting for reconnection…" } else { "Waiting for players…" }
                     }
                 }
             }

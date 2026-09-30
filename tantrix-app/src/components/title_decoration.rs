@@ -4,9 +4,8 @@ use dioxus::prelude::*;
 /// is a single-line change.
 const FLOATING_HEX_COLORS: &[&str] = &["red", "blue", "yellow", "green"];
 
-/// Shared decorative background for title-style screens: gradient background,
-/// glow overlay, and four floating color-coded hexagons. All animations live
-/// in `menu.css` (`.floating-hex`, `.floating-hex-inner`).
+/// Persistent decorative background for menu screens, mounted by the router
+/// layout so navigating between menus does not restart its animations.
 #[component]
 pub fn TitleDecoration() -> Element {
     rsx! {

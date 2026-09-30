@@ -1,11 +1,30 @@
 /* ===== Title Screen ===== */
 
+.menu-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.app-page {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
 .title-screen {
   position: relative;
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  background-color: var(--bg-primary);
+  background-color: transparent;
+}
+
+.menu-screen-scroll .menu-card-frame {
+  display: none;
 }
 
 /* Hex grid background via SVG data URI */
@@ -129,6 +148,16 @@
   padding: 40px 20px;
 }
 
+.menu-screen-scroll {
+  overflow-y: auto;
+}
+
+.menu-content-scroll {
+  height: auto;
+  min-height: 100vh;
+  justify-content: flex-start;
+}
+
 /* Logo area */
 .title-logo-area {
   position: relative;
@@ -138,6 +167,10 @@
   gap: 8px;
   opacity: 0;
   animation: titleEntrance 0.8s ease 0.3s forwards;
+}
+
+.menu-screen-quick .title-logo-area {
+  animation: titleEntrance 0.25s ease-out both;
 }
 
 /* Hexagonal frame behind the title (uses .hex-frame base styles). */
@@ -189,6 +222,10 @@
   max-width: 340px;
   opacity: 0;
   animation: slideUp 0.6s ease 0.6s forwards;
+}
+
+.menu-screen-quick .title-buttons {
+  animation: slideUp 0.25s ease-out both;
 }
 
 .title-btn {
@@ -246,10 +283,11 @@
     drop-shadow(0 0 12px var(--glow-yellow));
 }
 
-/* Disabled buttons — covers both the legacy `.title-btn-disabled` class
-   used by fixed-content buttons and the native `[disabled]` attribute
-   used by dynamic buttons like the lobby's Start button. */
-.title-btn-disabled,
+.menu-button-full {
+  width: 100%;
+}
+
+/* Disabled primary actions, including the lobby's Start button. */
 .title-btn-primary[disabled],
 .title-btn-primary:disabled {
   background: var(--btn-disabled-bg);
@@ -259,7 +297,6 @@
   opacity: 0.75;
 }
 
-.title-btn-disabled:hover,
 .title-btn-primary[disabled]:hover,
 .title-btn-primary:disabled:hover {
   box-shadow: none;
@@ -267,7 +304,6 @@
   transform: none;
 }
 
-.title-btn-disabled:active,
 .title-btn-primary[disabled]:active,
 .title-btn-primary:disabled:active {
   transform: none;
@@ -325,28 +361,56 @@
   }
 }
 
-/* ===== Player Setup ===== */
+/* ===== Menu cards and player setup ===== */
 
-.setup-card {
+.menu-card {
   position: relative;
   background: var(--bg-card);
   border: none;
   border-radius: 28px;
   padding: 48px;
   box-shadow: var(--shadow-lg);
-  min-width: 360px;
-  max-width: 480px;
+  width: min(100%, 480px);
   z-index: 10;
   opacity: 0;
-  animation: titleEntrance 0.8s ease 0.3s forwards;
+  animation: titleEntrance 0.35s ease-out both;
 }
 
-.setup-card .setup-hex-frame {
+.menu-card.menu-card-exit {
+  animation: menuCardExit 180ms ease-in both;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-card,
+  .menu-card.menu-card-exit,
+  .menu-screen-quick .title-logo-area,
+  .menu-screen-quick .title-buttons {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .menu-card {
+    padding: 44px 20px 24px;
+  }
+}
+
+.menu-card-wide {
+  width: min(100%, 680px);
+}
+
+.menu-content-scroll > .menu-card {
+  margin: auto;
+}
+
+.menu-card .menu-card-frame {
   width: 380px;
   height: 380px;
 }
 
-.setup-back-btn {
+.menu-back-btn {
   position: absolute;
   top: 14px;
   left: 14px;
@@ -361,11 +425,11 @@
   z-index: 1;
 }
 
-.setup-back-btn:hover {
+.menu-back-btn:hover {
   color: var(--text-primary);
 }
 
-.setup-title {
+.menu-card-title {
   font-size: 36px;
   font-weight: 900;
   text-align: center;
@@ -387,7 +451,7 @@
   animation: gradientCycle 15s linear infinite;
 }
 
-.setup-subtitle {
+.menu-card-subtitle {
   font-size: 13px;
   font-weight: 500;
   letter-spacing: 3px;
@@ -455,12 +519,40 @@
   opacity: 1;
 }
 
-.player-slot .color-swatch {
+.color-swatch {
+  position: relative;
   width: 28px;
   height: 28px;
   flex-shrink: 0;
   clip-path: var(--clip-hex);
   background-color: var(--player-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.color-swatch-large {
+  width: 44px;
+  height: 44px;
+}
+
+.color-swatch-inner {
+  width: 76%;
+  height: 76%;
+  clip-path: var(--clip-hex);
+  background: color-mix(in oklch, var(--player-color), #fff 15%);
+}
+
+[data-theme="dark"] .color-swatch-inner {
+  background: color-mix(in oklch, var(--player-color), #000 8%);
+}
+
+.color-swatch-check {
+  position: absolute;
+  font-size: 22px;
+  font-weight: 900;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .player-slot .player-label {
@@ -506,51 +598,6 @@
   filter: brightness(1.15);
 }
 
-.setup-start-btn.disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  filter: none;
-}
-
-.setup-start-btn.disabled:hover {
-  filter: none;
-}
-
-.setup-start-btn {
-  width: 100%;
-  border: none;
-  cursor: pointer;
-  background: linear-gradient(160deg, #2d2d2d 0%, #484040 100%);
-  color: #ffffff;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.28);
-  clip-path: var(--clip-btn);
-  padding: 18px 32px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  transition:
-    filter 0.2s ease,
-    transform 0.15s ease;
-}
-
-.setup-start-btn:hover {
-  filter: drop-shadow(0 0 12px var(--glow-red))
-    drop-shadow(0 0 12px var(--glow-blue))
-    drop-shadow(0 0 12px var(--glow-yellow));
-}
-
-.setup-start-btn:active {
-  transform: scale(0.97);
-}
-
-[data-theme="dark"] .setup-start-btn {
-  background: linear-gradient(160deg, #f5f0e8 0%, #ffffff 100%);
-  color: #121212;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.40);
-}
-
-
 /* ============================================================ */
 /* Online pages                                                  */
 /* ============================================================ */
@@ -562,6 +609,14 @@
   align-items: stretch;
   max-width: 440px;
   margin: 0 auto;
+}
+
+.online-room-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  text-align: center;
 }
 
 .online-field {
@@ -642,27 +697,9 @@
 
 /* ---------- Lobby ---------- */
 
-.lobby-screen {
-  padding: 24px 16px;
-  overflow-y: auto;
-}
-
-/* Override the centered flow inherited from `.title-content`: the lobby
-   flows top-to-bottom and must scroll naturally when its content exceeds
-   the viewport (otherwise the top is clipped on short screens).
-   `align-items: stretch` is what makes the sections take the full column
-   width instead of collapsing to their intrinsic content size. */
-.lobby-content {
-  max-width: 640px;
-  width: 100%;
-  margin: 0 auto;
-  gap: 28px;
-  display: flex;
-  flex-direction: column;
-  height: auto;
-  justify-content: flex-start;
-  align-items: stretch;
-  padding: 0;
+.menu-card-wide .lobby-header,
+.menu-card-wide .lobby-section {
+  margin-bottom: 24px;
 }
 
 .lobby-header {
@@ -960,13 +997,6 @@
   }
 }
 
-/* Back-compat: the original grid class for anything still referencing it. */
-.lobby-color-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-}
-
 .lobby-color-chip {
   position: relative;
   display: flex;
@@ -1020,37 +1050,6 @@
   opacity: 1;
 }
 
-.lobby-color-hex {
-  position: relative;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  clip-path: var(--clip-hex);
-  background: var(--seat-color);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.lobby-color-hex-inner {
-  width: 76%;
-  height: 76%;
-  clip-path: var(--clip-hex);
-  background: color-mix(in oklch, var(--seat-color), #fff 15%);
-}
-
-[data-theme="dark"] .lobby-color-hex-inner {
-  background: color-mix(in oklch, var(--seat-color), #000 8%);
-}
-
-.lobby-color-check {
-  position: absolute;
-  font-size: 22px;
-  font-weight: 900;
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-}
-
 .lobby-color-meta {
   display: flex;
   flex-direction: column;
@@ -1098,7 +1097,6 @@
   border-radius: 4px;
   background: var(--seat-color);
   color: white;
-  flex-shrink: 0;
   flex-shrink: 0;
 }
 
