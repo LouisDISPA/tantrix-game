@@ -177,3 +177,19 @@ impl Position {
         self.y
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{Direction, Rotation};
+
+    #[test]
+    fn directions_rotate_and_oppose() {
+        assert_eq!(Direction::Left.opposite(), Direction::Right);
+        assert_eq!(Direction::Right.opposite(), Direction::Left);
+        assert_eq!(Direction::TopLeft.opposite(), Direction::BottomRight);
+
+        assert_eq!(Direction::Left - Rotation::R60, Direction::BottomLeft);
+        assert_eq!(Direction::BottomLeft + Rotation::R60, Direction::Left);
+        assert_eq!(Direction::BottomLeft - Rotation::R120, Direction::Right);
+    }
+}

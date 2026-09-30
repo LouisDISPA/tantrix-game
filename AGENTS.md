@@ -41,9 +41,18 @@ just worker-deploy
 
 ```
 tantrix-game/src/          # Core library — game rules, no UI
-  lib.rs                   # Game, Board, Move structs + rule enforcement
+  lib.rs                   # Module list + crate-root re-exports
   tiles.rs                 # 56 Tile variants, Color enum (Red/Blue/Yellow/Green)
   coordinate_system.rs     # Position (axial hex), Direction, Rotation
+  moves.rs                 # Move, PlayedMove
+  board.rs                 # Board storage, lookups, contour, neighbor counts
+  rules.rs                 # Legal moves: golden rule, forced spaces, restriction rules
+  scoring.rs               # Longest line/loop per color: scores, scoring_paths
+  bag.rs, hand.rs          # Bag (draw pile), Hand (6 tiles)
+  turn.rs                  # TurnTracker, TurnStep
+  player.rs                # Player, TantrixAi trait
+  game.rs                  # Game, GameData: the checked way to play a move
+  error.rs                 # MoveError, SetupError
 
 tantrix-app/src/           # Dioxus frontend (lib + bin)
   lib.rs                   # `app()` root: stylesheet loading, Router
@@ -141,7 +150,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 
 ## Critical Rules
 
-- **Never break the golden rule** — all edge-matching logic lives in `tantrix-game/src/lib.rs`
+- **Never break the golden rule** — all edge-matching logic lives in `tantrix-game/src/rules.rs`
 - **Keep game logic in `tantrix-game`** — UI crates depend on it, never the reverse
 - **Forced move priority** — when forced spaces exist and player has a fitting tile, it must be played
 

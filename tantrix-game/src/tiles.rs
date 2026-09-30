@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::Direction;
 
+pub(crate) const NUMBER_OF_COLOR: usize = enum_iterator::cardinality::<Color>();
+pub(crate) const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
+
 #[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Color {
     Red,
@@ -159,5 +162,36 @@ impl Tile {
     pub fn color(self, dir: Direction) -> Color {
         let array = self.colors();
         array[dir.index()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Tile;
+
+    #[test]
+    fn every_tile_has_three_color_pairs_and_is_unique() {
+        for tile in enum_iterator::all::<Tile>() {
+            for color in tile.colors() {
+                let num_occurences = tile.colors().iter().filter(|c| *c == color).count();
+                assert_eq!(
+                    num_occurences, 2,
+                    "color count check failed for tile {:?}",
+                    tile
+                )
+            }
+            let mut iter = enum_iterator::all::<Tile>();
+            iter.any(|t| t == tile);
+
+            for other_tile in iter {
+                assert_ne!(
+                    tile.colors(),
+                    other_tile.colors(),
+                    "different colors failed for tiles {:?} and {:?}",
+                    tile,
+                    other_tile
+                )
+            }
+        }
     }
 }
