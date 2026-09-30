@@ -41,6 +41,12 @@ impl Board {
         self.moves.try_insert(index, m).map_err(|e| e.to_string())
     }
 
+    /// Take the tile at `pos` off the board: undoes [`Self::insert_move`].
+    pub(crate) fn remove_move(&mut self, pos: &Position) -> Option<Move> {
+        let index = self.moves.binary_search_by(|m| m.position.cmp(pos)).ok()?;
+        Some(self.moves.remove(index))
+    }
+
     pub(crate) fn neighbor_count(&self, pos: &Position) -> u8 {
         pos.around().filter(|(p, _)| !self.is_available(p)).count() as u8
     }

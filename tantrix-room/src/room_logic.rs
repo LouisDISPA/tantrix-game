@@ -246,6 +246,10 @@ impl RoomData {
                         Player::None
                     }
                 };
+                // `Game::new` deals from a random seed and keeps it with the
+                // history in `GameData`, so the game can be replayed. Both stay
+                // on the server: snapshots never carry them (the seed reveals
+                // the draw order).
                 let mut game = Game::new(
                     player_for(Color::Red),
                     player_for(Color::Blue),

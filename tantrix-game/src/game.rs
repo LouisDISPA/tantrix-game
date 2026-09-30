@@ -1,14 +1,18 @@
 //! A whole game: board, bag, hands, players and turn order. [`Game`] is the
 //! single source of truth for a game in progress: every change goes through
-//! it, and it keeps the current player's legal moves up to date.
+//! it, and it keeps the current player's legal moves up to date. It records
+//! every change as a [`TurnEvent`], so it can undo them, and a game dealt
+//! from a seed can be replayed from its seed and events.
 
 use enum_map::{enum_map, EnumMap};
-use rand::Rng;
+use rand::rngs::Xoshiro256PlusPlus;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Bag, Board, Color, Hand, Move, MoveError, Placement, PlayedMove, Player, PlayerScore,
-    ScoringPath, SetupError, TileMoveInfo, TurnStep, TurnTracker, TILES_IN_HAND,
+    Bag, Board, Color, EventError, Hand, Move, MoveError, Placement, PlayedMove, Player,
+    PlayerScore, ReplayError, ScoringPath, SetupError, TileMoveInfo, TurnEvent, TurnStep,
+    TurnTracker, TILES_IN_HAND,
 };
 
 pub fn is_game_over(bag: &Bag, hands: &EnumMap<Color, Hand>) -> bool {
@@ -25,30 +29,54 @@ pub struct Game {
     /// The current player's legal moves at their step of the turn,
     /// recomputed after every change so reads never compute them.
     legal_moves: Vec<Move>,
+    /// The seed the game was dealt from, when it is known.
+    seed: Option<u64>,
+    /// Every change since the deal, in order.
+    history: Vec<TurnEvent>,
 }
 
-/// Complete server-side game state, including the hidden draw order. Never send
-/// this over the player protocol; [`tantrix_proto::GameSnapshot`] omits the bag.
+/// Complete server-side game state, including the hidden draw order (the
+/// bag, and the seed that shuffled it). Never send this over the player
+/// protocol; [`tantrix_proto::GameSnapshot`] omits the bag, seed and history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameData {
     board: Board,
     bag: Bag,
     turn_tracker: TurnTracker,
     hands: EnumMap<Color, Hand>,
+    /// Games saved before seeds were kept have none.
+    #[serde(default)]
+    seed: Option<u64>,
+    /// Games saved before history was kept resume with an empty one.
+    #[serde(default)]
+    history: Vec<TurnEvent>,
 }
 
 impl Game {
+    /// A game dealt from a random seed, which it keeps (see [`Self::seed`]).
     pub fn new(
         red: Player,
         blue: Player,
         yellow: Player,
         green: Player,
     ) -> Result<Self, SetupError> {
-        Self::new_with_rng(red, blue, yellow, green, &mut rand::rng())
+        Self::from_players(Self::players_map(red, blue, yellow, green))
+    }
+
+    /// A game dealt from `seed`: the same seed always deals the same game.
+    pub fn new_seeded(
+        red: Player,
+        blue: Player,
+        yellow: Player,
+        green: Player,
+        seed: u64,
+    ) -> Result<Self, SetupError> {
+        Self::from_players_seeded(Self::players_map(red, blue, yellow, green), seed)
     }
 
     /// A game whose bag and turn order are shuffled by `rng`; a seeded `rng`
-    /// always deals the same game.
+    /// always deals the same game. Its seed is unknown, so it can be undone
+    /// but not replayed.
     pub fn new_with_rng<R: Rng + ?Sized>(
         red: Player,
         blue: Player,
@@ -56,6 +84,15 @@ impl Game {
         green: Player,
         rng: &mut R,
     ) -> Result<Self, SetupError> {
+        Self::from_players_with_rng(Self::players_map(red, blue, yellow, green), rng)
+    }
+
+    fn players_map(
+        red: Player,
+        blue: Player,
+        yellow: Player,
+        green: Player,
+    ) -> EnumMap<Color, Player> {
         let mut players = enum_map! {
             _ => Player::None
         };
@@ -63,7 +100,26 @@ impl Game {
         players[Color::Blue] = blue;
         players[Color::Yellow] = yellow;
         players[Color::Green] = green;
-        Self::from_players_with_rng(players, rng)
+        players
+    }
+
+    /// A game between `players` dealt from a random seed.
+    pub fn from_players(players: EnumMap<Color, Player>) -> Result<Self, SetupError> {
+        Self::from_players_seeded(players, rand::random())
+    }
+
+    /// A game between `players` dealt from `seed`, which it keeps, so it
+    /// can be replayed ([`Self::replay`]). Deals exactly like
+    /// [`Self::from_players_with_rng`] with
+    /// `Xoshiro256PlusPlus::seed_from_u64(seed)`.
+    pub fn from_players_seeded(
+        players: EnumMap<Color, Player>,
+        seed: u64,
+    ) -> Result<Self, SetupError> {
+        let mut game =
+            Self::from_players_with_rng(players, &mut Xoshiro256PlusPlus::seed_from_u64(seed))?;
+        game.seed = Some(seed);
+        Ok(game)
     }
 
     /// A game between `players` (colors set to [`Player::None`] sit out).
@@ -96,20 +152,42 @@ impl Game {
     }
 
     /// Capture everything needed to resume an authoritative game after a
-    /// server restart. Legal-move caches and AI implementations are runtime
-    /// details and are deliberately excluded.
+    /// server restart, its seed and history included. Legal-move caches and
+    /// AI implementations are runtime details and are deliberately excluded.
     pub fn to_data(&self) -> GameData {
         GameData {
             board: self.board.clone(),
             bag: self.bag.clone(),
             turn_tracker: self.turn_tracker.clone(),
             hands: self.hands.clone(),
+            seed: self.seed,
+            history: self.history.clone(),
         }
     }
 
     /// Restore a multiplayer game where every active color is human-owned.
     pub fn from_data(data: GameData) -> Self {
-        Self::with_human_players(data.board, data.bag, data.turn_tracker, data.hands)
+        let mut game =
+            Self::with_human_players(data.board, data.bag, data.turn_tracker, data.hands);
+        game.seed = data.seed;
+        game.history = data.history;
+        game
+    }
+
+    /// Rebuild the game dealt from `seed` between `players` by playing
+    /// `events` (a [`Self::history`]) again. Only the colors playing matter
+    /// for the deal; `players` may differ in who is human or AI.
+    pub fn replay(
+        seed: u64,
+        players: EnumMap<Color, Player>,
+        events: &[TurnEvent],
+    ) -> Result<Self, ReplayError> {
+        let mut game = Self::from_players_seeded(players, seed).map_err(ReplayError::Setup)?;
+        for (index, event) in events.iter().enumerate() {
+            game.replay_event(event)
+                .map_err(|error| ReplayError::Event { index, error })?;
+        }
+        Ok(game)
     }
 
     /// Mirror a game from the authoritative snapshot a server sends its
@@ -159,6 +237,8 @@ impl Game {
             turn_tracker,
             hands,
             legal_moves: Vec::new(),
+            seed: None,
+            history: Vec::new(),
         };
         game.refresh_legal_moves();
         game
@@ -206,6 +286,19 @@ impl Game {
 
     pub fn is_game_over(&self) -> bool {
         is_game_over(&self.bag, &self.hands)
+    }
+
+    /// The seed the game was dealt from ([`Self::new`],
+    /// [`Self::from_players_seeded`]…), or `None` for a game dealt by a
+    /// caller's rng, mirrored from a snapshot, or saved before seeds were
+    /// kept. It reveals the draw order: never send it to players.
+    pub fn seed(&self) -> Option<u64> {
+        self.seed
+    }
+
+    /// Every move, skipped turn and retirement since the deal, in order.
+    pub fn history(&self) -> &[TurnEvent] {
+        &self.history
     }
 
     /// The current player's legal moves at their step of the turn: only
@@ -275,6 +368,7 @@ impl Game {
     /// played and no forced space is left that they can fill.
     pub fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
         let current = self.current_player();
+        let step = self.turn_step();
         if !self.hands[current].contains(&placement.tile) {
             return Err(MoveError::TileNotInHand);
         }
@@ -292,7 +386,14 @@ impl Game {
         self.board
             .insert_move(canonical)
             .map_err(|_| MoveError::BoardFull)?;
-        let hand_index = self.hands[current].play_tile(canonical.tile, &mut self.bag);
+        let (hand_index, drawn) = self.hands[current].play_tile(canonical.tile, &mut self.bag);
+        self.history.push(TurnEvent::Played {
+            player: current,
+            step,
+            m: canonical,
+            hand_index,
+            drawn,
+        });
 
         // The one move of a turn that isn't in a forced space is the free move.
         if !canonical.forced {
@@ -313,6 +414,10 @@ impl Game {
     }
 
     pub fn skip_turn(&mut self) {
+        self.history.push(TurnEvent::Skipped {
+            player: self.current_player(),
+            step: self.turn_step(),
+        });
         self.turn_tracker.next();
         self.refresh_legal_moves();
     }
@@ -353,8 +458,72 @@ impl Game {
         self.turn_tracker.retire(color)?;
         self.players[color] = Player::None;
         self.hands[color] = Hand::default();
+        self.history.push(TurnEvent::Retired { color });
         self.refresh_legal_moves();
         Ok(())
+    }
+
+    /// Revert the last recorded event exactly and return it: take the tile
+    /// off the board, put the drawn tiles back on top of the bag and the
+    /// played tile back where it was in the hand, and give the turn back at
+    /// the step it was at. `None` when there is nothing to undo, or the last
+    /// event is a [`TurnEvent::Retired`], which cannot be undone.
+    pub fn undo(&mut self) -> Option<TurnEvent> {
+        if matches!(self.history.last()?, TurnEvent::Retired { .. }) {
+            return None;
+        }
+        let event = self.history.pop()?;
+        match &event {
+            TurnEvent::Played {
+                player,
+                step,
+                m,
+                hand_index,
+                drawn,
+            } => {
+                let removed = self.board.remove_move(&m.position);
+                debug_assert_eq!(removed, Some(*m));
+                self.hands[*player].unplay_tile(m.tile, *hand_index, drawn, &mut self.bag);
+                self.turn_tracker.restore(*player, *step);
+            }
+            TurnEvent::Skipped { player, step } => self.turn_tracker.restore(*player, *step),
+            TurnEvent::Retired { .. } => unreachable!("retirements are not undone"),
+        }
+        self.refresh_legal_moves();
+        Some(event)
+    }
+
+    /// Play a recorded `event` again, e.g. one [`Self::undo`] returned, and
+    /// record it. It must happen here exactly as it was recorded: same
+    /// player and step, and for a move the same placement, hand index and
+    /// tiles drawn. Otherwise the game is left as it was.
+    pub fn replay_event(&mut self, event: &TurnEvent) -> Result<(), EventError> {
+        match *event {
+            TurnEvent::Played {
+                player, step, m, ..
+            } => {
+                self.check_turn(player, step)?;
+                self.play_move(m.placement()).map_err(EventError::Move)?;
+                if self.history.last() != Some(event) {
+                    self.undo();
+                    return Err(EventError::Diverged);
+                }
+            }
+            TurnEvent::Skipped { player, step } => {
+                self.check_turn(player, step)?;
+                self.skip_turn();
+            }
+            TurnEvent::Retired { color } => self.retire_color(color).map_err(EventError::Retire)?,
+        }
+        Ok(())
+    }
+
+    fn check_turn(&self, player: Color, step: TurnStep) -> Result<(), EventError> {
+        if self.current_player() == player && self.turn_step() == step {
+            Ok(())
+        } else {
+            Err(EventError::WrongTurn)
+        }
     }
 
     fn refresh_legal_moves(&mut self) {
@@ -373,8 +542,8 @@ mod tests {
     use rand::SeedableRng;
 
     use crate::{
-        Bag, Board, Color, Direction, Game, Hand, Move, MoveError, Placement, Player, Position,
-        Rotation, SetupError, TantrixAi, Tile, TurnStep,
+        Bag, Board, Color, Direction, EventError, Game, Hand, Move, MoveError, Placement, Player,
+        Position, ReplayError, Rotation, SetupError, TantrixAi, Tile, TurnEvent, TurnStep,
     };
 
     #[test]
@@ -943,5 +1112,271 @@ mod tests {
         retired.retire_color(player).unwrap();
         assert_ne!(retired.current_player(), player);
         assert_eq!(retired.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    // --- History: undo and replay ---
+
+    /// The first `count` colors, all human.
+    fn players(count: usize) -> EnumMap<Color, Player> {
+        let playing: Vec<Color> = enum_iterator::all::<Color>().take(count).collect();
+        EnumMap::from_fn(|c| {
+            if playing.contains(&c) {
+                Player::Someone
+            } else {
+                Player::None
+            }
+        })
+    }
+
+    /// Everything a game holds: board, bag in draw order, hands, turn,
+    /// seed and history.
+    fn state(game: &Game) -> serde_json::Value {
+        serde_json::to_value(game.to_data()).unwrap()
+    }
+
+    /// Play the first legal move, skipping stuck players, until the game
+    /// is over or stalls.
+    fn play_out(game: &mut Game) {
+        while !game.is_game_over() && !game.skip_stuck_players() {
+            let m = game.legal_moves()[0];
+            game.play_move(m.placement()).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_game_keeps_the_seed_it_was_dealt_from() {
+        let seeded = Game::from_players_seeded(players(2), 5).unwrap();
+        let with_rng =
+            Game::from_players_with_rng(players(2), &mut Xoshiro256PlusPlus::seed_from_u64(5))
+                .unwrap();
+        assert_eq!(seeded.seed(), Some(5));
+        assert_eq!(with_rng.seed(), None);
+        // Seeded deals match the seeded rng's, which `/game?seed=N` and the
+        // e2e fixture were recorded with.
+        let mut dealt = state(&seeded);
+        dealt["seed"] = serde_json::Value::Null;
+        assert_eq!(dealt, state(&with_rng));
+
+        let random = Game::new(Player::Someone, Player::Someone, Player::None, Player::None);
+        assert!(random.unwrap().seed().is_some());
+    }
+
+    #[test]
+    fn a_move_records_its_turn_and_the_tile_it_drew() {
+        let mut game = seeded_game(0);
+        let player = game.current_player();
+        let bag_count = game.bag_count();
+        let m = game.legal_moves()[0];
+
+        let played = game.play_move(m.placement()).unwrap();
+
+        let [TurnEvent::Played {
+            player: p,
+            step,
+            m: placed,
+            hand_index,
+            drawn,
+        }] = game.history()
+        else {
+            panic!("one move, one event: {:?}", game.history());
+        };
+        assert_eq!((*p, *step), (player, TurnStep::BeforeFreeMove));
+        assert_eq!((*placed, *hand_index), (played.m, played.hand_index));
+        assert_eq!(drawn.as_slice(), [game.hand(player)[played.hand_index]]);
+        assert_eq!(game.bag_count(), bag_count - 1);
+    }
+
+    #[test]
+    fn undoing_every_event_restores_the_deal() {
+        for count in 2..=4 {
+            for seed in 0..5 {
+                let dealt = Game::from_players_seeded(players(count), seed).unwrap();
+                let mut game = dealt.clone();
+                play_out(&mut game);
+                let played = state(&game);
+                assert!(game.history().len() > 20, "{count} players, seed {seed}");
+
+                while game.undo().is_some() {}
+
+                assert!(game.history().is_empty());
+                assert_eq!(state(&game), state(&dealt), "{count} players, seed {seed}");
+                assert_eq!(game.legal_moves(), dealt.legal_moves());
+                // The bag is back in draw order: playing again draws the same tiles.
+                play_out(&mut game);
+                assert_eq!(state(&game), played, "{count} players, seed {seed}");
+            }
+        }
+    }
+
+    #[test]
+    fn undo_then_the_same_move_gives_the_same_state() {
+        for seed in 0..5 {
+            let mut game = Game::from_players_seeded(players(3), seed).unwrap();
+            while !game.is_game_over() && !game.skip_stuck_players() {
+                let (before, legal) = (state(&game), game.legal_moves().to_vec());
+                let m = legal[0];
+                game.play_move(m.placement()).unwrap();
+                let after = state(&game);
+
+                let undone = game.undo().expect("a move to undo");
+                assert_eq!(state(&game), before, "seed {seed}");
+                assert_eq!(game.legal_moves(), legal, "seed {seed}");
+
+                game.play_move(m.placement()).unwrap();
+                assert_eq!(state(&game), after, "seed {seed}");
+                game.undo();
+                game.replay_event(&undone).unwrap();
+                assert_eq!(state(&game), after, "seed {seed}");
+            }
+        }
+    }
+
+    #[test]
+    fn skipped_turns_are_recorded_and_undone() {
+        let mut game = game_with_hands(0, 6, 10);
+        assert!(!game.skip_stuck_players());
+        let skip = TurnEvent::Skipped {
+            player: Color::Red,
+            step: TurnStep::BeforeFreeMove,
+        };
+        assert_eq!(game.history(), std::slice::from_ref(&skip));
+
+        assert_eq!(game.undo(), Some(skip));
+        assert_eq!(game.current_player(), Color::Red);
+        assert!(game.legal_moves().is_empty());
+        assert_eq!(game.undo(), None);
+    }
+
+    #[test]
+    fn undo_gives_back_the_turn_at_the_step_it_was_at() {
+        let mut game = seeded_game_where(after_free_move);
+        let player = game.current_player();
+        let fill = game.legal_moves()[0];
+        game.play_move(fill.placement()).unwrap();
+        game.undo().unwrap();
+        assert_eq!(game.current_player(), player);
+        assert_eq!(game.turn_step(), TurnStep::AfterFreeMove);
+
+        // Undoing the free move itself goes back to before it.
+        let free_move = game.undo();
+        assert!(matches!(free_move, Some(TurnEvent::Played { m, .. }) if !m.forced));
+        assert_eq!(game.current_player(), player);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn retiring_is_recorded_but_not_undone() {
+        let mut game = Game::from_players_seeded(players(3), 1).unwrap();
+        let m = game.legal_moves()[0];
+        game.play_move(m.placement()).unwrap();
+        let retired = game.playing_colors()[2];
+        game.retire_color(retired).unwrap();
+        assert_eq!(
+            game.history().last(),
+            Some(&TurnEvent::Retired { color: retired })
+        );
+
+        let before = state(&game);
+        assert_eq!(game.undo(), None);
+        assert_eq!(state(&game), before);
+
+        let replayed = Game::replay(1, players(3), game.history()).unwrap();
+        assert_eq!(state(&replayed), state(&game));
+    }
+
+    #[test]
+    fn replay_rebuilds_a_seeded_game() {
+        for count in 2..=4 {
+            for seed in 0..5 {
+                let mut game = Game::from_players_seeded(players(count), seed).unwrap();
+                play_out(&mut game);
+
+                let replayed = Game::replay(seed, players(count), game.history()).unwrap();
+
+                assert_eq!(
+                    state(&replayed),
+                    state(&game),
+                    "{count} players, seed {seed}"
+                );
+                assert_eq!(replayed.legal_moves(), game.legal_moves());
+                assert_eq!(replayed.winners(), game.winners());
+            }
+        }
+    }
+
+    #[test]
+    fn replay_refuses_events_of_another_deal() {
+        let mut game = Game::from_players_seeded(players(2), 0).unwrap();
+        play_out(&mut game);
+        let replayed = Game::replay(1, players(2), game.history());
+        assert!(
+            matches!(replayed, Err(ReplayError::Event { .. })),
+            "{replayed:?}"
+        );
+        assert!(matches!(
+            Game::replay(0, players(1), game.history()),
+            Err(ReplayError::Setup(SetupError::NotEnoughPlayers))
+        ));
+    }
+
+    #[test]
+    fn a_recorded_event_that_plays_out_otherwise_is_refused() {
+        let mut game = Game::from_players_seeded(players(2), 0).unwrap();
+        let m = game.legal_moves()[0];
+        game.play_move(m.placement()).unwrap();
+        let mut event = game.undo().unwrap();
+        let before = state(&game);
+
+        // Another tile drawn: the event is from another deal.
+        let TurnEvent::Played { drawn, .. } = &mut event else {
+            panic!("a move was undone");
+        };
+        drawn[0] = enum_iterator::all::<Tile>()
+            .find(|&t| t != drawn[0])
+            .unwrap();
+        assert_eq!(game.replay_event(&event), Err(EventError::Diverged));
+        assert_eq!(state(&game), before);
+
+        let other = game.playing_colors()[1];
+        let skip = TurnEvent::Skipped {
+            player: other,
+            step: TurnStep::BeforeFreeMove,
+        };
+        assert_eq!(game.replay_event(&skip), Err(EventError::WrongTurn));
+        assert_eq!(state(&game), before);
+    }
+
+    #[test]
+    fn a_saved_game_keeps_its_seed_and_history() {
+        let mut game = Game::from_players_seeded(players(2), 3).unwrap();
+        for _ in 0..5 {
+            let m = game.legal_moves()[0];
+            game.play_move(m.placement()).unwrap();
+        }
+
+        let encoded = serde_json::to_vec(&game.to_data()).unwrap();
+        let mut restored = Game::from_data(serde_json::from_slice(&encoded).unwrap());
+        assert_eq!(restored.seed(), Some(3));
+        assert_eq!(restored.history(), game.history());
+
+        assert_eq!(restored.undo(), game.undo());
+        assert_eq!(state(&restored), state(&game));
+    }
+
+    #[test]
+    fn a_game_saved_before_history_loads_with_none() {
+        let game = seeded_game_where(after_free_move);
+        let mut saved = state(&game);
+        let fields = saved.as_object_mut().unwrap();
+        fields.remove("seed");
+        fields.remove("history");
+
+        let mut restored = Game::from_data(serde_json::from_value(saved).unwrap());
+
+        assert_eq!(restored.seed(), None);
+        assert!(restored.history().is_empty());
+        assert_eq!(restored.board(), game.board());
+        assert_eq!(restored.legal_moves(), game.legal_moves());
+        assert_eq!(restored.undo(), None);
     }
 }

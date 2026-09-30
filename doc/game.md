@@ -141,6 +141,42 @@ everyone is stuck ends instead of spinning.
   `LocalGame`'s routing match), which shows `Board` (read-only, scoring
   overlays on) beside `ScoresPanel`.
 
+## History, undo and replay
+
+The board is sorted by position and draws only shrink the bag, so `Game`
+records every change in order as a `TurnEvent` (`history.rs`), read with
+`Game::history()`:
+
+| Event | Recorded by | Holds |
+|---|---|---|
+| `Played` | `play_move` | player and `TurnStep` before the move, the `Move` as placed, the `hand_index` the tile left, the tiles `drawn` (in draw order) |
+| `Skipped` | `skip_turn` (so `skip_stuck_players`) | player and `TurnStep` |
+| `Retired` | `retire_color` | the color |
+
+- **Undo.** `Game::undo()` reverts the last event exactly and returns it:
+  the tile leaves the board, the drawn tiles go back on top of the bag, the
+  played tile goes back to `hand_index`, and the turn goes back to the
+  recorded player and step; legal moves are refreshed. It returns `None`
+  when there is nothing to undo, or when the last event is a retirement
+  (the retired hand is gone). It undoes one event: skips and AI moves
+  count too.
+- **Seeds.** `Game::new` / `from_players` deal from a random seed,
+  `new_seeded` / `from_players_seeded` from a given one; either way
+  `Game::seed()` keeps it. They deal exactly like `from_players_with_rng`
+  with `Xoshiro256PlusPlus::seed_from_u64(seed)` (which keeps no seed), so
+  `/game?seed=N` and the e2e fixture are unchanged.
+- **Replay.** `Game::replay(seed, players, events)` deals from the seed and
+  plays each event again with `Game::replay_event`, which checks it happens
+  exactly as recorded (same player and step; for a move the same placement,
+  hand index and draws) and otherwise leaves the game unchanged and returns
+  an `EventError` (`ReplayError` says which event). `replay_event` also
+  redoes what `undo` returned.
+- **Persistence.** `GameData` (`to_data` / `from_data`) carries the seed and
+  history; rooms saved before them load with none. The room's `StartGame`
+  deals with `Game::new`, so server games can be replayed. The seed reveals
+  the draw order: it stays in `GameData` on the server, and `GameSnapshot`
+  carries neither the seed nor the history.
+
 ## AI service
 
 `tantrix-ai` exposes the `TantrixAi` trait:
@@ -167,8 +203,8 @@ Implementations: `RandomAi`, `FirstMoveAi`, `GreedyAi`, `DefensiveAi`,
 `legal_moves` up to date after every change, and `Game::moves_by_tile`
 groups them per hand tile as `TileMoveInfo` (positions → valid rotations +
 `has_forced`; the TUI uses it too). The app's `GameState` wraps a `Game`
-(local deal via `Game::from_players_with_rng`, online mirror via
-`Game::from_snapshot`) and caches `hand_info = moves_by_tile()`, refreshed
+(local deal via `Game::from_players_seeded` / `from_players`, online mirror
+via `Game::from_snapshot`) and caches `hand_info = moves_by_tile()`, refreshed
 inside `play_move` / `skip_stuck_players`. It derefs to `Game` for reads,
 so components use `gs.hand(color)`, `gs.current_player()`, `gs.board()`…
 and `gs.hand_info()` instead of regrouping moves each render.

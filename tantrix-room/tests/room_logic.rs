@@ -4,7 +4,7 @@ use rand::rngs::Xoshiro256PlusPlus;
 use rand::SeedableRng;
 use serde::Deserialize;
 use tantrix_game::{
-    Color, Direction, Game, Move, Placement, Player, Position, Rotation, Tile, TurnStep,
+    Color, Direction, EnumMap, Game, Move, Placement, Player, Position, Rotation, Tile, TurnStep,
 };
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
 use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
@@ -126,6 +126,56 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
     let wire = serde_json::to_string(&room.snapshot(&connected).unwrap()).unwrap();
     assert!(!wire.contains(red.as_str()));
     assert!(!wire.contains(blue.as_str()));
+}
+
+#[test]
+fn server_games_can_be_replayed_but_keep_their_seed_to_themselves() {
+    let (mut room, red, blue, connected) = setup();
+    let started = room
+        .apply(&red, PeerMessage::StartGame, &connected)
+        .unwrap();
+    let mut sent = vec![started.message];
+    for _ in 0..4 {
+        let game = Game::from_data(room.game.clone().unwrap());
+        let token = if game.current_player() == Color::Red {
+            &red
+        } else {
+            &blue
+        };
+        let placement = game.legal_moves()[0].placement();
+        let change = room
+            .apply(token, PeerMessage::PlayMove { placement }, &connected)
+            .unwrap();
+        sent.push(change.message);
+    }
+
+    // The saved game knows its seed and history...
+    let saved: RoomData = serde_json::from_str(&serde_json::to_string(&room).unwrap()).unwrap();
+    let game = Game::from_data(saved.game.unwrap());
+    let seed = game.seed().expect("server games are dealt from a seed");
+    assert!(game.history().len() >= 4);
+    let players = EnumMap::from_fn(|c| {
+        if room.seats[c].is_some() {
+            Player::Someone
+        } else {
+            Player::None
+        }
+    });
+    let replayed = Game::replay(seed, players, game.history()).unwrap();
+    assert_eq!(
+        serde_json::to_value(replayed.to_data()).unwrap(),
+        serde_json::to_value(game.to_data()).unwrap()
+    );
+
+    // ...but players never see either: the seed reveals the draw order.
+    for message in sent {
+        let wire = serde_json::to_string(&message).unwrap();
+        assert!(
+            !wire.contains("seed") && !wire.contains("history"),
+            "{wire}"
+        );
+        assert!(!wire.contains(&seed.to_string()), "{wire}");
+    }
 }
 
 /// The fixture's room: Red and Blue seated, playing the fixture's seeded deal.

@@ -13,7 +13,8 @@
 //! | `turn` | [`TurnTracker`], [`TurnStep`] |
 //! | `player` | [`Player`], [`TantrixAi`] |
 //! | `game` | [`Game`], [`GameData`]: the single source of truth for a game |
-//! | `error` | [`MoveError`], [`SetupError`] |
+//! | `history` | [`TurnEvent`]: the recorded moves and skips, for undo and replay |
+//! | `error` | [`MoveError`], [`SetupError`], [`EventError`], [`ReplayError`] |
 
 mod bag;
 mod board;
@@ -21,6 +22,7 @@ mod coordinate_system;
 mod error;
 mod game;
 mod hand;
+mod history;
 mod moves;
 mod player;
 mod rules;
@@ -32,9 +34,10 @@ pub use bag::Bag;
 pub use board::Board;
 pub use coordinate_system::*;
 pub use enum_map::EnumMap;
-pub use error::{MoveError, SetupError};
+pub use error::{EventError, MoveError, ReplayError, SetupError};
 pub use game::{is_game_over, Game, GameData};
-pub use hand::{Hand, TILES_IN_HAND};
+pub use hand::{DrawnTiles, Hand, TILES_IN_HAND};
+pub use history::TurnEvent;
 pub use moves::{Move, Placement, PlayedMove, TileMoveInfo};
 pub use player::{Player, TantrixAi};
 pub use scoring::{PlayerScore, ScoringPath};

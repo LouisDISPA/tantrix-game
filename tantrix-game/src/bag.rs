@@ -32,6 +32,12 @@ impl Bag {
         self.tiles.pop()
     }
 
+    /// Put a drawn tile back on top, so it is the next one drawn: undoes
+    /// [`Self::draw`].
+    pub(crate) fn put_back(&mut self, tile: Tile) {
+        self.tiles.push(tile);
+    }
+
     pub fn count(&self) -> usize {
         self.tiles.len()
     }

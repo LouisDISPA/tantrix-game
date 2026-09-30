@@ -51,8 +51,9 @@ tantrix-game/src/          # Core library — game rules, no UI
   bag.rs, hand.rs          # Bag (draw pile), Hand (6 tiles)
   turn.rs                  # TurnTracker, TurnStep
   player.rs                # Player, TantrixAi trait
-  game.rs                  # Game (single source of truth: accessors, legal moves, play_move, skip_stuck_players, winners), GameData
-  error.rs                 # MoveError, SetupError
+  game.rs                  # Game (single source of truth: accessors, legal moves, play_move, skip_stuck_players, winners, undo, replay), GameData
+  history.rs               # TurnEvent: every move, skipped turn and retirement, in order (undo, replay)
+  error.rs                 # MoveError, SetupError, EventError, ReplayError
 
 tantrix-app/src/           # Dioxus frontend (lib + bin)
   lib.rs                   # `app()` root: stylesheet loading, Router
@@ -121,6 +122,8 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 | **Placement** | Tile + Position + Rotation — what a player asks to play (`Game::play_move` input, `PlayMove` on the wire) |
 | **Move** | Placement + forced flag, decided by the rules — legal moves, board contents, `PlayedMove` |
 | **Board** | `ArrayVec<Move, 56>` of placed tiles, sorted by position |
+| **TurnEvent** | One recorded change: a move (with the turn state before it, hand index, tiles drawn), a skipped turn, or a retirement — `Game::history`, `undo`, `replay` |
+| **Seed** | `Game::new` deals from a random seed and keeps it (`Game::seed`); `new_seeded` / `from_players_seeded` from a given one. Server-side only: it reveals the draw order |
 | **Forced space** | Empty hex with 3+ neighbors — must be filled if possible |
 | **Golden rule** | Touching edges must match in color |
 | **Restriction rules** | No same-color triples, no 4-sided spaces, no controlled-side plays (while bag has tiles) |

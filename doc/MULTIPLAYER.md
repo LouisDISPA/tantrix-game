@@ -58,6 +58,10 @@ reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
 example `https://tantrix.example.com`) so cookie security and WebSocket origin
 checks use that origin.
 
+On either backend a saved game keeps the seed it was dealt from and its move
+history, so it can be replayed. Neither is ever sent to players: the seed
+reveals the draw order.
+
 ## Why workers-rs (wasm32) and not the Emscripten target
 
 Cloudflare's Emscripten target for Rust Workers mainly helps crates that need

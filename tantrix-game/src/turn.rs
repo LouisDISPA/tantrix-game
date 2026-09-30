@@ -101,6 +101,17 @@ impl TurnTracker {
         self.step = TurnStep::AfterFreeMove;
     }
 
+    /// Give the turn back to `player`, at `step` of it: undoes
+    /// [`Self::next`] and [`Self::free_move_played`].
+    pub(crate) fn restore(&mut self, player: Color, step: TurnStep) {
+        self.currently_playing = self
+            .color_cycle
+            .iter()
+            .position(|&c| c == player)
+            .expect("only events of playing colors are undone");
+        self.step = step;
+    }
+
     /// Drop `color` from the cycle, keeping the turn with the same player,
     /// or passing it to the next one (at the start of their turn) if it was
     /// `color`'s.

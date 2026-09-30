@@ -8401,7 +8401,6 @@ dependencies = [
  "getrandom 0.4.3",
  "gloo-timers 0.4.0",
  "log",
- "rand 0.10.3",
  "rusqlite",
  "serde",
  "serde_json",

@@ -1,8 +1,6 @@
 use std::ops::Deref;
 
 use dioxus::prelude::*;
-use rand::rngs::Xoshiro256PlusPlus;
-use rand::SeedableRng;
 use tantrix_game::{Color, EnumMap, Game, MoveError, Placement, PlayedMove, TileMoveInfo};
 use tantrix_proto::GameSnapshot;
 
@@ -57,14 +55,13 @@ impl Deref for GameState {
 }
 
 impl GameState {
-    /// Deal a new game. A seeded config always deals the same bag and turn order.
+    /// Deal a new game. A seeded config always deals the same bag and turn
+    /// order; either way the game keeps its seed, so it can be replayed.
     pub fn new(config: &GameConfig) -> Self {
         let players = EnumMap::from_fn(|color| config.player_for(color));
         let game = match config.seed {
-            Some(seed) => {
-                Game::from_players_with_rng(players, &mut Xoshiro256PlusPlus::seed_from_u64(seed))
-            }
-            None => Game::from_players_with_rng(players, &mut rand::rng()),
+            Some(seed) => Game::from_players_seeded(players, seed),
+            None => Game::from_players(players),
         };
         Self::from_game(game.expect("GameConfig always creates at least two active players"))
     }
@@ -168,6 +165,8 @@ mod tests {
         let b = seeded(7);
         assert_eq!(a.hands(), b.hands());
         assert_eq!(a.playing_colors(), b.playing_colors());
+        assert_eq!(a.seed(), Some(7));
+        assert!(GameState::new(&GameConfig::new(None)).seed().is_some());
     }
 
     #[test]
