@@ -18,6 +18,9 @@ pub async fn run_ai_loop(ctx: GameCtx) {
     let mut ui_state = ctx.ui_state;
 
     loop {
+        if *ui_state.phase().read() != TurnPhase::WaitingForAi {
+            break;
+        }
         let (is_ai, has_moves) = {
             let gs = game_state.read();
             let is_ai = !gs.is_game_over()

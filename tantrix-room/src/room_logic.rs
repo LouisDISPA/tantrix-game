@@ -31,6 +31,9 @@ pub struct RoomData {
     pub seats: EnumMap<Color, Option<SessionToken>>,
     pub game: Option<GameData>,
     pub ended: bool,
+    /// Retains an early end across reloads; older saved rooms had only `ended`.
+    #[serde(default)]
+    pub end_reason: Option<EndReason>,
 }
 
 pub struct Change {
@@ -277,6 +280,33 @@ impl RoomData {
                 let stalled = auto_skip(&mut game);
                 self.finish_turn(game, None, stalled, connected)
             }
+            PeerMessage::EndGame => {
+                let Some(data) = &self.game else {
+                    return Err((RejectCode::InvalidMove, "game has not started".into()));
+                };
+                if self.ended {
+                    return Err((RejectCode::InvalidMove, "the game is over".into()));
+                }
+                let Some(by) = self.color_of(token) else {
+                    return Err((RejectCode::InvalidMove, "choose a color first".into()));
+                };
+                let game = Game::from_data(data.clone());
+                let reason = EndReason::EndedEarly {
+                    by,
+                    winners: winners(&game),
+                };
+                self.ended = true;
+                self.end_reason = Some(reason.clone());
+                Ok(Change {
+                    message: HostMessage::GameEnded {
+                        reason,
+                        snapshot: self
+                            .snapshot(connected)
+                            .expect("running game has a snapshot"),
+                    },
+                    persist: true,
+                })
+            }
             PeerMessage::RequestSnapshot => Ok(Change {
                 message: self.current_message(connected),
                 persist: false,
@@ -319,13 +349,16 @@ impl RoomData {
         connected: &HashSet<SessionToken>,
     ) -> Result<Change, (RejectCode, String)> {
         self.ended = game.is_game_over() || stalled;
+        if self.ended {
+            self.end_reason = Some(EndReason::Completed {
+                winners: winners(&game),
+            });
+        }
         self.game = Some(game.to_data());
         let snapshot = self.snapshot(connected).expect("game just saved");
         let message = if self.ended {
             HostMessage::GameEnded {
-                reason: EndReason::Completed {
-                    winners: winners(&game),
-                },
+                reason: self.end_reason.clone().expect("ended game has a reason"),
                 snapshot,
             }
         } else {
@@ -345,9 +378,12 @@ impl RoomData {
             Some(snapshot) if self.ended => {
                 let game = Game::from_data(self.game.clone().expect("ended game has data"));
                 HostMessage::GameEnded {
-                    reason: EndReason::Completed {
-                        winners: winners(&game),
-                    },
+                    reason: self
+                        .end_reason
+                        .clone()
+                        .unwrap_or_else(|| EndReason::Completed {
+                            winners: winners(&game),
+                        }),
                     snapshot,
                 }
             }

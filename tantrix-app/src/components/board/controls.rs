@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use tantrix_net::SessionCommand;
 
 use crate::hooks::use_board_camera;
 use crate::state::game_state::GameCtx;
@@ -33,12 +34,16 @@ pub fn ZoomControls() -> Element {
     }
 }
 
-/// The "End Game" button shown while the game is in progress. Flips the UI
-/// into GameOver phase so the final state is visible.
+/// End local play immediately, or ask the room to end online play for everyone.
 #[component]
 pub fn EndGameButton() -> Element {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
+    let can_end = use_memo(move || ctx.online.read().is_none() || ctx.my_color.read().is_some());
+
+    if !can_end() {
+        return rsx! {};
+    }
 
     rsx! {
         div { class: "board-controls",
@@ -46,8 +51,12 @@ pub fn EndGameButton() -> Element {
                 class: "board-ctrl-btn end-game-btn",
                 title: "End game",
                 onclick: move |_| {
-                    ui_state.phase().set(TurnPhase::GameOver);
-                    ui_state.message().set("Game ended early.".to_string());
+                    if let Some(sender) = ctx.online.read().as_ref() {
+                        sender.send(SessionCommand::EndGame);
+                    } else {
+                        ui_state.phase().set(TurnPhase::GameOver);
+                        ui_state.message().set("Game ended early.".to_string());
+                    }
                 },
                 "End Game"
             }

@@ -13,6 +13,7 @@ Playwright runs headless Chromium against either the native Axum server or
 | `online-retry` | A nonexistent code gives a clear error rather than creating a room. |
 | `online-room-lifecycle` | The creator can leave, another player can start, and a late visitor can take over a seat. |
 | `online-authority` | Invalid and stale move intents cannot mutate server game state. |
+| `online-early-end` | A seated player ends a running game; both players see results, including after reload. |
 | `board-layout` | Board controls stay clear of legal positions at several widths. |
 
 ## Setup

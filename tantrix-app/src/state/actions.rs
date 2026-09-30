@@ -122,6 +122,10 @@ pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
 pub fn advance_turn(ctx: GameCtx) {
     let ui_state = ctx.ui_state;
 
+    if *ui_state.phase().read() == TurnPhase::GameOver {
+        return;
+    }
+
     // Online rooms are server-authoritative: we never schedule AI turns or
     // mutate local state here.
     if ctx.online.read().is_some() {
@@ -145,6 +149,9 @@ pub fn advance_turn(ctx: GameCtx) {
 /// After control returns to a human (or the game ends), skip past any stuck
 /// players, adjust the phase + message, and clear stale selections.
 pub fn settle_turn(ctx: GameCtx) {
+    if *ctx.ui_state.phase().read() == TurnPhase::GameOver {
+        return;
+    }
     let mut game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 

@@ -209,6 +209,7 @@ async fn run_session(
                         SessionCommand::StartGame => PeerMessage::StartGame,
                         SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
                         SessionCommand::SkipTurn => PeerMessage::SkipTurn,
+                        SessionCommand::EndGame => PeerMessage::EndGame,
                         SessionCommand::UpdateNickname(nickname) => PeerMessage::UpdateNickname { nickname },
                         SessionCommand::Leave => unreachable!(),
                     };

@@ -101,6 +101,8 @@ pub struct GameSnapshot {
 pub enum EndReason {
     /// All tiles placed; `winners` holds the tied top-scoring colors.
     Completed { winners: Vec<Color> },
+    /// A seated player ended the game before all tiles were placed.
+    EndedEarly { by: Color, winners: Vec<Color> },
 }
 
 /// Client-side rejection reasons the server sends back.
@@ -142,6 +144,8 @@ pub enum PeerMessage {
     PlayMove { m: Move },
     /// Current player has no legal moves and wants to pass.
     SkipTurn,
+    /// Finish the running game and score the board as it stands.
+    EndGame,
     /// Pull the latest snapshot (e.g. after reconnect).
     RequestSnapshot,
     /// Change my display name and publish the updated roster.
