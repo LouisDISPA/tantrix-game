@@ -8,18 +8,33 @@ const initiallyDealtTiles = 12;
 test('completes a local game and shows the final scores', async ({ page }) => {
   test.setTimeout(5 * 60_000);
 
-  await openApp(page);
-  await page.getByRole('button', { name: 'Local Game' }).click();
-  await page.getByRole('button', { name: 'Start Game' }).click();
+  // A fixed deal keeps the game, and so this test, the same on every run.
+  await page.goto('/game?seed=1');
+  const start = page.getByRole('button', { name: 'Start Game' });
+  await expect(start).toHaveAttribute('data-dioxus-id', /\d+/);
+  await start.click();
 
   const playAgain = page.getByRole('button', { name: 'Play Again' });
+  const bag = page.locator('.hud-chip-bag');
   for (let move = 0; move < tileCount && !(await playAgain.isVisible()); move++) {
     await test.step(`Place local tile ${move + 1}`, async () => {
+      const color = (await page.locator('.hud-chip-name').textContent())?.trim().toLowerCase();
+      const hand = page.locator(`.player-hand.color-${color} .hand-tile`);
+      const tilesBefore = await hand.evaluateAll((tiles) => tiles.map((t) => t.getAttribute('data-tile')));
+      const bagWasEmpty = (await bag.textContent())?.trim() === '0 in bag';
       try {
         await playMove(page);
       } catch (error) {
         if (!(await playAgain.isVisible())) throw error;
+        return;
       }
+      if (!bagWasEmpty || (await playAgain.isVisible())) return;
+
+      // Without refills the hand shrinks by the one tile played, and every
+      // remaining tile still shows itself even though it shifted left.
+      await expect(hand).toHaveCount(tilesBefore.length - 1);
+      const tilesAfter = await hand.evaluateAll((tiles) => tiles.map((t) => t.getAttribute('data-tile')));
+      expect(tilesAfter.every((tile) => tilesBefore.includes(tile))).toBe(true);
     });
   }
 

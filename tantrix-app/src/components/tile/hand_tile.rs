@@ -17,16 +17,19 @@ const OUTLINE_HEX: f64 = 25.0;
 /// A tile in a player's hand. Takes only `(color, index)` — every piece of
 /// render state (the tile itself, selected/forced/disabled flags, the
 /// just-drawn animation hint) is derived from `GameCtx` through memos.
+///
+/// `index` is reactive: once the bag is empty, playing a tile shifts the
+/// ones after it left, and their memos must follow the new index.
 #[component]
-pub fn HandTile(color: Color, index: usize) -> Element {
+pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
 
-    let tile = use_memo(move || ctx.game_state.read().hands[color].get(index).copied());
+    let tile = use_memo(move || ctx.game_state.read().hands[color].get(index()).copied());
 
-    let state = use_memo(move || compute_state(ctx, color, index));
+    let state = use_memo(move || compute_state(ctx, color, index()));
 
-    let just_drawn = use_memo(move || ctx.ui_state.new_tile()() == Some((color, index)));
+    let just_drawn = use_memo(move || ctx.ui_state.new_tile()() == Some((color, index())));
 
     // Only the player who owns the current seat can commit a move.
     let is_active_seat = use_memo(move || ctx.game_state.read().turn_tracker.current() == color);
@@ -73,7 +76,7 @@ pub fn HandTile(color: Color, index: usize) -> Element {
                         aria_label: "Select tile",
                         onclick: move |_| {
                             if interactive {
-                                click_tile(ctx, index);
+                                click_tile(ctx, index());
                             }
                         },
                         onkeydown: move |e| {
@@ -81,12 +84,12 @@ pub fn HandTile(color: Color, index: usize) -> Element {
                                 && (matches!(e.key(), Key::Enter)
                                     || matches!(e.key(), Key::Character(c) if c == " "))
                             {
-                                click_tile(ctx, index);
+                                click_tile(ctx, index());
                             }
                         },
                         onmouseenter: move |_| {
                             if is_active_seat() {
-                                hovered.set(Hovered::HandTile(index));
+                                hovered.set(Hovered::HandTile(index()));
                             }
                         },
                         onmouseleave: move |_| {
