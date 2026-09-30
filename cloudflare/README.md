@@ -48,16 +48,25 @@ The Worker's `fetch` handler checks three things in order:
 wss://{origin}/signaling/{ROOM_CODE}
 ```
 
-On production (served from the same Cloudflare origin) this resolves
-automatically from `window.location`. During local development, the
-app defaults to `ws://localhost:8080/signaling/{ROOM_CODE}` — run a local
-`matchbox_server` on port 8080 for that case.
+In the browser the base is always derived from `window.location`
+(`https:` becomes `wss:`, anything else `ws:`), so the app talks to whichever
+origin served it:
+
+| Served from | Signaling endpoint |
+|---|---|
+| Production (`https://tantrix.louis-dispa.fr`) | This Worker, `wss://tantrix.louis-dispa.fr/signaling/{ROOM_CODE}` |
+| `wrangler dev` (`http://localhost:8787`) | This Worker, `ws://localhost:8787/signaling/{ROOM_CODE}` |
+| `dx serve` / `dx run --fullstack` (and the Playwright e2e run) | The `matchbox_signaling` server embedded in the fullstack binary (`tantrix-app/src/server.rs`), same origin, same `/signaling/{ROOM_CODE}` path |
+
+No separate `matchbox_server` is needed for local development. The
+`ws://localhost:8080/signaling` default in `signaling.rs` is only a fallback
+for non-browser builds.
 
 To override at build time (e.g. point a `dx serve` dev build at the deployed
 Worker):
 
 ```bash
-TANTRIX_SIGNALING_URL=wss://tantrix-game.workers.dev/signaling \
+TANTRIX_SIGNALING_URL=wss://tantrix.louis-dispa.fr/signaling \
   dx serve --features web
 ```
 
@@ -107,7 +116,8 @@ Durable Object ignores it and sends no response.
 ### Disconnect
 
 On WebSocket close or error, `PeerLeft` is broadcast to all remaining sockets
-in the room:
+in the room, once per peer (a close followed by an error does not repeat it;
+the `left` flag is kept in the socket attachment so it survives hibernation):
 
 ```json
 {"PeerLeft": "<peerId>"}
@@ -137,7 +147,11 @@ cd cloudflare && npx wrangler dev
 
 Wrangler dev binds to `http://localhost:8787` by default. Open two tabs at
 that address and join the same room code to exercise the full signaling flow
-locally.
+locally; the app derives its signaling URL from that origin, so it talks to
+the local Worker with no extra configuration.
+
+The e2e suite and plain `dx serve` do not go through this Worker: they use the
+`matchbox_signaling` server embedded in the fullstack binary.
 
 ## Deployment
 
@@ -158,11 +172,15 @@ cd cloudflare && npx wrangler deploy
 Smoke test:
 
 ```bash
-curl https://tantrix-game.workers.dev/health
+curl https://tantrix.louis-dispa.fr/health
 # → OK
 ```
 
-Then open two browser tabs at `https://tantrix-game.workers.dev`, create a
+The Worker is served only from the custom domain configured in
+`wrangler.toml` (`workers_dev = false`, `preview_urls = false`), so there is
+no `*.workers.dev` URL.
+
+Then open two browser tabs at `https://tantrix.louis-dispa.fr`, create a
 room in one tab, join with the code in the other, and confirm both reach the
 Lobby screen.
 

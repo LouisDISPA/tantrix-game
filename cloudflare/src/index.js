@@ -23,6 +23,39 @@ export default {
   },
 };
 
+// Close codes the runtime reports for a peer but refuses to accept in
+// `WebSocket.close()`: 1005 (no status, what a browser sends for a bare
+// `close()`), 1006 (abnormal drop), plus the reserved 1004 and 1015.
+const RESERVED_CLOSE_CODES = new Set([1004, 1005, 1006, 1015]);
+
+function safeCloseCode(code) {
+  return Number.isInteger(code) &&
+    code >= 1000 &&
+    code < 5000 &&
+    !RESERVED_CLOSE_CODES.has(code)
+    ? code
+    : 1000;
+}
+
+// A socket that is closing (or already closed) makes `send()` throw. One dead
+// peer must never abort a broadcast or fail the upgrade for a live one.
+function safeSend(socket, message) {
+  try {
+    socket.send(message);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function attachmentOf(socket) {
+  try {
+    return socket.deserializeAttachment() ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export class Room extends DurableObject {
   async fetch(request) {
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
@@ -36,12 +69,9 @@ export class Room extends DurableObject {
     server.serializeAttachment({ peerId });
     this.ctx.acceptWebSocket(server);
 
-    server.send(JSON.stringify({ IdAssigned: peerId }));
-    for (const socket of this.ctx.getWebSockets()) {
-      if (socket !== server) {
-        socket.send(JSON.stringify({ NewPeer: peerId }));
-      }
-    }
+    // IdAssigned must reach the new peer before anything else.
+    safeSend(server, JSON.stringify({ IdAssigned: peerId }));
+    this.broadcast(JSON.stringify({ NewPeer: peerId }), server);
 
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -62,44 +92,70 @@ export class Room extends DurableObject {
       return;
     }
 
-    if (!request.Signal) {
+    if (!request || !request.Signal) {
       return;
     }
 
-    const sender = ws.deserializeAttachment()?.peerId;
+    const sender = attachmentOf(ws).peerId;
     const { receiver, data } = request.Signal;
     if (!sender || !receiver) {
       return;
     }
 
     for (const socket of this.ctx.getWebSockets()) {
-      if (socket.deserializeAttachment()?.peerId === receiver) {
-        socket.send(JSON.stringify({ Signal: { sender, data } }));
+      const target = attachmentOf(socket);
+      if (target.peerId === receiver) {
+        if (!target.left) {
+          safeSend(socket, JSON.stringify({ Signal: { sender, data } }));
+        }
         return;
       }
     }
   }
 
-  async webSocketClose(ws, code, reason) {
+  async webSocketClose(ws, code) {
     this.broadcastPeerLeft(ws);
-    ws.close(code, reason);
+    try {
+      // The runtime does not complete the close handshake on its own.
+      ws.close(safeCloseCode(code), "");
+    } catch {
+      // Already closed.
+    }
   }
 
   async webSocketError(ws) {
     this.broadcastPeerLeft(ws);
+    try {
+      ws.close(1011, "error");
+    } catch {
+      // Already closed.
+    }
   }
 
+  // Sends `message` to every live peer except `except`.
+  broadcast(message, except) {
+    for (const socket of this.ctx.getWebSockets()) {
+      if (socket !== except && !attachmentOf(socket).left) {
+        safeSend(socket, message);
+      }
+    }
+  }
+
+  // Idempotent per socket: a close followed by an error (or the reverse) for
+  // the same peer announces PeerLeft once. The `left` flag lives in the
+  // socket attachment, so it survives hibernation.
   broadcastPeerLeft(ws) {
-    const peerId = ws.deserializeAttachment()?.peerId;
-    if (!peerId) {
+    const attachment = attachmentOf(ws);
+    if (!attachment.peerId || attachment.left) {
       return;
     }
 
-    const event = JSON.stringify({ PeerLeft: peerId });
-    for (const socket of this.ctx.getWebSockets()) {
-      if (socket !== ws) {
-        socket.send(event);
-      }
+    try {
+      ws.serializeAttachment({ ...attachment, left: true });
+    } catch {
+      // Best effort; the broadcast below still goes out.
     }
+
+    this.broadcast(JSON.stringify({ PeerLeft: attachment.peerId }), ws);
   }
 }
