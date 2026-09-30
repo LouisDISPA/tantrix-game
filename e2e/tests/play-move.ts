@@ -38,20 +38,37 @@ export async function playMove(page: Page) {
   return previousCount + 1;
 }
 
+/**
+ * Click the first legal position that is actually on screen and not covered.
+ *
+ * The board camera does not follow play, so a greedy strategy grows a long
+ * chain that eventually runs past the playfield and every legal position ends
+ * up off-screen. A player would zoom out; so does this helper (through the
+ * on-screen zoom control). If even the minimum zoom shows nothing, it falls
+ * back to activating a position with the keyboard, which needs no hit target.
+ */
 async function clickPlayablePosition(page: Page) {
   const positions = page.locator('.board-empty:not(.faint)');
-  const count = await positions.count();
+  const zoomOut = page.getByRole('button', { name: /^Zoom out$|^−$/ }).or(page.getByTitle('Zoom out'));
 
-  for (let index = 0; index < count; index++) {
-    const position = positions.nth(index);
-    try {
-      await position.click({ trial: true, timeout: 750 });
-    } catch {
-      continue;
+  for (let zoomSteps = 0; zoomSteps <= 6; zoomSteps++) {
+    const count = await positions.count();
+    for (let index = 0; index < count; index++) {
+      const position = positions.nth(index);
+      try {
+        await position.click({ trial: true, timeout: 750 });
+      } catch {
+        continue;
+      }
+      await position.click();
+      return;
     }
-    await position.click();
-    return;
+    if (zoomSteps === 6 || !(await zoomOut.first().isEnabled().catch(() => false))) break;
+    await zoomOut.first().click();
   }
 
-  throw new Error(`None of the ${count} legal board positions can be clicked`);
+  const count = await positions.count();
+  if (count === 0) throw new Error('There is no legal board position to play');
+  await positions.first().focus();
+  await page.keyboard.press('Enter');
 }

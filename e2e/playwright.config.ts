@@ -16,6 +16,13 @@ export default defineConfig({
   use: {
     baseURL,
     browserName: 'chromium',
+    launchOptions: {
+      // Chromium hides host candidates behind mDNS names (`<uuid>.local`) that the
+      // other peer must resolve over multicast. That resolution silently fails on
+      // VPN interfaces and in many containers, so two browsers on the *same*
+      // machine could not pair up. Real IPs make the tests independent of it.
+      args: ['--disable-features=WebRtcHideLocalIpsWithMdns'],
+    },
     actionTimeout: 15_000,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',

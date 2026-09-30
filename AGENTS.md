@@ -78,6 +78,11 @@ tantrix-tui/src/           # Terminal UI (ratatui)
 
 assets/                    # CSS: main.css, board.css, hand.css, menu.css, animations.css
 doc/                       # game_rules.md
+
+tantrix-net/src/           # matchbox_socket glue: host.rs (authoritative Game), client.rs, socket.rs
+vendor/matchbox_socket/    # matchbox_socket 0.14.0 + one patch (bounded ICE-gathering wait); see PATCHES.md
+cloudflare/                # Worker + Durable Object signaling server (production)
+e2e/                       # Playwright browser tests (see e2e/README.md)
 ```
 
 ## Domain Model
