@@ -36,9 +36,9 @@ tantrix-ai   ──┤
 ## Rules
 
 - **Golden rule.** Touching edges must match color. Enforced by
-  `Board::possible_moves` plus the checked `play_move_parts` /
-  `Game::play_move` mutation path. `Board::insert_move` is a low-level
-  occupancy-only insertion helper.
+  `Board::possible_moves` (`rules.rs`) plus the checked `Game::play_move`
+  mutation path. `Board::insert_move` is a low-level occupancy-only
+  insertion helper.
 - **Forced space.** Empty hex with 3+ filled neighbors. If any forced
   move is possible, the player *must* play one.
 - **Restrictions** (while `bag` is non-empty):
@@ -85,8 +85,8 @@ cancelled if the page unmounts but not when a clicked tile/hex disappears.
 still an AI:
 
 ```
-read hand_info (forced-filtered if any forced exist)
-if no moves → skip_turn
+read legal_moves (forced-filtered if any forced exist)
+if no moves → skip_stuck_players          stop if a whole round can't move
 ai_choose()                               pick best move
 find_tile_index in the AI's hand
 ui.selected_tile = idx
@@ -111,17 +111,27 @@ again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
   only forced moves at all once the free move is played.
 - Both the human (`execute_move`) and the AI are given only forced moves
   in that state — can't accidentally play a non-forced one.
-- `play_move_parts` is the one place a move is played (`Game::play_move`
-  and the app's `GameState::play_move` both call it). It passes the turn
-  only after the free move, once no forced space is left that the player
-  can fill.
+- `Game::play_move` is the one place a move is played (the app's
+  `GameState::play_move` wraps it). It passes the turn only after the free
+  move, once no forced space is left that the player can fill, and returns
+  the `PlayedMove` as placed (the board decides its `forced` flag).
+
+## Stuck players
+
+`Game::skip_stuck_players` is the one routine that passes the turn over
+players with no legal move. It checks each player at most once and returns
+`true` when nobody can move although tiles remain (a stall). `Game::advance`
+(TUI, tournament), the room's `PlayMove` / `SkipTurn` / `StartGame`, and
+the app's `settle_turn` and AI loop all use it, so an all-AI game where
+everyone is stuck ends instead of spinning.
 
 ## Scoring & game over
 
 - Game ends when `bag` is empty AND every hand is empty.
 - Each color's score = longest line or loop of that color — see
   `Board::scoring_paths` / `Board::scores`.
-- `state/game_state.rs::determine_winners` resolves ties.
+- `Game::winners` returns every playing color tied for the top score
+  (the room's `EndReason`, the app's `ScoresPanel`).
 - Entering `TurnPhase::GameOver` switches the screen to `GameOver` (via
   `LocalGame`'s routing match), which shows `Board` (read-only, scoring
   overlays on) beside `ScoresPanel`.
@@ -145,7 +155,12 @@ Implementations: `RandomAi`, `FirstMoveAi`, `GreedyAi`, `DefensiveAi`,
 
 ## Frontend cache
 
-`GameState::hand_info` is a precomputed `TileMoveInfo` per hand tile
-(positions → valid rotations + `has_forced`). Refreshed inside
-`play_move` / `skip_turn` / `skip_stuck_players`. Components and the AI
-loop read it instead of recomputing `possible_moves` each render.
+`Game` is the single source of truth: it keeps the current player's
+`legal_moves` up to date after every change, and `Game::moves_by_tile`
+groups them per hand tile as `TileMoveInfo` (positions → valid rotations +
+`has_forced`; the TUI uses it too). The app's `GameState` wraps a `Game`
+(local deal via `Game::from_players_with_rng`, online mirror via
+`Game::from_snapshot`) and caches `hand_info = moves_by_tile()`, refreshed
+inside `play_move` / `skip_stuck_players`. It derefs to `Game` for reads,
+so components use `gs.hand(color)`, `gs.current_player()`, `gs.board()`…
+and `gs.hand_info()` instead of regrouping moves each render.

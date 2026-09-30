@@ -42,8 +42,8 @@ impl HandPosition {
 pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
     let ctx = use_context::<GameCtx>();
 
-    let is_current = ctx.game_state.read().turn_tracker.current() == color;
-    let hand_tiles = ctx.game_state.read().hands[color].to_vec();
+    let is_current = ctx.game_state.read().current_player() == color;
+    let hand_tiles = ctx.game_state.read().hand(color).to_vec();
     let color_class = format!("color-{}", color_slug(color));
 
     let pos_class = position.css_class();

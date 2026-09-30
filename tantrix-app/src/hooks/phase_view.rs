@@ -45,15 +45,14 @@ pub fn use_phase_view() -> Memo<PhaseView> {
         let selected_position = ui_state.selected_position()();
 
         let gs = ctx.game_state.read();
-        let current = gs.turn_tracker.current();
-        let hand = &gs.hands[current];
+        let hand = gs.hand(gs.current_player());
 
         match phase {
             TurnPhase::SelectTile => {
                 let Some(idx) = hovered.hand_tile() else {
                     return PhaseView::default();
                 };
-                let Some(info) = gs.hand_info.get(idx) else {
+                let Some(info) = gs.hand_info().get(idx) else {
                     return PhaseView::default();
                 };
                 let positions = info
@@ -93,7 +92,7 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                 let Some(idx) = selected_tile else {
                     return PhaseView::default();
                 };
-                let Some(info) = gs.hand_info.get(idx) else {
+                let Some(info) = gs.hand_info().get(idx) else {
                     return PhaseView::default();
                 };
                 let positions = info
@@ -130,7 +129,7 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                 let Some(idx) = selected_tile else {
                     return PhaseView::default();
                 };
-                let Some(info) = gs.hand_info.get(idx) else {
+                let Some(info) = gs.hand_info().get(idx) else {
                     return PhaseView::default();
                 };
                 let positions = info

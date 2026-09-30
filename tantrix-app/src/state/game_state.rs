@@ -1,12 +1,9 @@
-use std::collections::BTreeMap;
+use std::ops::Deref;
 
 use dioxus::prelude::*;
 use rand::rngs::Xoshiro256PlusPlus;
-use rand::{Rng, SeedableRng};
-use tantrix_game::{
-    play_move_parts, Bag, Board, Color, EnumMap, Hand, Move, MoveError, Player, PlayerScore,
-    Position, Rotation, TurnTracker, TILES_IN_HAND,
-};
+use rand::SeedableRng;
+use tantrix_game::{Color, EnumMap, Game, Move, MoveError, PlayedMove, TileMoveInfo};
 use tantrix_proto::GameSnapshot;
 
 use super::config::GameConfig;
@@ -36,214 +33,94 @@ pub struct GameCtx {
     pub player_names: Signal<EnumMap<Color, Option<String>>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct TileMoveInfo {
-    pub has_forced: bool,
-    pub positions: BTreeMap<Position, Vec<Rotation>>,
-}
-
-impl TileMoveInfo {
-    pub fn has_moves(&self) -> bool {
-        !self.positions.is_empty()
-    }
-}
-
-/// Core game data. `GameState` is treated as one atomic unit — every mutation
-/// (`play_move`, `skip_turn`, …) updates multiple fields together, so there's
-/// nothing to gain from per-field reactivity. Providers wrap this in a plain
-/// `Signal<GameState>`.
+/// The game as this device sees it. [`Game`] is the single source of truth
+/// for the rules and the state; `GameState` only adds `hand_info`, the
+/// current player's legal moves grouped per hand tile, kept in step with
+/// every change so components never regroup them while rendering.
+///
+/// Reads go straight to the `Game` (`GameState` derefs to it); changes go
+/// through `GameState` so the cache stays in sync. Treated as one atomic
+/// unit — every change touches the board, hands, turn and cache together —
+/// so providers wrap it in a plain `Signal<GameState>`.
 #[derive(Debug, Clone)]
 pub struct GameState {
-    pub board: Board,
-    pub bag: Bag,
-    pub hands: EnumMap<Color, Hand>,
-    pub players: EnumMap<Color, Player>,
-    pub turn_tracker: TurnTracker,
-    pub hand_info: Vec<TileMoveInfo>,
+    game: Game,
+    hand_info: Vec<TileMoveInfo>,
+}
+
+impl Deref for GameState {
+    type Target = Game;
+
+    fn deref(&self) -> &Game {
+        &self.game
+    }
 }
 
 impl GameState {
     /// Deal a new game. A seeded config always deals the same bag and turn order.
     pub fn new(config: &GameConfig) -> Self {
-        match config.seed {
-            Some(seed) => Self::deal(config, &mut Xoshiro256PlusPlus::seed_from_u64(seed)),
-            None => Self::deal(config, &mut rand::rng()),
-        }
-    }
-
-    fn deal<R: Rng + ?Sized>(config: &GameConfig, rng: &mut R) -> Self {
         let players = EnumMap::from_fn(|color| config.player_for(color));
-
-        let mut bag = Bag::new_with_rng(rng);
-        let turn_tracker = TurnTracker::new_with_rng(&players, rng)
-            .expect("GameConfig always creates at least two active players");
-
-        let mut hands: EnumMap<Color, Hand> = Default::default();
-        for &color in turn_tracker.playing_colors() {
-            hands[color].deal(&mut bag, TILES_IN_HAND);
-        }
-
-        let mut state = GameState {
-            board: Board::default(),
-            bag,
-            hands,
-            players,
-            turn_tracker,
-            hand_info: Vec::new(),
+        let game = match config.seed {
+            Some(seed) => {
+                Game::from_players_with_rng(players, &mut Xoshiro256PlusPlus::seed_from_u64(seed))
+            }
+            None => Game::from_players_with_rng(players, &mut rand::rng()),
         };
-        state.refresh_hand_info();
-        state
+        Self::from_game(game.expect("GameConfig always creates at least two active players"))
     }
 
     /// Rebuild from an authoritative snapshot received over the wire. The
     /// bag's contents are stubbed (only its count matters for the UI), and
-    /// each seated color is mapped to `Player::Someone`.
+    /// each playing color is human-owned.
     pub fn from_snapshot(snap: &GameSnapshot) -> Self {
-        let players: EnumMap<Color, Player> = EnumMap::from_fn(|c| {
-            if snap.seats[c].is_some() {
-                Player::Someone
-            } else {
-                Player::None
-            }
-        });
-
-        let mut state = GameState {
-            board: snap.board.clone(),
-            bag: Bag::with_count(snap.bag_count),
-            hands: snap.hands.clone(),
-            players,
-            turn_tracker: TurnTracker::from_parts(
-                snap.current_player,
-                snap.playing_colors.iter().copied(),
-                snap.turn_step,
-            )
-            .expect("authoritative snapshots always include the current player"),
-            hand_info: Vec::new(),
-        };
-        state.refresh_hand_info();
-        state
-    }
-
-    /// Legal moves for the current player at their step of the turn.
-    fn current_moves(&self) -> Vec<Move> {
-        let current = self.turn_tracker.current();
-        self.board.possible_moves(
-            &self.hands[current],
-            self.bag.is_empty(),
-            self.turn_tracker.step(),
+        let game = Game::from_snapshot(
+            snap.board.clone(),
+            snap.hands.clone(),
+            snap.bag_count,
+            snap.current_player,
+            snap.playing_colors.iter().copied(),
+            snap.turn_step,
         )
+        .expect("authoritative snapshots always include the current player");
+        Self::from_game(game)
     }
 
-    pub fn refresh_hand_info(&mut self) {
-        let current = self.turn_tracker.current();
-        let all_moves = self.current_moves();
+    fn from_game(game: Game) -> Self {
+        let hand_info = game.moves_by_tile();
+        Self { game, hand_info }
+    }
 
-        self.hand_info = self.hands[current]
-            .iter()
-            .map(|tile| {
-                let tile_moves: Vec<&Move> = all_moves.iter().filter(|m| m.tile == *tile).collect();
-                let has_forced = tile_moves.iter().any(|m| m.forced);
-
-                let mut positions: BTreeMap<Position, Vec<Rotation>> = BTreeMap::new();
-                for m in &tile_moves {
-                    positions.entry(m.position).or_default().push(m.rotation);
-                }
-
-                TileMoveInfo {
-                    has_forced,
-                    positions,
-                }
-            })
-            .collect();
+    /// The current player's legal moves per hand tile, in hand order.
+    pub fn hand_info(&self) -> &[TileMoveInfo] {
+        &self.hand_info
     }
 
     /// Play `m` for the current player. They keep the turn while forced
     /// spaces remain to fill after their free move.
-    pub fn play_move(&mut self, m: Move) -> Result<(), MoveError> {
-        play_move_parts(
-            &mut self.board,
-            &mut self.hands,
-            &mut self.bag,
-            &mut self.turn_tracker,
-            m,
-        )?;
+    pub fn play_move(&mut self, m: Move) -> Result<PlayedMove, MoveError> {
+        let played = self.game.play_move(m)?;
         self.refresh_hand_info();
-        Ok(())
+        Ok(played)
     }
 
-    pub fn skip_turn(&mut self) {
-        self.turn_tracker.next();
+    /// Pass the turn over players who cannot move; `true` when nobody can
+    /// (see [`Game::skip_stuck_players`]).
+    pub fn skip_stuck_players(&mut self) -> bool {
+        let stalled = self.game.skip_stuck_players();
         self.refresh_hand_info();
+        stalled
     }
 
-    /// Skip past any players with no valid moves. Stops at a player who can act or game over.
-    pub fn skip_stuck_players(&mut self) {
-        let num_players = self.turn_tracker.playing_colors().len();
-        for _ in 0..num_players {
-            if self.is_game_over() || self.has_any_moves() {
-                return;
-            }
-            self.turn_tracker.next();
-            self.refresh_hand_info();
-        }
+    fn refresh_hand_info(&mut self) {
+        self.hand_info = self.game.moves_by_tile();
     }
-
-    /// If the current player is AI, compute its chosen move.
-    pub fn ai_choose(&self) -> Option<Move> {
-        if self.is_game_over() {
-            return None;
-        }
-        let current = self.turn_tracker.current();
-        let possible = self.current_moves();
-        if possible.is_empty() {
-            return None;
-        }
-        if let Player::Ai(ref ai) = self.players[current] {
-            Some(ai.choose_move(
-                &self.board,
-                &self.hands,
-                current,
-                self.turn_tracker.playing_colors(),
-                &possible,
-            ))
-        } else {
-            None
-        }
-    }
-
-    pub fn is_game_over(&self) -> bool {
-        self.bag.is_empty() && self.hands.values().all(|h| h.is_empty())
-    }
-
-    pub fn has_any_moves(&self) -> bool {
-        self.hand_info.iter().any(|info| info.has_moves())
-    }
-}
-
-/// Determine the winner(s) of a finished game from player scores.
-/// Returns the list of players tied for the highest score and whether it's a tie.
-pub fn determine_winners(
-    active_players: &[Color],
-    scores: &EnumMap<Color, PlayerScore>,
-) -> (Vec<Color>, bool) {
-    let max_score = active_players
-        .iter()
-        .map(|&c| scores[c].score)
-        .max()
-        .unwrap_or(0);
-    let winners: Vec<Color> = active_players
-        .iter()
-        .copied()
-        .filter(|&c| scores[c].score == max_score)
-        .collect();
-    let is_tie = winners.len() > 1;
-    (winners, is_tie)
 }
 
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
-    use tantrix_game::{Color, Move, Position, Rotation, Tile, TurnStep};
+    use tantrix_game::{Board, Color, EnumMap, Move, Position, Rotation, Tile, TurnStep};
+    use tantrix_proto::GameSnapshot;
 
     use super::GameState;
     use crate::state::config::GameConfig;
@@ -278,11 +155,8 @@ mod tests {
     fn seeded_config_deals_the_same_game() {
         let a = seeded(7);
         let b = seeded(7);
-        assert_eq!(a.hands, b.hands);
-        assert_eq!(
-            a.turn_tracker.playing_colors(),
-            b.turn_tracker.playing_colors()
-        );
+        assert_eq!(a.hands(), b.hands());
+        assert_eq!(a.playing_colors(), b.playing_colors());
     }
 
     #[test]
@@ -291,7 +165,7 @@ mod tests {
         let mut game = seeded(fixture.seed);
 
         for (i, step) in fixture.moves.iter().enumerate() {
-            assert_eq!(game.turn_tracker.current(), step.player, "move {i}");
+            assert_eq!(game.current_player(), step.player, "move {i}");
             game.play_move(Move {
                 tile: step.tile,
                 position: step.position,
@@ -300,12 +174,12 @@ mod tests {
             })
             .unwrap_or_else(|e| panic!("move {i}: {e}"));
             let placed = game
-                .board
+                .board()
                 .iter()
                 .find(|m| m.position == step.position)
                 .unwrap();
             assert_eq!(placed.forced, step.forced, "move {i}");
-            assert_eq!(game.turn_tracker.current(), step.next, "move {i}");
+            assert_eq!(game.current_player(), step.next, "move {i}");
         }
 
         // The fixture shows the rule: after a free move the same player fills
@@ -313,7 +187,45 @@ mod tests {
         assert!(fixture.moves.windows(2).any(|w| {
             !w[0].forced && w[0].next == w[0].player && w[1].forced && w[1].player == w[0].player
         }));
-        assert_eq!(game.turn_tracker.step(), TurnStep::BeforeFreeMove);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn hand_info_follows_every_change() {
+        let fixture: Fixture = serde_json::from_str(FIXTURE).unwrap();
+        let mut game = seeded(fixture.seed);
+        assert_eq!(game.hand_info(), game.moves_by_tile());
+        for step in &fixture.moves {
+            game.play_move(Move {
+                tile: step.tile,
+                position: step.position,
+                rotation: step.rotation,
+                forced: step.forced,
+            })
+            .unwrap();
+            assert_eq!(game.hand_info(), game.moves_by_tile());
+        }
+    }
+
+    #[test]
+    fn a_round_where_nobody_can_move_stalls_the_game() {
+        // Tiles are left in the bag, but no one holds any: nobody can move.
+        let snapshot = GameSnapshot {
+            board: Board::default(),
+            hands: EnumMap::default(),
+            bag_count: 10,
+            current_player: Color::Blue,
+            turn_step: TurnStep::BeforeFreeMove,
+            playing_colors: vec![Color::Red, Color::Blue],
+            seats: EnumMap::default(),
+            participants: Vec::new(),
+        };
+        let mut game = GameState::from_snapshot(&snapshot);
+        assert!(!game.is_game_over());
+
+        assert!(game.skip_stuck_players());
+        assert_eq!(game.current_player(), Color::Blue);
+        assert!(game.hand_info().is_empty());
     }
 
     /// Prints a fresh fixture after a change to dealing or move order:
@@ -335,10 +247,10 @@ mod tests {
         let mut moves = Vec::new();
         let mut keeper = None;
         while moves.len() < 20 {
-            let player = game.turn_tracker.current();
-            let m = *game.current_moves().first()?;
+            let player = game.current_player();
+            let m = *game.legal_moves().first()?;
             game.play_move(m).ok()?;
-            let next = game.turn_tracker.current();
+            let next = game.current_player();
             moves.push(FixtureMove {
                 player,
                 tile: m.tile,
@@ -347,7 +259,7 @@ mod tests {
                 forced: m.forced,
                 next,
             });
-            if game.turn_tracker.step() == TurnStep::AfterFreeMove {
+            if game.turn_step() == TurnStep::AfterFreeMove {
                 keeper = Some(player);
             } else if keeper.is_some_and(|p| p != next) {
                 return Some(Fixture { seed, moves });

@@ -1,5 +1,7 @@
 //! A tile placed (or to be placed) on the board.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{Color, Direction, Position, Rotation, Tile};
@@ -18,10 +20,41 @@ impl Move {
     }
 }
 
+/// A move as [`Game::play_move`](crate::Game::play_move) placed it: the
+/// board's own copy (its `forced` flag is the board's, not the caller's),
+/// and where the tile was in the hand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayedMove {
     pub m: Move,
     pub hand_index: usize,
+}
+
+/// The legal moves of one hand tile, grouped by position.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TileMoveInfo {
+    /// The tile fills a forced space; it then has only forced moves.
+    pub has_forced: bool,
+    /// Each position the tile fits, with the rotations that fit there.
+    pub positions: BTreeMap<Position, Vec<Rotation>>,
+}
+
+impl TileMoveInfo {
+    /// Group the moves of `tile` among `moves`, keeping their order.
+    pub(crate) fn of(tile: Tile, moves: &[Move]) -> Self {
+        let mut info = Self::default();
+        for m in moves.iter().filter(|m| m.tile == tile) {
+            info.has_forced |= m.forced;
+            info.positions
+                .entry(m.position)
+                .or_default()
+                .push(m.rotation);
+        }
+        info
+    }
+
+    pub fn has_moves(&self) -> bool {
+        !self.positions.is_empty()
+    }
 }
 
 #[cfg(test)]

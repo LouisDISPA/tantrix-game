@@ -27,12 +27,12 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
 
     let (player_color, tile, forced) = {
         let gs = game_state.read();
-        let color = gs.turn_tracker.current();
-        let Some(&tile) = gs.hands[color].get(tile_idx) else {
+        let color = gs.current_player();
+        let Some(&tile) = gs.hand(color).get(tile_idx) else {
             return;
         };
         let forced = gs
-            .hand_info
+            .hand_info()
             .get(tile_idx)
             .map(|info| info.has_forced)
             .unwrap_or(false);
@@ -91,11 +91,11 @@ pub fn click_position(ctx: GameCtx, pos: Position) {
     let (rotations, board_empty) = {
         let gs = game_state.read();
         let rots = gs
-            .hand_info
+            .hand_info()
             .get(tile_idx)
             .and_then(|info| info.positions.get(&pos))
             .cloned();
-        (rots, gs.board.is_empty())
+        (rots, gs.board().is_empty())
     };
     let Some(rotations) = rotations else { return };
 
@@ -134,7 +134,7 @@ pub fn advance_turn(ctx: GameCtx) {
 
     let needs_ai = {
         let gs = ctx.game_state.read();
-        !gs.is_game_over() && matches!(gs.players[gs.turn_tracker.current()], Player::Ai(_))
+        !gs.is_game_over() && matches!(gs.player(gs.current_player()), Player::Ai(_))
     };
 
     if needs_ai {
@@ -161,8 +161,8 @@ pub fn settle_turn(ctx: GameCtx) {
         let gs = game_state.read();
         (
             gs.is_game_over(),
-            gs.hand_info.iter().any(|info| info.has_forced),
-            gs.hand_info.iter().any(|info| info.has_moves()),
+            gs.hand_info().iter().any(|info| info.has_forced),
+            gs.hand_info().iter().any(|info| info.has_moves()),
         )
     };
 

@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::io;
 
 use crossterm::event::{self, KeyCode, KeyEvent};
@@ -12,7 +11,7 @@ use ratatui::widgets::{Block, Paragraph, Widget, Wrap};
 use ratatui::DefaultTerminal;
 use ratatui_macros::line;
 use tantrix_ai::RandomAi;
-use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile};
+use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile, TileMoveInfo};
 
 // Hex geometry constants for Canvas rendering
 const HEX_RADIUS: f64 = 10.0;
@@ -204,42 +203,6 @@ fn draw_hex_outline_verts(ctx: &mut Context<'_>, verts: &[(f64, f64); 6], color:
 
 fn draw_hex_outline(ctx: &mut Context<'_>, cx: f64, cy: f64, r: f64, color: RColor) {
     draw_hex_outline_verts(ctx, &hex_vertices(cx, cy, r), color);
-}
-
-// --- Per-tile move analysis ---
-
-#[derive(Debug, Clone)]
-struct TileMoveInfo {
-    has_forced: bool,
-    positions: BTreeMap<Position, Vec<Rotation>>,
-}
-
-impl TileMoveInfo {
-    fn has_moves(&self) -> bool {
-        !self.positions.is_empty()
-    }
-}
-
-fn analyse_hand(game: &mut Game) -> Vec<TileMoveInfo> {
-    let all_moves = game.get_possible_moves().to_vec();
-    let hand: Vec<Tile> = game.get_hand(game.currently_playing()).to_vec();
-
-    hand.iter()
-        .map(|tile| {
-            let tile_moves: Vec<&Move> = all_moves.iter().filter(|m| m.tile == *tile).collect();
-            let has_forced = tile_moves.iter().any(|m| m.forced);
-
-            let mut positions: BTreeMap<Position, Vec<Rotation>> = BTreeMap::new();
-            for m in &tile_moves {
-                positions.entry(m.position).or_default().push(m.rotation);
-            }
-
-            TileMoveInfo {
-                has_forced,
-                positions,
-            }
-        })
-        .collect()
 }
 
 // --- App ---
@@ -461,7 +424,7 @@ impl App {
         };
 
         match self.game.play_move(m) {
-            Ok(()) => {
+            Ok(_) => {
                 self.message = String::new();
                 self.tile_index = 0;
                 self.position_index = 0;
@@ -495,11 +458,11 @@ impl App {
     }
 
     fn refresh_hand_info(&mut self) {
-        self.hand_info = analyse_hand(&mut self.game);
+        self.hand_info = self.game.moves_by_tile();
     }
 
     fn current_hand(&self) -> &[Tile] {
-        self.game.get_hand(self.game.currently_playing())
+        self.game.hand(self.game.current_player())
     }
 
     fn preview_move(&self) -> Option<Move> {
@@ -679,7 +642,7 @@ impl Widget for HandWidget<'_> {
         let inner = block.inner(area);
         block.render(area, buf);
 
-        let hand = self.app.game.get_hand(self.color);
+        let hand = self.app.game.hand(self.color);
         if hand.is_empty() {
             Paragraph::new("(empty)")
                 .style(Style::default().fg(RColor::DarkGray))
@@ -763,7 +726,7 @@ impl Widget for &App {
         let [title_area, main_area] = area.layout(&vertical);
 
         // --- Title bar ---
-        let current_color = self.game.currently_playing();
+        let current_color = self.game.current_player();
         let color_style = Style::default().fg(game_color_to_ratatui(current_color));
         let title = line![
             "Tantrix".light_blue().bold(),
@@ -805,7 +768,7 @@ impl Widget for &App {
         let hand_areas = Layout::horizontal(hand_constraints).split(hands_area);
 
         for (i, &color) in colors.iter().enumerate() {
-            let is_current = color == self.game.currently_playing();
+            let is_current = color == self.game.current_player();
             HandWidget {
                 app: self,
                 color,

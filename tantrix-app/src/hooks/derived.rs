@@ -8,13 +8,13 @@ use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 /// re-clone the board every render. Recomputes whenever `game_state` changes.
 pub fn use_placed_moves() -> Memo<Vec<Move>> {
     let ctx = use_context::<GameCtx>();
-    use_memo(move || ctx.game_state.read().board.iter().copied().collect())
+    use_memo(move || ctx.game_state.read().board().iter().copied().collect())
 }
 
 /// The color whose turn it currently is.
 pub fn use_current_player() -> Memo<Color> {
     let ctx = use_context::<GameCtx>();
-    use_memo(move || ctx.game_state.read().turn_tracker.current())
+    use_memo(move || ctx.game_state.read().current_player())
 }
 
 /// True once the UI has entered the terminal GameOver phase.
@@ -31,7 +31,7 @@ pub fn use_has_forced_move() -> Memo<bool> {
     use_memo(move || {
         ctx.game_state
             .read()
-            .hand_info
+            .hand_info()
             .iter()
             .any(|info| info.has_forced)
     })

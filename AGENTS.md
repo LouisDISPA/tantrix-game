@@ -44,14 +44,14 @@ tantrix-game/src/          # Core library — game rules, no UI
   lib.rs                   # Module list + crate-root re-exports
   tiles.rs                 # 56 Tile variants, Color enum (Red/Blue/Yellow/Green)
   coordinate_system.rs     # Position (axial hex), Direction, Rotation
-  moves.rs                 # Move, PlayedMove
+  moves.rs                 # Move, PlayedMove, TileMoveInfo (legal moves per hand tile)
   board.rs                 # Board storage, lookups, contour, neighbor counts
   rules.rs                 # Legal moves: golden rule, forced spaces, restriction rules
   scoring.rs               # Longest line/loop per color: scores, scoring_paths
   bag.rs, hand.rs          # Bag (draw pile), Hand (6 tiles)
   turn.rs                  # TurnTracker, TurnStep
   player.rs                # Player, TantrixAi trait
-  game.rs                  # Game, GameData: the checked way to play a move
+  game.rs                  # Game (single source of truth: accessors, legal moves, play_move, skip_stuck_players, winners), GameData
   error.rs                 # MoveError, SetupError
 
 tantrix-app/src/           # Dioxus frontend (lib + bin)
@@ -59,7 +59,7 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
   main.rs                  # Binary entry: web client or native fullstack server
   route.rs                 # Route enum: MainMenu (/), LocalGame (/game)
   state/                   # Source-of-truth state (no RSX)
-    game_state.rs          # GameState (wraps Game + TileMoveInfo cache) + GameContext
+    game_state.rs          # GameState (wraps Game + hand_info cache) + GameCtx
     ui_state.rs            # UiState, TurnPhase, Hovered enum, HandTileState enum
     actions.rs             # Turn actions: execute_move, click_position, pick_rotation, advance_turn
     ai_service.rs          # Async AI turn loop
@@ -131,7 +131,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 - **Reads**: inline in RSX or inside a `use_memo` — never `state.read()` at the top of a component
 - **Store vs Signal**: `#[derive(Store)]` when fields change independently (`UiState`, `OnlineState`); plain `Signal<T>` when the struct is atomic (`GameState`)
 - **Turn flow**: `TurnPhase` enum drives UI transitions (SelectTile → SelectPosition → SelectRotation)
-- **GameState**: Wraps core `Game` with `TileMoveInfo` cache per hand tile (positions → valid rotations)
+- **GameState**: Wraps core `Game` (the single source of truth; reads via its accessors) with a `hand_info` cache of `Game::moves_by_tile()` (per hand tile: positions → valid rotations)
 - **SVG rendering**: All board graphics are SVG with axial-to-pixel conversion; color curves use arc/bezier/line based on edge separation
 - **Theme**: Global `THEME` store (light/dark), CSS custom properties with OKLCH colors
 - **Layout**: CSS Grid adapts to player count (2–4 players, hands positioned left/right/top/bottom)

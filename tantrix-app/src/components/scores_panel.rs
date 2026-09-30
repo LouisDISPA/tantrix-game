@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use tantrix_game::Color;
 
-use crate::state::game_state::{determine_winners, GameCtx};
+use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::paths::color_name as color_slug;
 
@@ -13,14 +13,8 @@ fn ScoreRow(color: Color) -> Element {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
-    let score = use_memo(move || ctx.game_state.read().board.scores()[color].score);
-    let is_winner = use_memo(move || {
-        let gs = ctx.game_state.read();
-        let active = gs.turn_tracker.playing_colors().to_vec();
-        let scores = gs.board.scores();
-        let (winners, _) = determine_winners(&active, &scores);
-        winners.contains(&color)
-    });
+    let score = use_memo(move || ctx.game_state.read().scores()[color].score);
+    let is_winner = use_memo(move || ctx.game_state.read().winners().contains(&color));
     let is_active = use_memo(move || ui_state.highlighted_color()() == Some(color));
 
     let color_class = format!("color-{}", color_slug(color));
@@ -74,13 +68,11 @@ fn ScoreRow(color: Color) -> Element {
 pub fn ScoresPanel(children: Element) -> Element {
     let ctx = use_context::<GameCtx>();
 
-    let (active_players, winners, is_tie) = {
+    let (active_players, winners) = {
         let gs = ctx.game_state.read();
-        let active: Vec<Color> = gs.turn_tracker.playing_colors().to_vec();
-        let scores = gs.board.scores();
-        let (winners, is_tie) = determine_winners(&active, &scores);
-        (active, winners, is_tie)
+        (gs.playing_colors().to_vec(), gs.winners())
     };
+    let is_tie = winners.len() > 1;
 
     rsx! {
         div { class: "board-results-overlay",

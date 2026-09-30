@@ -102,13 +102,13 @@ impl RoomData {
         let playing_colors = game.playing_colors().to_vec();
         let mut hands: EnumMap<Color, Hand> = EnumMap::default();
         for &color in &playing_colors {
-            hands[color] = game.get_hand(color).clone();
+            hands[color] = game.hand(color).clone();
         }
         Some(GameSnapshot {
             board: game.board().clone(),
             hands,
             bag_count: game.bag_count(),
-            current_player: game.currently_playing(),
+            current_player: game.current_player(),
             turn_step: game.turn_step(),
             playing_colors,
             seats: self.wire_seats(),
@@ -253,7 +253,7 @@ impl RoomData {
                     player_for(Color::Green),
                 )
                 .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
-                self.ended = auto_skip(&mut game);
+                self.ended = game.skip_stuck_players();
                 self.game = Some(game.to_data());
                 Ok(Change {
                     message: self.current_message(connected),
@@ -262,23 +262,19 @@ impl RoomData {
             }
             PeerMessage::PlayMove { m } => {
                 let mut game = self.turn_game(token)?;
-                game.play_move(m)
+                let played = game
+                    .play_move(m)
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
-                let canonical = *game
-                    .board()
-                    .iter()
-                    .find(|placed| placed.position == m.position)
-                    .expect("accepted move is on board");
-                let stalled = auto_skip(&mut game);
-                self.finish_turn(game, Some(canonical), stalled, connected)
+                let stalled = game.skip_stuck_players();
+                self.finish_turn(game, Some(played.m), stalled, connected)
             }
             PeerMessage::SkipTurn => {
                 let mut game = self.turn_game(token)?;
-                if !game.get_possible_moves().is_empty() {
+                if !game.legal_moves().is_empty() {
                     return Err((RejectCode::InvalidMove, "legal moves remain".into()));
                 }
                 game.skip_turn();
-                let stalled = auto_skip(&mut game);
+                let stalled = game.skip_stuck_players();
                 self.finish_turn(game, None, stalled, connected)
             }
             PeerMessage::EndGame => {
@@ -294,7 +290,7 @@ impl RoomData {
                 let game = Game::from_data(data.clone());
                 let reason = EndReason::EndedEarly {
                     by,
-                    winners: winners(&game),
+                    winners: game.winners(),
                 };
                 self.ended = true;
                 self.end_reason = Some(reason.clone());
@@ -336,7 +332,7 @@ impl RoomData {
             return Err((RejectCode::InvalidMove, "game has not started".into()));
         };
         let game = Game::from_data(data.clone());
-        if self.ended || self.seats[game.currently_playing()].as_ref() != Some(token) {
+        if self.ended || self.seats[game.current_player()].as_ref() != Some(token) {
             return Err((RejectCode::NotYourTurn, "not your turn".into()));
         }
         Ok(game)
@@ -352,7 +348,7 @@ impl RoomData {
         self.ended = game.is_game_over() || stalled;
         if self.ended {
             self.end_reason = Some(EndReason::Completed {
-                winners: winners(&game),
+                winners: game.winners(),
             });
         }
         self.game = Some(game.to_data());
@@ -383,7 +379,7 @@ impl RoomData {
                         .end_reason
                         .clone()
                         .unwrap_or_else(|| EndReason::Completed {
-                            winners: winners(&game),
+                            winners: game.winners(),
                         }),
                     snapshot,
                 }
@@ -407,30 +403,4 @@ impl RoomData {
             self.current_message(connected)
         }
     }
-}
-
-fn auto_skip(game: &mut Game) -> bool {
-    let count = game.playing_colors().len();
-    for _ in 0..count {
-        if game.is_game_over() || !game.get_possible_moves().is_empty() {
-            return false;
-        }
-        game.skip_turn();
-    }
-    true
-}
-
-fn winners(game: &Game) -> Vec<Color> {
-    let scores = game.scores();
-    let top = game
-        .playing_colors()
-        .iter()
-        .map(|&c| scores[c].score)
-        .max()
-        .unwrap_or(0);
-    game.playing_colors()
-        .iter()
-        .copied()
-        .filter(|&c| scores[c].score == top)
-        .collect()
 }

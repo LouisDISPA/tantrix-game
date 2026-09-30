@@ -25,14 +25,14 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
 
-    let tile = use_memo(move || ctx.game_state.read().hands[color].get(index()).copied());
+    let tile = use_memo(move || ctx.game_state.read().hand(color).get(index()).copied());
 
     let state = use_memo(move || compute_state(ctx, color, index()));
 
     let just_drawn = use_memo(move || ctx.ui_state.new_tile()() == Some((color, index())));
 
     // Only the player who owns the current seat can commit a move.
-    let is_active_seat = use_memo(move || ctx.game_state.read().turn_tracker.current() == color);
+    let is_active_seat = use_memo(move || ctx.game_state.read().current_player() == color);
     let can_play = use_memo(move || {
         if !is_active_seat() {
             return false;
@@ -115,17 +115,17 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
 /// Selected / Forced / Disabled / Idle based on hand_info and selection.
 fn compute_state(ctx: GameCtx, color: Color, index: usize) -> HandTileState {
     let gs = ctx.game_state.read();
-    let is_current = gs.turn_tracker.current() == color;
+    let is_current = gs.current_player() == color;
     if !is_current {
         return HandTileState::Idle;
     }
     if ctx.ui_state.selected_tile()() == Some(index) {
         return HandTileState::Selected;
     }
-    let info = gs.hand_info.get(index);
+    let info = gs.hand_info().get(index);
     let has_moves = info.map(|i| i.has_moves()).unwrap_or(false);
     let is_forced = info.map(|i| i.has_forced).unwrap_or(false);
-    let any_forced = gs.hand_info.iter().any(|i| i.has_forced);
+    let any_forced = gs.hand_info().iter().any(|i| i.has_forced);
     if is_forced {
         return HandTileState::Forced;
     }
@@ -155,8 +155,8 @@ fn click_tile(ctx: GameCtx, idx: usize) {
 
     let auto = {
         let gs = ctx.game_state.read();
-        let board_empty = gs.board.is_empty();
-        gs.hand_info.get(idx).and_then(|info| {
+        let board_empty = gs.board().is_empty();
+        gs.hand_info().get(idx).and_then(|info| {
             if info.positions.len() == 1 {
                 let (&pos, rots) = info.positions.iter().next().unwrap();
                 if rots.len() == 1 || board_empty {

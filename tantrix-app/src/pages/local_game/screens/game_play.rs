@@ -40,7 +40,7 @@ pub fn GamePlay() -> Element {
 
     // Memoize layout — player colors never change during a game.
     let layout = use_memo(move || {
-        let colors = ctx.game_state.read().turn_tracker.playing_colors().to_vec();
+        let colors = ctx.game_state.read().playing_colors().to_vec();
         let count = colors.len();
         let assignments = assign_hand_positions(&colors);
         (count, colors, assignments)

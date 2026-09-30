@@ -22,7 +22,7 @@ pub fn StatusBar() -> Element {
     let has_forced = use_has_forced_move()();
     let color_class = format!("color-{}", color_slug(current_color));
 
-    let bag_count = ctx.game_state.read().bag.count();
+    let bag_count = ctx.game_state.read().bag_count();
 
     let phase_text = phase.status_text(current_color, has_forced);
     let has_alert = !message.is_empty();

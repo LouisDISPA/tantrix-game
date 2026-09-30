@@ -29,15 +29,17 @@ struct FixtureMove {
 }
 
 impl FixtureMove {
-    fn intent(&self) -> PeerMessage {
-        PeerMessage::PlayMove {
-            m: Move {
-                tile: self.tile,
-                position: self.position,
-                rotation: self.rotation,
-                forced: self.forced,
-            },
+    fn placed(&self) -> Move {
+        Move {
+            tile: self.tile,
+            position: self.position,
+            rotation: self.rotation,
+            forced: self.forced,
         }
+    }
+
+    fn intent(&self) -> PeerMessage {
+        PeerMessage::PlayMove { m: self.placed() }
     }
 }
 
@@ -115,8 +117,14 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
     assert!(!wire.contains(blue.as_str()));
 }
 
-#[test]
-fn server_keeps_the_turn_to_fill_a_forced_space_after_the_free_move() {
+/// The fixture's room: Red and Blue seated, playing the fixture's seeded deal.
+fn fixture_room() -> (
+    Fixture,
+    RoomData,
+    SessionToken,
+    SessionToken,
+    HashSet<SessionToken>,
+) {
     let (mut room, red, blue, connected) = setup();
     let fixture: Fixture = serde_json::from_str(FORCED_AFTER_FREE_MOVE).unwrap();
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(fixture.seed);
@@ -129,6 +137,12 @@ fn server_keeps_the_turn_to_fill_a_forced_space_after_the_free_move() {
     )
     .unwrap();
     room.game = Some(game.to_data());
+    (fixture, room, red, blue, connected)
+}
+
+#[test]
+fn server_keeps_the_turn_to_fill_a_forced_space_after_the_free_move() {
+    let (fixture, mut room, red, blue, connected) = fixture_room();
     let token = |color| if color == Color::Red { &red } else { &blue };
 
     let (free_move_turn, [fill]) = fixture.moves.split_at(fixture.moves.len() - 1) else {
@@ -163,6 +177,31 @@ fn server_keeps_the_turn_to_fill_a_forced_space_after_the_free_move() {
     let snapshot = room.snapshot(&connected).unwrap();
     assert_eq!(snapshot.current_player, fill.next);
     assert_eq!(snapshot.turn_step, TurnStep::BeforeFreeMove);
+}
+
+#[test]
+fn state_updates_carry_the_move_as_the_server_placed_it() {
+    let (fixture, mut room, red, blue, connected) = fixture_room();
+    let token = |color| if color == Color::Red { &red } else { &blue };
+
+    for step in &fixture.moves {
+        // A client can get `forced` wrong; the server's board decides it.
+        let careless = Move {
+            forced: !step.forced,
+            ..step.placed()
+        };
+        let change = room
+            .apply(
+                token(step.player),
+                PeerMessage::PlayMove { m: careless },
+                &connected,
+            )
+            .unwrap();
+        let HostMessage::StateUpdate { last_move, .. } = change.message else {
+            panic!("a move mid-game sends a state update");
+        };
+        assert_eq!(last_move, Some(step.placed()));
+    }
 }
 
 #[test]

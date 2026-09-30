@@ -25,8 +25,8 @@ pub fn use_highlight_map() -> Memo<BTreeMap<Position, Vec<Color>>> {
         let highlighted_c = ui_state.highlighted_color()();
         let hl = hovered_sc.or(highlighted_c);
         let gs = ctx.game_state.read();
-        let paths = gs.board.scoring_paths();
-        let colors = gs.turn_tracker.playing_colors().to_vec();
+        let paths = gs.scoring_paths();
+        let colors = gs.playing_colors().to_vec();
         let mut map = BTreeMap::<Position, Vec<Color>>::new();
         for color in &colors {
             let show = hl.is_none() || hl == Some(*color);

@@ -28,8 +28,11 @@ pub struct GameCtx {
 
 ### `GameState` (atomic — read as a whole)
 
-`board`, `bag`, `hands`, `players`, `turn_tracker`, `hand_info`.
-Accessed as `ctx.game_state.read().board.len()`.
+Wraps the core `Game` (board, bag, hands, players, turn, legal moves) plus
+a `hand_info` cache. Reads go through `Game`'s accessors (`GameState`
+derefs to it): `ctx.game_state.read().board().len()`,
+`.current_player()`, `.hand(color)`, `.hand_info()`. Changes go through
+`GameState::play_move` / `skip_stuck_players` so the cache stays in sync.
 
 ### `UiState` (field-level via `Store` derive)
 
@@ -54,10 +57,10 @@ no one maintains hand-synced signals.
 
 | Hook | Returns | Deps |
 |---|---|---|
-| `use_placed_moves` | `Memo<Vec<Move>>` | `game_state.board` |
-| `use_current_player` | `Memo<Color>` | `turn_tracker` |
+| `use_placed_moves` | `Memo<Vec<Move>>` | `game_state.board()` |
+| `use_current_player` | `Memo<Color>` | `game_state.current_player()` |
 | `use_is_game_over` | `Memo<bool>` | `ui_state.phase` |
-| `use_has_forced_move` | `Memo<bool>` | `game_state.hand_info` |
+| `use_has_forced_move` | `Memo<bool>` | `game_state.hand_info()` |
 | `use_board_camera` | `(BoardCamera, BoardCameraHandlers)` | camera fields |
 | `use_phase_view` | `Memo<PhaseView>` | phase, selection, hover, `game_state` |
 | `use_highlight_map` | `Memo<BTreeMap<Position, Vec<Color>>>` | phase, board, highlight/hover color |

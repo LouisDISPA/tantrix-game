@@ -39,14 +39,14 @@ mod tests {
     #[test]
     fn all_ais_choose_from_supplied_legal_moves() {
         for ai in all_ais() {
-            let mut game = Game::new(
+            let game = Game::new(
                 Player::Ai(ai.clone_box()),
                 Player::Ai(ai.clone_box()),
                 Player::None,
                 Player::None,
             )
             .unwrap();
-            let possible = game.get_possible_moves().to_vec();
+            let possible = game.legal_moves();
             let chosen = game.ai_choose().unwrap();
             assert!(
                 possible.contains(&chosen),

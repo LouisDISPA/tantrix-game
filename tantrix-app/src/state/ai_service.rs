@@ -23,22 +23,25 @@ pub async fn run_ai_loop(ctx: GameCtx) {
         }
         let (is_ai, has_moves) = {
             let gs = game_state.read();
-            let is_ai = !gs.is_game_over()
-                && matches!(gs.players[gs.turn_tracker.current()], Player::Ai(_));
-            let has_moves = gs.hand_info.iter().any(|info| info.has_moves());
-            (is_ai, has_moves)
+            let is_ai =
+                !gs.is_game_over() && matches!(gs.player(gs.current_player()), Player::Ai(_));
+            (is_ai, !gs.legal_moves().is_empty())
         };
         if !is_ai {
             break;
         }
         if !has_moves {
-            game_state.write().skip_turn();
+            // Pass over everyone who cannot move. Once a whole round has no
+            // move the game has stalled, and `settle_turn` ends it.
+            if game_state.write().skip_stuck_players() {
+                break;
+            }
             continue;
         }
 
         let (chosen, ai_color) = {
             let gs = game_state.read();
-            (gs.ai_choose(), gs.turn_tracker.current())
+            (gs.ai_choose(), gs.current_player())
         };
         let Some(chosen) = chosen else { break };
 
@@ -74,7 +77,7 @@ pub async fn run_ai_loop(ctx: GameCtx) {
         }
 
         sleep(Duration::from_millis(300)).await;
-        if !ai_can_continue(ctx, game_state.read().turn_tracker.current()) {
+        if !ai_can_continue(ctx, game_state.read().current_player()) {
             break;
         }
     }
@@ -87,12 +90,13 @@ fn ai_can_continue(ctx: GameCtx, expected_color: tantrix_game::Color) -> bool {
     }
     let gs = ctx.game_state.read();
     !gs.is_game_over()
-        && gs.turn_tracker.current() == expected_color
-        && matches!(gs.players[expected_color], Player::Ai(_))
+        && gs.current_player() == expected_color
+        && matches!(gs.player(expected_color), Player::Ai(_))
 }
 
 fn find_tile_index(ctx: &GameCtx, chosen: Move) -> Option<usize> {
     let gs = ctx.game_state.read();
-    let current = gs.turn_tracker.current();
-    gs.hands[current].iter().position(|t| t == &chosen.tile)
+    gs.hand(gs.current_player())
+        .iter()
+        .position(|t| t == &chosen.tile)
 }
