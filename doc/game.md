@@ -182,11 +182,13 @@ records every change in order as a `TurnEvent` (`history.rs`), read with
 `tantrix-ai` exposes the `TantrixAi` trait:
 
 ```rust
-trait TantrixAi {
+trait TantrixAi: Send + Sync {
     fn name(&self) -> &str;
-    fn choose_move(&self, board: &Board, hands: &EnumMap<Color, Hand>,
-                   current: Color, possible_moves: &[Move]) -> Move;
     fn clone_box(&self) -> Box<dyn TantrixAi>;
+    fn with_seed(&self, seed: u64) -> Box<dyn TantrixAi>;  // default: clone_box
+    fn choose_move(&self, board: &Board, hands: &EnumMap<Color, Hand>,
+                   current_player: Color, active_players: &[Color],
+                   possible_moves: &[Move]) -> Move;
 }
 ```
 
@@ -195,7 +197,16 @@ callers play its `placement()`.
 
 Implementations: `RandomAi`, `FirstMoveAi`, `GreedyAi`, `DefensiveAi`,
 `LoopHunterAi`, `SmartAi`. Pick per player in `state/config.rs`
-(`player_for`).
+(`player_for`). All but `RandomAi` are deterministic (ties go to the last
+best move in legal-move order). `RandomAi::new()` draws from the thread's
+RNG; `RandomAi::seeded(seed)` (or `with_seed`) owns a seeded RNG, and a
+copy carries on from the same state.
+
+`tantrix-tournament [SEED]` plays every pairing of `all_ais()`, the first
+AI as Red and the second as Blue, and scores each AI by its color. Each
+game's seed is drawn in order from the tournament seed before any game
+runs, and deals the game and seeds both AIs (`with_seed`), so a tournament
+gives the same results however rayon schedules its games.
 
 ## Frontend cache
 

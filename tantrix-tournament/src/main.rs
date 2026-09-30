@@ -4,6 +4,8 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode};
+use rand::rngs::Xoshiro256PlusPlus;
+use rand::{Rng, SeedableRng};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -13,7 +15,7 @@ use ratatui::widgets::{
 };
 use rayon::prelude::*;
 use tantrix_ai::all_ais;
-use tantrix_game::{Game, Player, TantrixAi};
+use tantrix_game::{Color as TileColor, Game, Player, TantrixAi};
 
 const GAMES_PER_PAIR: usize = 10000;
 const MAX_RECENT: usize = 30;
@@ -24,13 +26,19 @@ const SPARKLINE_WINDOW: usize = 60;
 struct Matchup {
     ai_a: Box<dyn TantrixAi>,
     ai_b: Box<dyn TantrixAi>,
+    /// Deals the game and seeds both AIs (see [`play_game`]).
+    seed: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct GameResult {
     name_a: String,
     name_b: String,
+    /// `ai_a` plays Red and `ai_b` Blue: their scores are those colors'.
     score_a: usize,
     score_b: usize,
+    /// The turn order is dealt at random: whether `ai_a` had the first turn.
+    a_moved_first: bool,
 }
 
 impl GameResult {
@@ -92,6 +100,8 @@ enum Phase {
 }
 
 struct TournamentState {
+    /// The same seed plays the same tournament.
+    seed: u64,
     stats: Vec<AiStats>,
     recent: VecDeque<GameResult>,
     games_completed: u32,
@@ -102,7 +112,7 @@ struct TournamentState {
 }
 
 impl TournamentState {
-    fn new(ai_names: &[String], games_total: u32) -> Self {
+    fn new(seed: u64, ai_names: &[String], games_total: u32) -> Self {
         let stats = ai_names
             .iter()
             .map(|name| AiStats {
@@ -112,6 +122,7 @@ impl TournamentState {
             })
             .collect();
         Self {
+            seed,
             stats,
             recent: VecDeque::new(),
             games_completed: 0,
@@ -182,31 +193,45 @@ impl TournamentState {
 
 // --- Game runner ---
 
-fn run_game(ai_a: &dyn TantrixAi, ai_b: &dyn TantrixAi) -> GameResult {
-    let name_a = ai_a.name().to_string();
-    let name_b = ai_b.name().to_string();
-
-    let mut game = Game::new(
-        Player::Ai(ai_a.clone_box()),
-        Player::Ai(ai_b.clone_box()),
+/// Play `ai_a` as Red against `ai_b` as Blue to the end. `seed` deals the
+/// game and seeds both AIs, so a seed always plays the same game, whichever
+/// thread plays it and when.
+fn play_game(ai_a: &dyn TantrixAi, ai_b: &dyn TantrixAi, seed: u64) -> Game {
+    let mut seeds = Xoshiro256PlusPlus::seed_from_u64(seed);
+    let (seed_a, seed_b) = (seeds.next_u64(), seeds.next_u64());
+    let mut game = Game::new_seeded(
+        Player::Ai(ai_a.with_seed(seed_a)),
+        Player::Ai(ai_b.with_seed(seed_b)),
         Player::None,
         Player::None,
+        seed,
     )
     .expect("tournament games always have two AI players");
     game.advance();
+    game
+}
 
+fn run_game(ai_a: &dyn TantrixAi, ai_b: &dyn TantrixAi, seed: u64) -> GameResult {
+    result_of(ai_a, ai_b, &play_game(ai_a, ai_b, seed))
+}
+
+/// The result of `game`, [`play_game`]d by `ai_a` as Red and `ai_b` as Blue.
+fn result_of(ai_a: &dyn TantrixAi, ai_b: &dyn TantrixAi, game: &Game) -> GameResult {
     let scores = game.scores();
-    let colors = game.playing_colors().to_vec();
-
     GameResult {
-        name_a,
-        name_b,
-        score_a: scores[colors[0]].score,
-        score_b: scores[colors[1]].score,
+        name_a: ai_a.name().to_string(),
+        name_b: ai_b.name().to_string(),
+        score_a: scores[TileColor::Red].score,
+        score_b: scores[TileColor::Blue].score,
+        a_moved_first: game.playing_colors()[0] == TileColor::Red,
     }
 }
 
-fn generate_matchups(ais: &[Box<dyn TantrixAi>]) -> Vec<Matchup> {
+/// Every game of the tournament played from `seed`. Each game's own seed is
+/// drawn here, in order, before any game runs: results don't depend on how
+/// the games are scheduled.
+fn generate_matchups(ais: &[Box<dyn TantrixAi>], seed: u64) -> Vec<Matchup> {
+    let mut seeds = Xoshiro256PlusPlus::seed_from_u64(seed);
     let mut matchups = Vec::new();
     for i in 0..ais.len() {
         for j in (i + 1)..ais.len() {
@@ -214,6 +239,7 @@ fn generate_matchups(ais: &[Box<dyn TantrixAi>]) -> Vec<Matchup> {
                 matchups.push(Matchup {
                     ai_a: ais[i].clone_box(),
                     ai_b: ais[j].clone_box(),
+                    seed: seeds.next_u64(),
                 });
             }
         }
@@ -312,6 +338,11 @@ fn render_header(state: &TournamentState, active_games: u32, area: Rect, buf: &m
         ),
         Span::raw("  "),
         Span::styled(status_text, status_style),
+        Span::raw("  "),
+        Span::styled(
+            format!("seed {}", state.seed),
+            Style::default().fg(Color::DarkGray),
+        ),
         Span::raw("  "),
         Span::styled(
             format!("{}:{:02}", mins, secs),
@@ -524,7 +555,15 @@ fn render_recent(state: &TournamentState, area: Rect, buf: &mut Buffer) {
                 None => (winner_style, loser_style),
             };
 
+            // Marks who had the first turn.
+            let (first_a, first_b) = if r.a_moved_first {
+                ("•", " ")
+            } else {
+                (" ", "•")
+            };
+            let first_style = Style::default().fg(Color::DarkGray);
             ListItem::new(Line::from(vec![
+                Span::styled(first_a, first_style),
                 Span::styled(&r.name_a, a_style),
                 Span::styled(
                     format!(" {} ", r.score_a),
@@ -536,6 +575,7 @@ fn render_recent(state: &TournamentState, area: Rect, buf: &mut Buffer) {
                     Style::default().fg(Color::White).bold(),
                 ),
                 Span::styled(&r.name_b, b_style),
+                Span::styled(first_b, first_style),
             ]))
         })
         .collect();
@@ -543,7 +583,7 @@ fn render_recent(state: &TournamentState, area: Rect, buf: &mut Buffer) {
     List::new(items)
         .block(
             Block::bordered()
-                .title(" Recent Games ")
+                .title(" Recent Games (• moved first) ")
                 .title_style(Style::default().bold()),
         )
         .render(area, buf);
@@ -582,7 +622,7 @@ fn render_help(state: &TournamentState, area: Rect, buf: &mut Buffer) {
         Phase::Stopped | Phase::Complete => vec![
             Line::from(vec![
                 Span::styled(" [n] ", Style::default().fg(Color::Green).bold()),
-                Span::raw("New tournament"),
+                Span::raw("New tournament (next seed)"),
             ]),
             Line::from(vec![
                 Span::styled(" [q] ", Style::default().fg(Color::Red).bold()),
@@ -602,9 +642,20 @@ fn render_help(state: &TournamentState, area: Rect, buf: &mut Buffer) {
 
 // --- Main ---
 
+/// `tantrix-tournament [SEED]`: the same seed (0 by default) plays the same
+/// tournament.
 fn main() -> std::io::Result<()> {
+    let seed = match std::env::args().nth(1) {
+        Some(arg) => arg.parse().map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("the tournament seed must be a number, not {arg:?}"),
+            )
+        })?,
+        None => 0,
+    };
     ratatui::run(|terminal| {
-        let mut ctx = TournamentCtx::new();
+        let mut ctx = TournamentCtx::new(seed);
         ctx.start_workers();
 
         loop {
@@ -640,7 +691,8 @@ fn main() -> std::io::Result<()> {
                             ctx.stop();
                         }
                         (KeyCode::Char('n'), Phase::Stopped | Phase::Complete) => {
-                            ctx = TournamentCtx::new();
+                            let next = ctx.state.seed.wrapping_add(1);
+                            ctx = TournamentCtx::new(next);
                             ctx.start_workers();
                         }
                         _ => {}
@@ -663,10 +715,10 @@ struct TournamentCtx {
 }
 
 impl TournamentCtx {
-    fn new() -> Self {
+    fn new(seed: u64) -> Self {
         let ais = all_ais();
         let ai_names: Vec<String> = ais.iter().map(|a| a.name().to_string()).collect();
-        let matchups = generate_matchups(&ais);
+        let matchups = generate_matchups(&ais, seed);
         let games_total = matchups.len() as u32;
 
         let (tx, rx) = mpsc::channel::<GameResult>();
@@ -691,14 +743,14 @@ impl TournamentCtx {
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 active.fetch_add(1, Ordering::Relaxed);
-                let result = run_game(matchup.ai_a.as_ref(), matchup.ai_b.as_ref());
+                let result = run_game(matchup.ai_a.as_ref(), matchup.ai_b.as_ref(), matchup.seed);
                 active.fetch_sub(1, Ordering::Relaxed);
                 let _ = tx.send(result);
             });
         });
 
         Self {
-            state: TournamentState::new(&ai_names, games_total),
+            state: TournamentState::new(seed, &ai_names, games_total),
             rx: Some(rx),
             cancel_flag,
             pause_flag,
@@ -755,5 +807,68 @@ impl Drop for TournamentCtx {
     fn drop(&mut self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
         self.join_worker();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rayon::prelude::*;
+    use tantrix_ai::{all_ais, FirstMoveAi, GreedyAi, RandomAi, SmartAi};
+    use tantrix_game::Color;
+
+    use super::{
+        generate_matchups, play_game, result_of, run_game, GameResult, Matchup, GAMES_PER_PAIR,
+    };
+
+    #[test]
+    fn a_seed_plays_the_same_game_again() {
+        let (random, smart) = (RandomAi::new(), SmartAi);
+        for seed in 0..3 {
+            assert_eq!(
+                run_game(&random, &smart, seed),
+                run_game(&random, &smart, seed)
+            );
+        }
+    }
+
+    #[test]
+    fn each_ai_scores_the_color_it_plays() {
+        let (first, greedy) = (FirstMoveAi, GreedyAi);
+        let mut blue_first_with_other_scores = 0;
+        for seed in 0..10 {
+            let game = play_game(&first, &greedy, seed);
+            let result = result_of(&first, &greedy, &game);
+
+            // FirstMove is Red and Greedy Blue, whoever the deal lets move first.
+            let scores = game.scores();
+            assert_eq!(result.score_a, scores[Color::Red].score, "seed {seed}");
+            assert_eq!(result.score_b, scores[Color::Blue].score, "seed {seed}");
+            assert_eq!(result.a_moved_first, game.playing_colors()[0] == Color::Red);
+            if !result.a_moved_first && result.score_a != result.score_b {
+                blue_first_with_other_scores += 1;
+            }
+        }
+        // Scoring by turn order instead of color would fail these games.
+        assert!(blue_first_with_other_scores > 0);
+    }
+
+    #[test]
+    fn a_tournament_does_not_depend_on_scheduling() {
+        let seeds = |seed| -> Vec<u64> {
+            generate_matchups(&all_ais(), seed)
+                .iter()
+                .map(|m| m.seed)
+                .collect()
+        };
+        assert_eq!(seeds(0), seeds(0));
+        assert_ne!(seeds(0), seeds(1));
+
+        // One game per pairing, played in order and in parallel.
+        let matchups = generate_matchups(&all_ais(), 0);
+        let sample: Vec<&Matchup> = matchups.iter().step_by(GAMES_PER_PAIR).collect();
+        let play = |m: &&Matchup| run_game(m.ai_a.as_ref(), m.ai_b.as_ref(), m.seed);
+        let in_order: Vec<GameResult> = sample.iter().map(play).collect();
+        let in_parallel: Vec<GameResult> = sample.par_iter().map(play).collect();
+        assert_eq!(in_order, in_parallel);
     }
 }

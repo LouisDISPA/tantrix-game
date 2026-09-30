@@ -9,6 +9,12 @@ use crate::{Board, Color, Hand, Move};
 pub trait TantrixAi: Send + Sync {
     fn name(&self) -> &str;
     fn clone_box(&self) -> Box<dyn TantrixAi>;
+    /// A copy of this AI whose random choices, if it makes any, follow
+    /// `seed`, so a game it plays can be played again. AIs without
+    /// randomness are copied as they are.
+    fn with_seed(&self, _seed: u64) -> Box<dyn TantrixAi> {
+        self.clone_box()
+    }
     fn choose_move(
         &self,
         board: &Board,

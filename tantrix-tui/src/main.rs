@@ -25,7 +25,7 @@ const HEX_VERT: f64 = 1.5 * HEX_RADIUS; // vertical center-to-center for diagona
 fn main() -> io::Result<()> {
     let game = Game::new(
         Player::Someone,
-        Player::Ai(Box::new(RandomAi)),
+        Player::Ai(Box::new(RandomAi::new())),
         Player::None,
         Player::None,
     )

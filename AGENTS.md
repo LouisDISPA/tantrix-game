@@ -96,6 +96,8 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     geometry.rs            # axial_to_pixel, hex_vertices, bounding box
     paths.rs               # Color curves (arc/bezier/line), hex polygon
 
+tantrix-ai/src/            # AI players behind TantrixAi (RandomAi::seeded for reproducible games)
+tantrix-tournament/src/    # AI round robin (ratatui): `tantrix-tournament [SEED]` replays the same tournament
 tantrix-tui/src/           # Terminal UI (ratatui)
 
 tantrix-worker/src/        # Cloudflare Worker (workers-rs): SSR + Room Durable Object (room.rs, room_logic.rs)
