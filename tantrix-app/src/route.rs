@@ -11,8 +11,8 @@ pub enum Route {
     #[layout(AppLayout)]
     #[route("/")]
     MainMenu {},
-    #[route("/game")]
-    LocalGame {},
+    #[route("/game?:seed")]
+    LocalGame { seed: Option<u64> },
     #[route("/online")]
     OnlineEntry {},
     #[route("/online/:code")]

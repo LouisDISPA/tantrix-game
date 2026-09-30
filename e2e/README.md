@@ -6,6 +6,7 @@ Playwright runs headless Chromium against either the native Axum server or
 | Spec | Coverage |
 | --- | --- |
 | `local-game`, `full-game` (local) | Local play through the results screen. |
+| `forced-after-free-move` | A seeded game (`/game?seed=N`) replays `fixtures/forced-after-free-move.json`: a free move that creates a forced space keeps the turn until it is filled. |
 | `online`, `full-game` (online) | Two browsers create and join a room, play, and agree on results. |
 | `online-flow` | Both boards, turns, bag count, and connection status after every move; reload and resume a seat. |
 | `online-join` | Repeated room join handshake (`JOIN_ATTEMPTS`, default 5). |
@@ -41,6 +42,18 @@ JOIN_ATTEMPTS=50 npx playwright test tests/online-join.spec.ts
 The Worker config starts Wrangler on port 4174; the native config starts
 `dx run` on port 4175 with an in-memory SQLite database. Those ports must be free.
 A cold Rust build can take several minutes.
+
+## Seeded games
+
+`/game?seed=N` deals the same bag and turn order every time, so a spec can
+script exact moves: hand tiles, board hexes and rotation choices carry
+`data-tile`, `data-position` (`x,y`) and `data-rotation` attributes. The Rust
+tests in `tantrix-app` and `tantrix-room` replay the same fixture, so a change
+that alters the deal fails `cargo test` first. Regenerate the fixture with:
+
+```bash
+cargo test --workspace print_forced_after_free_move_fixture -- --ignored --nocapture
+```
 
 ## Failures
 

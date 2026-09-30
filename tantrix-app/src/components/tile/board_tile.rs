@@ -44,6 +44,7 @@ pub fn BoardTile(m: Move, hex_size: f64, variant: BoardTileVariant) -> Element {
             class: if just_placed() { "just-placed" },
             class: if is_game_over() { "dimmed-tile" },
             style: "{style}",
+            "data-position": "{m.position.x()},{m.position.y()}",
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                 HexSvg {
                     m,

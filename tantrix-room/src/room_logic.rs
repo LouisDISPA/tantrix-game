@@ -109,6 +109,7 @@ impl RoomData {
             hands,
             bag_count: game.bag_count(),
             current_player: game.currently_playing(),
+            turn_step: game.turn_step(),
             playing_colors,
             seats: self.wire_seats(),
             participants: self.participants(connected),

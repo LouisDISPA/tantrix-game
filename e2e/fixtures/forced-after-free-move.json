@@ -1,0 +1,9 @@
+{
+  "seed": 5,
+  "moves": [
+    { "player": "Red", "tile": "RGYRYG", "position": { "x": 0, "y": 0 }, "rotation": "None", "forced": false, "next": "Blue" },
+    { "player": "Blue", "tile": "RBBYRY", "position": { "x": -1, "y": 0 }, "rotation": "R180", "forced": false, "next": "Red" },
+    { "player": "Red", "tile": "GRRBGB", "position": { "x": -2, "y": -1 }, "rotation": "R180", "forced": false, "next": "Red" },
+    { "player": "Red", "tile": "GYYBGB", "position": { "x": -1, "y": -1 }, "rotation": "R120", "forced": true, "next": "Blue" }
+  ]
+}

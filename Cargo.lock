@@ -8403,6 +8403,7 @@ dependencies = [
  "log",
  "rand 0.10.3",
  "rusqlite",
+ "serde",
  "serde_json",
  "tantrix-ai",
  "tantrix-game",
@@ -8458,6 +8459,7 @@ name = "tantrix-room"
 version = "0.1.0"
 dependencies = [
  "enum-map",
+ "rand 0.10.3",
  "serde",
  "serde_json",
  "tantrix-game",

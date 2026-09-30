@@ -103,12 +103,18 @@ runs: skip stuck players, set message, reset selection.
 
 ## Forced moves
 
-- `Board::possible_moves` retains only `forced` moves if any exist.
+A turn is: fill forced spaces, make one free move, fill forced spaces
+again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
+`AfterFreeMove`); online snapshots carry it as `turn_step`.
+
+- `Board::possible_moves` retains only `forced` moves if any exist, and
+  only forced moves at all once the free move is played.
 - Both the human (`execute_move`) and the AI are given only forced moves
   in that state — can't accidentally play a non-forced one.
-- A forced move **does not advance the turn** (same player may have more
-  forced moves to place). `turn_tracker.next()` is gated on
-  `!move_is_forced` in `play_move`.
+- `play_move_parts` is the one place a move is played (`Game::play_move`
+  and the app's `GameState::play_move` both call it). It passes the turn
+  only after the free move, once no forced space is left that the player
+  can fill.
 
 ## Scoring & game over
 

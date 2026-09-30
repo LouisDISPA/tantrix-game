@@ -6,6 +6,7 @@ use arrayvec::ArrayVec;
 use enum_map::enum_map;
 pub use enum_map::EnumMap;
 use rand::prelude::SliceRandom;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 mod coordinate_system;
@@ -228,9 +229,11 @@ impl Board {
         controlled
     }
 
-    /// Compute all valid moves for tiles in the given hand.
+    /// Compute all valid moves for tiles in the given hand at `step` of the turn.
     /// `bag_is_empty` controls whether restriction rules (controlled sides, same-color triples) apply.
-    pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool) -> Vec<Move> {
+    /// Forced spaces must be filled first, and once the free move is played only
+    /// forced spaces remain.
+    pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool, step: TurnStep) -> Vec<Move> {
         let mut contour_positions = self.contour_positions();
 
         if !bag_is_empty {
@@ -252,7 +255,7 @@ impl Board {
             moves.retain(|m| !self.creates_same_color_triple(m));
         }
 
-        if moves.iter().any(|m| m.forced) {
+        if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
             moves.retain(|m| m.forced);
         }
 
@@ -487,17 +490,25 @@ impl Board {
     }
 }
 
+/// Play `m` for the current player, draw a replacement tile, and pass the
+/// turn once it is over.
+///
+/// A turn has three steps: fill forced spaces, make one free move, then fill
+/// forced spaces again. The player keeps the turn until the free move is
+/// played and no forced space is left that they can fill.
 pub fn play_move_parts(
     board: &mut Board,
-    hand: &mut Hand,
+    hands: &mut EnumMap<Color, Hand>,
     bag: &mut Bag,
+    turn: &mut TurnTracker,
     m: Move,
 ) -> Result<PlayedMove, MoveError> {
+    let hand = &mut hands[turn.current()];
     if !hand.contains(&m.tile) {
         return Err(MoveError::TileNotInHand);
     }
 
-    let legal_moves = board.possible_moves(hand, bag.is_empty());
+    let legal_moves = board.possible_moves(hand, bag.is_empty(), turn.step);
     if legal_moves.is_empty() {
         return Err(MoveError::NoLegalMoves);
     }
@@ -512,10 +523,25 @@ pub fn play_move_parts(
         .insert_move(canonical)
         .map_err(|_| MoveError::BoardFull)?;
     let hand_index = hand.play_tile(canonical.tile, bag);
+
+    // The one move of a turn that isn't in a forced space is the free move.
+    if !canonical.forced {
+        turn.step = TurnStep::AfterFreeMove;
+    }
+    if turn_is_over(board, hand, bag, turn.step) {
+        turn.next();
+    }
+
     Ok(PlayedMove {
         m: canonical,
         hand_index,
     })
+}
+
+/// A turn is over once the free move is played and the player can fill no
+/// more forced spaces.
+fn turn_is_over(board: &Board, hand: &Hand, bag: &Bag, step: TurnStep) -> bool {
+    step == TurnStep::AfterFreeMove && board.possible_moves(hand, bag.is_empty(), step).is_empty()
 }
 
 pub enum Player {
@@ -570,11 +596,16 @@ pub struct Bag {
 
 impl Bag {
     pub fn new() -> Self {
+        Self::new_with_rng(&mut rand::rng())
+    }
+
+    /// A full bag shuffled by `rng`; a seeded `rng` always gives the same draws.
+    pub fn new_with_rng<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let mut tiles: ArrayVec<Tile, NUMBER_OF_TILE> = Default::default();
         for t in enum_iterator::all::<Tile>() {
             tiles.push(t);
         }
-        tiles.shuffle(&mut rand::rng());
+        tiles.shuffle(rng);
         Bag { tiles }
     }
 
@@ -655,14 +686,36 @@ impl Deref for Hand {
 
 // --- TurnTracker ---
 
+/// Where the current player is within their turn: fill forced spaces, make
+/// one free move, then fill forced spaces again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TurnStep {
+    /// Forced spaces come first, then the free move.
+    #[default]
+    BeforeFreeMove,
+    /// The free move is played; only forced spaces can still be filled.
+    AfterFreeMove,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnTracker {
     currently_playing: usize,
     color_cycle: ArrayVec<Color, NUMBER_OF_COLOR>,
+    /// Games saved before turn steps existed resume at the turn's start.
+    #[serde(default)]
+    step: TurnStep,
 }
 
 impl TurnTracker {
     pub fn new(players: &EnumMap<Color, Player>) -> Result<Self, SetupError> {
+        Self::new_with_rng(players, &mut rand::rng())
+    }
+
+    /// A turn order shuffled by `rng`; a seeded `rng` always gives the same order.
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        players: &EnumMap<Color, Player>,
+        rng: &mut R,
+    ) -> Result<Self, SetupError> {
         let mut color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = players
             .iter()
             .filter(|(_, p)| *p != &Player::None)
@@ -671,10 +724,11 @@ impl TurnTracker {
         if color_cycle.is_empty() {
             return Err(SetupError::EmptyTurnCycle);
         }
-        color_cycle.shuffle(&mut rand::rng());
+        color_cycle.shuffle(rng);
         Ok(TurnTracker {
             currently_playing: 0,
             color_cycle,
+            step: TurnStep::default(),
         })
     }
 
@@ -682,21 +736,28 @@ impl TurnTracker {
         self.color_cycle[self.currently_playing]
     }
 
+    pub fn step(&self) -> TurnStep {
+        self.step
+    }
+
     pub fn next(&mut self) {
         self.currently_playing += 1;
         self.currently_playing %= self.color_cycle.len();
+        self.step = TurnStep::default();
     }
 
     pub fn playing_colors(&self) -> &[Color] {
         &self.color_cycle
     }
 
-    /// Build a TurnTracker pointing at `current` with the given ordered
-    /// color cycle. Used by clients that receive an authoritative snapshot
-    /// and need to reconstruct turn state without reshuffling.
+    /// Build a TurnTracker pointing at `current`, at `step` of their turn,
+    /// with the given ordered color cycle. Used by clients that receive an
+    /// authoritative snapshot and need to reconstruct turn state without
+    /// reshuffling.
     pub fn from_parts(
         current: Color,
         colors: impl IntoIterator<Item = Color>,
+        step: TurnStep,
     ) -> Result<Self, SetupError> {
         let color_cycle: ArrayVec<Color, NUMBER_OF_COLOR> = colors.into_iter().collect();
         if color_cycle.is_empty() {
@@ -708,6 +769,7 @@ impl TurnTracker {
         Ok(TurnTracker {
             currently_playing,
             color_cycle,
+            step,
         })
     }
 }
@@ -773,8 +835,20 @@ impl Game {
         yellow: Player,
         green: Player,
     ) -> Result<Self, SetupError> {
+        Self::new_with_rng(red, blue, yellow, green, &mut rand::rng())
+    }
+
+    /// A game whose bag and turn order are shuffled by `rng`; a seeded `rng`
+    /// always deals the same game.
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        red: Player,
+        blue: Player,
+        yellow: Player,
+        green: Player,
+        rng: &mut R,
+    ) -> Result<Self, SetupError> {
         let board = Default::default();
-        let mut bag = Bag::new();
+        let mut bag = Bag::new_with_rng(rng);
 
         let mut players = enum_map! {
             _ => Player::None
@@ -788,7 +862,7 @@ impl Game {
         if active_count < 2 {
             return Err(SetupError::NotEnoughPlayers);
         }
-        let turn_tracker = TurnTracker::new(&players)?;
+        let turn_tracker = TurnTracker::new_with_rng(&players, rng)?;
 
         let mut hands: EnumMap<Color, Hand> = Default::default();
         for &color in turn_tracker.playing_colors() {
@@ -809,6 +883,10 @@ impl Game {
         self.turn_tracker.current()
     }
 
+    pub fn turn_step(&self) -> TurnStep {
+        self.turn_tracker.step()
+    }
+
     pub fn get_player(&self, color: Color) -> &Player {
         &self.players[color]
     }
@@ -820,9 +898,11 @@ impl Game {
     pub fn get_possible_moves(&mut self) -> &[Move] {
         if self.current_moves.is_none() {
             let current_player = self.currently_playing();
-            let moves = self
-                .board
-                .possible_moves(&self.hands[current_player], self.bag.is_empty());
+            let moves = self.board.possible_moves(
+                &self.hands[current_player],
+                self.bag.is_empty(),
+                self.turn_tracker.step(),
+            );
             self.current_moves = Some(moves);
         }
         match &self.current_moves {
@@ -832,17 +912,13 @@ impl Game {
     }
 
     pub fn play_move(&mut self, m: impl Into<Move>) -> Result<(), MoveError> {
-        let current_player = self.currently_playing();
-        let m: Move = m.into();
-        let played = play_move_parts(
+        play_move_parts(
             &mut self.board,
-            &mut self.hands[current_player],
+            &mut self.hands,
             &mut self.bag,
-            m,
+            &mut self.turn_tracker,
+            m.into(),
         )?;
-        if !played.m.forced {
-            self.turn_tracker.next();
-        }
         self.current_moves = None;
         Ok(())
     }
@@ -884,11 +960,17 @@ impl Game {
         }
         self.turn_tracker.color_cycle.remove(idx);
         // Keep `currently_playing` pointing at the same player, or at the
-        // next one if we just removed the current index.
+        // next one (at the start of their turn) if we just removed the
+        // current index.
         if self.turn_tracker.currently_playing > idx {
             self.turn_tracker.currently_playing -= 1;
-        } else if self.turn_tracker.currently_playing >= self.turn_tracker.color_cycle.len() {
-            self.turn_tracker.currently_playing = 0;
+        } else {
+            if self.turn_tracker.currently_playing == idx {
+                self.turn_tracker.step = TurnStep::default();
+            }
+            if self.turn_tracker.currently_playing >= self.turn_tracker.color_cycle.len() {
+                self.turn_tracker.currently_playing = 0;
+            }
         }
         self.players[color] = Player::None;
         self.hands[color] = Hand::default();
@@ -967,17 +1049,18 @@ impl Game {
 #[cfg(test)]
 mod tests {
 
-    use crate::{Board, Color, Direction, Game, Move, MoveError, Player, Position, Rotation, Tile};
+    use rand::rngs::Xoshiro256PlusPlus;
+    use rand::SeedableRng;
+
+    use crate::{
+        Board, Color, Direction, Game, Move, MoveError, Player, Position, Rotation, Tile, TurnStep,
+        TurnTracker,
+    };
 
     #[test]
     fn persisted_game_keeps_bag_and_turn() {
-        let mut game = Game::new(
-            Player::Someone,
-            Player::Someone,
-            Player::None,
-            Player::None,
-        )
-        .unwrap();
+        let mut game =
+            Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
         let first = game.get_possible_moves()[0];
         game.play_move(first).unwrap();
 
@@ -1556,5 +1639,185 @@ mod tests {
             .find(|c| !game.playing_colors().contains(c))
             .expect("2-player game always has two absent colors");
         assert!(game.retire_color(absent).is_err());
+    }
+
+    // --- Turn structure: forced spaces, one free move, forced spaces again ---
+
+    /// A two-player game dealt from `seed`.
+    fn seeded_game(seed: u64) -> Game {
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+        Game::new_with_rng(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            &mut rng,
+        )
+        .unwrap()
+    }
+
+    /// Plays the first legal move of seeded deals until `found` holds, and
+    /// returns that game. Deterministic: the same seeds always give the same game.
+    fn seeded_game_where(found: impl Fn(&mut Game) -> bool) -> Game {
+        for seed in 0..100 {
+            let mut game = seeded_game(seed);
+            loop {
+                if found(&mut game) {
+                    return game;
+                }
+                let Some(&m) = game.get_possible_moves().first() else {
+                    break;
+                };
+                game.play_move(m).unwrap();
+            }
+        }
+        panic!("no seeded game reached the wanted state");
+    }
+
+    fn after_free_move(game: &mut Game) -> bool {
+        game.turn_step() == TurnStep::AfterFreeMove
+    }
+
+    /// A placement the current player could make outside every forced space,
+    /// respecting the restriction rules.
+    fn free_placement(game: &Game) -> Option<Move> {
+        let board = game.board();
+        let contour = board.contour_positions();
+        let controlled = board.controlled_positions(&contour);
+        game.get_hand(game.currently_playing())
+            .iter()
+            .find_map(|&tile| {
+                contour
+                    .iter()
+                    .filter(|p| !board.position_is_forced(p) && !controlled.contains(p))
+                    .flat_map(|&p| board.get_possible_move(tile, p))
+                    .find(|m| !board.creates_same_color_triple(m))
+            })
+    }
+
+    #[test]
+    fn free_move_ends_turn_without_forced_spaces() {
+        let mut game = seeded_game(0);
+        let first = game.currently_playing();
+        let opening = game.get_possible_moves()[0];
+        assert!(!opening.forced);
+
+        game.play_move(opening).unwrap();
+
+        assert_ne!(game.currently_playing(), first);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn forced_fill_before_free_move_keeps_the_free_move() {
+        let mut game = seeded_game_where(|g| {
+            g.turn_step() == TurnStep::BeforeFreeMove
+                && g.get_possible_moves().first().is_some_and(|m| m.forced)
+        });
+        let player = game.currently_playing();
+
+        let fill = game.get_possible_moves()[0];
+        game.play_move(fill).unwrap();
+
+        assert_eq!(game.currently_playing(), player);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn free_move_keeps_turn_to_fill_forced_spaces() {
+        let mut game = seeded_game_where(after_free_move);
+        let player = game.currently_playing();
+
+        // Only forced spaces are left: a second free move is refused.
+        let moves = game.get_possible_moves().to_vec();
+        assert!(!moves.is_empty());
+        assert!(moves.iter().all(|m| m.forced));
+        let second_free_move = free_placement(&game).expect("the hand fits a free space");
+        assert_eq!(
+            game.play_move(second_free_move),
+            Err(MoveError::InvalidMove)
+        );
+
+        // The turn passes once no forced space can be filled.
+        while game.currently_playing() == player {
+            let fill = game.get_possible_moves()[0];
+            assert!(fill.forced);
+            game.play_move(fill).unwrap();
+        }
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn seeded_games_follow_the_three_step_turn() {
+        let mut turns_kept_after_free_move = 0;
+        for seed in 0..20 {
+            let mut game = seeded_game(seed);
+            let mut stuck = 0;
+            while !game.is_game_over() && stuck < game.playing_colors().len() {
+                let Some(&m) = game.get_possible_moves().first() else {
+                    game.skip_turn();
+                    stuck += 1;
+                    continue;
+                };
+                stuck = 0;
+                let player = game.currently_playing();
+                let step = game.turn_step();
+
+                game.play_move(m).unwrap();
+
+                // After the free move, only forced spaces may be filled.
+                assert!(step == TurnStep::BeforeFreeMove || m.forced, "seed {seed}");
+                let free_move_done = step == TurnStep::AfterFreeMove || !m.forced;
+                let forced_left = !game
+                    .board()
+                    .possible_moves(
+                        game.get_hand(player),
+                        game.bag_count() == 0,
+                        TurnStep::AfterFreeMove,
+                    )
+                    .is_empty();
+                // The turn passes exactly when the free move is done and no
+                // forced space can be filled.
+                let turn_passed = game.currently_playing() != player;
+                assert_eq!(turn_passed, free_move_done && !forced_left, "seed {seed}");
+                if free_move_done && forced_left {
+                    turns_kept_after_free_move += 1;
+                }
+            }
+        }
+        assert!(turns_kept_after_free_move > 0);
+    }
+
+    #[test]
+    fn persisted_game_keeps_turn_step() {
+        let mut game = seeded_game_where(after_free_move);
+
+        let encoded = serde_json::to_vec(&game.to_data()).unwrap();
+        let mut restored = Game::from_data(serde_json::from_slice(&encoded).unwrap());
+
+        assert_eq!(restored.turn_step(), TurnStep::AfterFreeMove);
+        assert_eq!(restored.get_possible_moves(), game.get_possible_moves());
+    }
+
+    #[test]
+    fn saved_turn_without_step_resumes_at_turn_start() {
+        let turn: TurnTracker =
+            serde_json::from_str(r#"{"currently_playing":1,"color_cycle":["Red","Blue"]}"#)
+                .unwrap();
+        assert_eq!(turn.current(), Color::Blue);
+        assert_eq!(turn.step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn next_player_starts_at_the_beginning_of_their_turn() {
+        let mut skipped = seeded_game_where(after_free_move);
+        skipped.skip_turn();
+        assert_eq!(skipped.turn_step(), TurnStep::BeforeFreeMove);
+
+        let mut retired = seeded_game_where(after_free_move);
+        let player = retired.currently_playing();
+        retired.retire_color(player).unwrap();
+        assert_ne!(retired.currently_playing(), player);
+        assert_eq!(retired.turn_step(), TurnStep::BeforeFreeMove);
     }
 }

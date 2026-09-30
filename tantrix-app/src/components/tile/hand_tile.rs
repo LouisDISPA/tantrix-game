@@ -67,6 +67,7 @@ pub fn HandTile(color: Color, index: usize) -> Element {
                         class: "hand-tile",
                         class: "{state_class}",
                         class: if just_drawn() { "new-tile" },
+                        "data-tile": "{tile:?}",
                         role: "button",
                         tabindex: if interactive { "0" } else { "-1" },
                         aria_label: "Select tile",

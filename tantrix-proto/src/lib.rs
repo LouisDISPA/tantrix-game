@@ -11,7 +11,7 @@
 
 use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};
-use tantrix_game::{Board, Color, Hand, Move};
+use tantrix_game::{Board, Color, Hand, Move, TurnStep};
 
 /// Raw keepalive frames. The room answers the ping with the pong through the
 /// runtime's auto-response, without waking the Durable Object.
@@ -90,6 +90,9 @@ pub struct GameSnapshot {
     pub hands: EnumMap<Color, Hand>,
     pub bag_count: usize,
     pub current_player: Color,
+    /// After the free move the current player may only fill forced spaces.
+    #[serde(default)]
+    pub turn_step: TurnStep,
     pub playing_colors: Vec<Color>,
     pub seats: EnumMap<Color, Option<Seat>>,
     /// Full roster including disconnected players. Drives the in-game panel.

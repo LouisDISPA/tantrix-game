@@ -29,10 +29,12 @@ impl PlayerKind {
 #[derive(Debug, Clone)]
 pub struct GameConfig {
     pub players: [(Color, PlayerKind); 4],
+    /// Deals the same bag and turn order every time (`/game?seed=N`).
+    pub seed: Option<u64>,
 }
 
 impl GameConfig {
-    pub fn new() -> Self {
+    pub fn new(seed: Option<u64>) -> Self {
         GameConfig {
             players: [
                 (Color::Red, PlayerKind::Human),
@@ -40,6 +42,7 @@ impl GameConfig {
                 (Color::Yellow, PlayerKind::Off),
                 (Color::Green, PlayerKind::Off),
             ],
+            seed,
         }
     }
 

@@ -24,7 +24,7 @@ pub fn MainMenu() -> Element {
                 div { class: "title-buttons",
                     MenuButton {
                         on_click: move |_| {
-                            let _ = nav.push(Route::LocalGame {});
+                            let _ = nav.push(Route::LocalGame { seed: None });
                         },
                         "Local Game"
                     }

@@ -1,9 +1,45 @@
 use std::collections::HashSet;
 
-use tantrix_game::{Color, Direction, Move, Position, Rotation};
+use rand::rngs::Xoshiro256PlusPlus;
+use rand::SeedableRng;
+use serde::Deserialize;
+use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile, TurnStep};
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
 use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
 use tantrix_room::session_cookie::{self, SessionToken};
+
+/// The seeded two-player game the browser test plays: a free move creates a
+/// forced space its player can fill.
+const FORCED_AFTER_FREE_MOVE: &str = include_str!("../../e2e/fixtures/forced-after-free-move.json");
+
+#[derive(Deserialize)]
+struct Fixture {
+    seed: u64,
+    moves: Vec<FixtureMove>,
+}
+
+#[derive(Deserialize)]
+struct FixtureMove {
+    player: Color,
+    tile: Tile,
+    position: Position,
+    rotation: Rotation,
+    forced: bool,
+    next: Color,
+}
+
+impl FixtureMove {
+    fn intent(&self) -> PeerMessage {
+        PeerMessage::PlayMove {
+            m: Move {
+                tile: self.tile,
+                position: self.position,
+                rotation: self.rotation,
+                forced: self.forced,
+            },
+        }
+    }
+}
 
 fn setup() -> (RoomData, SessionToken, SessionToken, HashSet<SessionToken>) {
     let mut room = RoomData::default();
@@ -77,6 +113,56 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
     let wire = serde_json::to_string(&room.snapshot(&connected).unwrap()).unwrap();
     assert!(!wire.contains(red.as_str()));
     assert!(!wire.contains(blue.as_str()));
+}
+
+#[test]
+fn server_keeps_the_turn_to_fill_a_forced_space_after_the_free_move() {
+    let (mut room, red, blue, connected) = setup();
+    let fixture: Fixture = serde_json::from_str(FORCED_AFTER_FREE_MOVE).unwrap();
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(fixture.seed);
+    let game = Game::new_with_rng(
+        Player::Someone,
+        Player::Someone,
+        Player::None,
+        Player::None,
+        &mut rng,
+    )
+    .unwrap();
+    room.game = Some(game.to_data());
+    let token = |color| if color == Color::Red { &red } else { &blue };
+
+    let (free_move_turn, [fill]) = fixture.moves.split_at(fixture.moves.len() - 1) else {
+        panic!("the fixture ends with the forced fill");
+    };
+    for step in free_move_turn {
+        room.apply(token(step.player), step.intent(), &connected)
+            .unwrap();
+        assert_eq!(room.snapshot(&connected).unwrap().current_player, step.next);
+    }
+
+    // The free move is played but a forced space is left: the same player
+    // keeps the turn, and clients learn they may only fill forced spaces.
+    let snapshot = room.snapshot(&connected).unwrap();
+    assert_eq!(snapshot.current_player, fill.player);
+    assert_eq!(snapshot.turn_step, TurnStep::AfterFreeMove);
+    let other = token(if fill.player == Color::Red {
+        Color::Blue
+    } else {
+        Color::Red
+    });
+    assert_eq!(
+        room.apply(other, fill.intent(), &connected)
+            .err()
+            .unwrap()
+            .0,
+        RejectCode::NotYourTurn
+    );
+
+    room.apply(token(fill.player), fill.intent(), &connected)
+        .unwrap();
+    let snapshot = room.snapshot(&connected).unwrap();
+    assert_eq!(snapshot.current_player, fill.next);
+    assert_eq!(snapshot.turn_step, TurnStep::BeforeFreeMove);
 }
 
 #[test]

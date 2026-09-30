@@ -11,8 +11,8 @@ use crate::state::ui_state::{Screen, UiState};
 use crate::svg::paths::color_name as color_slug;
 
 #[component]
-pub fn PlayerSetup() -> Element {
-    let mut config = use_signal(GameConfig::new);
+pub fn PlayerSetup(seed: Option<u64>) -> Element {
+    let mut config = use_signal(|| GameConfig::new(seed));
     let nav = navigator();
     let mut ctx = use_context::<GameCtx>();
 

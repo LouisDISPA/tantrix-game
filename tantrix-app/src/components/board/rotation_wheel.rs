@@ -41,6 +41,7 @@ pub fn RotationWheel() -> Element {
                         div {
                             key: "{rot:?}",
                             class: "rotation-bar-slot",
+                            "data-rotation": "{rot:?}",
                             role: "button",
                             tabindex: "0",
                             aria_label: "Choose rotation",

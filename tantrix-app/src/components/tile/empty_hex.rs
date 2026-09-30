@@ -23,6 +23,7 @@ pub fn EmptyHex(position: Position, hex_size: f64, forced: bool, faint: bool) ->
             class: if forced { "forced" },
             class: if faint { "faint" },
             style: "{style}",
+            "data-position": "{position.x()},{position.y()}",
             role: "button",
             tabindex: "0",
             aria_label: "Place tile",

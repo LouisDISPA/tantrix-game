@@ -12,10 +12,11 @@ pub use screens::game_over::GameOver;
 pub use screens::game_play::GamePlay;
 pub use screens::player_setup::PlayerSetup;
 
+/// `seed` (from `/game?seed=N`) deals the same game every time.
 #[component]
-pub fn LocalGame() -> Element {
+pub fn LocalGame(seed: Option<u64>) -> Element {
     let screen = use_signal(|| Screen::Setup);
-    let game_state = use_signal(|| GameState::new(&GameConfig::new()));
+    let game_state = use_signal(|| GameState::new(&GameConfig::new(seed)));
     let ui_state = use_store(UiState::default);
     let online = use_signal(|| None);
     let my_color = use_signal(|| None);
@@ -56,7 +57,7 @@ pub fn LocalGame() -> Element {
     let current = *screen.read();
     let phase = ui_state.phase()();
     match (current, phase) {
-        (Screen::Setup, _) => rsx! { PlayerSetup {} },
+        (Screen::Setup, _) => rsx! { PlayerSetup { seed } },
         (Screen::Playing, TurnPhase::GameOver) => rsx! { GameOver {} },
         (Screen::Playing, _) => rsx! { GamePlay {} },
     }
