@@ -6,6 +6,7 @@ members = [
     "tantrix-app",
     "tantrix-tournament",
     "tantrix-proto",
+    "tantrix-room",
     "tantrix-net",
     "tantrix-worker",
 ]

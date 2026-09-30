@@ -7,15 +7,14 @@
 #   Node.js/npm                     (for the worker-* recipes; they install
 #                                    worker-build and wrangler on first use)
 #
-# The native Dioxus fullstack binary serves the UI for local development.
-# Online rooms run in the Cloudflare Worker Durable Object.
+# The native Dioxus fullstack binary and Cloudflare Worker both host online rooms.
 
 port := "8080"
 
 default:
     @just --list
 
-# Fullstack UI dev server with hot reload. Online play needs the Worker.
+# Fullstack UI and online rooms with hot reload.
 dev:
     cd tantrix-app && dx serve --port {{ port }} --web --features fullstack --hot-reload true
 
@@ -25,6 +24,10 @@ run:
 
 # Build the Worker and run the browser end-to-end suite against it.
 e2e: worker-e2e
+
+# Build the native fullstack app and run the browser end-to-end suite against it.
+native-e2e:
+    cd e2e && if [ ! -d node_modules ]; then npm ci; fi && npm run test:native
 
 # Expose the native UI development server via an ngrok tunnel.
 # Ctrl+C stops both the server and the tunnel.

@@ -120,15 +120,49 @@ test('server rejects out-of-turn and invalid moves without changing the board', 
 });
 
 test('room sockets from another site are refused', async ({ page }) => {
-  // Browsers can't forge Origin, so send the handshake from the test runner.
-  const response = await page.request.get('/room/ABCDEF', {
-    headers: {
-      Upgrade: 'websocket',
-      Connection: 'Upgrade',
-      'Sec-WebSocket-Version': '13',
-      'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
-      Origin: 'https://evil.example',
-    },
-  });
-  expect(response.status()).toBe(403);
+  await page.goto('/online');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible();
+  const roomUrl = new URL(page.url());
+  const code = roomUrl.pathname.split('/').at(-1);
+  expect(code).toMatch(/^[A-Z]{6}$/);
+
+  // This document has a foreign Origin while its browser context still has
+  // the room cookie. The Dioxus proxy may answer the upgrade itself, so test
+  // that the room never accepts Hello.
+  const attacker = await page.context().newPage();
+  try {
+    await attacker.route('http://evil.example/', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Other site</title>' }));
+    await attacker.goto('http://evil.example/');
+    const wsUrl = `${roomUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${roomUrl.host}/room/${code}`;
+    const result = await attacker.evaluate((url) => new Promise<{ accepted: boolean; closed: boolean }>((resolve) => {
+      const socket = new WebSocket(url);
+      let accepted = false;
+      let done = false;
+      const finish = (closed: boolean) => {
+        if (!done) {
+          done = true;
+          resolve({ accepted, closed });
+        }
+      };
+      socket.addEventListener('open', () =>
+        socket.send(JSON.stringify({ Hello: { nickname: 'Cross-origin visitor' } })));
+      socket.addEventListener('message', (event) => {
+        if (event.data.includes('Welcome')) {
+          accepted = true;
+          socket.close();
+          finish(false);
+        }
+      });
+      socket.addEventListener('close', () => finish(true));
+      setTimeout(() => {
+        socket.close();
+        finish(false);
+      }, 5000);
+    }), wsUrl);
+    expect(result).toEqual({ accepted: false, closed: true });
+  } finally {
+    await attacker.close();
+  }
 });

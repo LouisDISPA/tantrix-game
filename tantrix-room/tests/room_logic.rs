@@ -1,14 +1,9 @@
-#[path = "../src/room_logic.rs"]
-mod room_logic;
-#[path = "../src/session_cookie.rs"]
-mod session_cookie;
-
 use std::collections::HashSet;
 
-use room_logic::{RoomData, MAX_MEMBERS};
-use session_cookie::SessionToken;
 use tantrix_game::{Color, Direction, Move, Position, Rotation};
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
+use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
+use tantrix_room::session_cookie::{self, SessionToken};
 
 fn setup() -> (RoomData, SessionToken, SessionToken, HashSet<SessionToken>) {
     let mut room = RoomData::default();

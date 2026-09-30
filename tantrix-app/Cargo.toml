@@ -7,6 +7,7 @@ edition = "2021"
 tantrix-game = { path = "../tantrix-game" }
 tantrix-ai = { path = "../tantrix-ai" }
 tantrix-proto = { path = "../tantrix-proto" }
+tantrix-room = { path = "../tantrix-room", optional = true }
 tantrix-net = { path = "../tantrix-net" }
 dioxus = { version = "0.7.10", features = ["router"] }
 rand = "0.10.3"
@@ -19,10 +20,12 @@ log = "0.4.34"
 web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
 wasm-bindgen-futures = "0.4.79"
 
-# Server-only: Axum serves the native fullstack app for local UI development.
-# Online rooms are hosted by the Cloudflare Durable Object.
-axum = { version = "0.8.9", optional = true }
+# Server-only: Axum serves the native fullstack app and online rooms.
+axum = { version = "0.8.9", features = ["ws"], optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
+rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
+serde_json = { version = "1.0.151", optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
 
 [features]
 default = []
@@ -33,7 +36,12 @@ server = [
     "tokio/macros",
     "tokio/rt-multi-thread",
     "dep:axum",
+    "dep:tantrix-room",
+    "dep:rusqlite",
+    "dep:serde_json",
+    "dep:uuid",
     "tokio/net",
+    "tokio/sync",
     "dep:tracing-subscriber",
 ]
 fullstack = ["dioxus/fullstack"]

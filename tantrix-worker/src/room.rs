@@ -10,8 +10,8 @@ use worker::{
     WebSocketIncomingMessage, WebSocketPair,
 };
 
-use crate::room_logic::RoomData;
-use crate::session_cookie::{self, SessionToken};
+use tantrix_room::room_logic::RoomData;
+use tantrix_room::session_cookie::{self, SessionToken};
 
 const STORAGE_KEY: &str = "room";
 const MAX_MESSAGE_BYTES: usize = 8 * 1024;

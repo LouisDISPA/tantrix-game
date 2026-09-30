@@ -26,14 +26,14 @@ two seated players are connected.
 ## Room state
 
 `tantrix-worker/src/room.rs` owns Durable Object sockets and storage;
-`tantrix-worker/src/room_logic.rs` applies lobby and game rules. Each room
+`tantrix-room/src/room_logic.rs` applies lobby and game rules. Each room
 stores its roster, seats, bag, hands, board, turn tracker, and terminal state.
 The game data is written to Durable Object storage before its new snapshot is
 broadcast. Socket attachments identify the connected player across Durable
 Object hibernation; only persistent state is needed after an instance restart.
 
 Players are identified by the `tantrix_session` cookie
-(`tantrix-worker/src/session_cookie.rs`): `HttpOnly`, `SameSite=Lax`, one
+(`tantrix-room/src/session_cookie.rs`): `HttpOnly`, `SameSite=Lax`, one
 year, `Secure` on HTTPS. Server-rendered pages set it when a browser has
 none; the room upgrade also sets it as a fallback. The room reads it from the
 WebSocket handshake and stores it on the socket attachment, so the token

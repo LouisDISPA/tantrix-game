@@ -5,6 +5,7 @@ cloudflare/.wrangler/
 e2e/node_modules/
 e2e/playwright-report/
 e2e/test-results/
+**/*.sqlite3*
 
 # tantrix-worker output (worker-build)
 cloudflare/build/

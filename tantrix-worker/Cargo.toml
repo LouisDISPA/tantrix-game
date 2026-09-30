@@ -12,12 +12,11 @@ crate-type = ["cdylib"]
 tantrix-app = { path = "../tantrix-app", features = ["worker"] }
 tantrix-game = { path = "../tantrix-game" }
 tantrix-proto = { path = "../tantrix-proto" }
-enum-map = { version = "3.1.0", features = ["serde"] }
+tantrix-room = { path = "../tantrix-room" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 futures = "0.3.31"
 uuid = { version = "1", features = ["v4", "js"] }
-getrandom = { version = "0.4.3", features = ["wasm_js"] }
 
 # Everything below only exists in the wasm32 Worker build; on native targets
 # the crate compiles to an empty library so workspace-wide cargo commands work.

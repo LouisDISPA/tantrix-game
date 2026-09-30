@@ -21,9 +21,6 @@ use tower_service::Service;
 use worker::{event, Context, Env, HttpRequest};
 
 mod room;
-mod room_logic;
-mod session_cookie;
-
 const INDEX_HTML: &str = include_str!(concat!(env!("OUT_DIR"), "/index.html"));
 
 /// Built once per isolate: parsing `index.html` and the renderer pool are
@@ -47,12 +44,14 @@ async fn fetch(request: HttpRequest, _env: Env, _ctx: Context) -> worker::Result
         .headers()
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok());
-    let needs_cookie = session_cookie::read(cookie).is_none();
+    let needs_cookie = tantrix_room::session_cookie::read(cookie).is_none();
     let secure = request.uri().scheme_str() == Some("https");
     let mut response = ROUTER.clone().call(request).await?;
     if needs_cookie {
-        let token = session_cookie::SessionToken::generate();
-        if let Ok(value) = HeaderValue::from_str(&session_cookie::set_cookie(&token, secure)) {
+        let token = tantrix_room::session_cookie::SessionToken::generate();
+        if let Ok(value) =
+            HeaderValue::from_str(&tantrix_room::session_cookie::set_cookie(&token, secure))
+        {
             response.headers_mut().append(header::SET_COOKIE, value);
         }
     }

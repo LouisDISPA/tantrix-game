@@ -1,12 +1,11 @@
 # Online multiplayer
 
-Online games are server-authoritative. Each room is one Cloudflare Durable
-Object, written in Rust (`tantrix-worker/src/room.rs`, rules in
-`room_logic.rs`), that owns the `tantrix_game::Game`, persists it, and
-broadcasts snapshots over WebSockets. Browsers only send intents
-(`tantrix-proto`) and render what the room sends back (`tantrix-net`). See
-[`cloudflare/README.md`](../cloudflare/README.md) for routing, storage, and
-free-plan notes.
+Online games are server-authoritative. The room rules live in
+`tantrix-room`; either the native Axum server or a Cloudflare Durable Object
+owns a room, persists it, and broadcasts snapshots over WebSockets. Browsers
+only send intents (`tantrix-proto`) and render what the room sends back
+(`tantrix-net`). See [`cloudflare/README.md`](../cloudflare/README.md) for
+Worker routing and storage notes.
 
 ## Player flow
 
@@ -27,7 +26,7 @@ free-plan notes.
 ## Disconnects and joining
 
 - Identity is a `tantrix_session` cookie (`HttpOnly`, `SameSite=Lax`) the
-  Worker sets on the first page visit. Scripts can't read it, and it is never
+  server sets on the first page visit. Scripts can't read it, and it is never
   in a WebSocket message: the room reads it from the socket handshake. Public
   player IDs sent to others are separate.
 - Same browser, same player: reloading, pressing **Retry** on the
@@ -38,19 +37,26 @@ free-plan notes.
   them. People without a seat who leave are removed.
 - Newcomers can join at any time; after the game started they watch. A room
   accepts up to 32 members, a bound that only guards against scripted joins.
-- There is no protocol versioning: the Worker serves the client and the room
-  together, so they always deploy in step. A tab left open across a deploy
-  should be reloaded.
+- There is no protocol versioning: deploy the client and its room server
+  together. A tab left open across a deploy should be reloaded.
 
 ## Running locally
 
-Online play needs the Worker runtime (the native `dx serve` app has no room
-server):
+Both backends support online play:
 
 ```bash
+just dev          # native server at http://localhost:8080
+just native-e2e   # Playwright suite against the native server
 just worker-dev   # http://localhost:8787
-just e2e          # Playwright suite against wrangler dev
+just worker-e2e   # Playwright suite against wrangler dev
 ```
+
+The native server saves rooms in `tantrix-rooms.sqlite3` in its working
+directory. Set `TANTRIX_ROOM_DB` to choose another file. It runs as one process;
+multiple replicas need shared room routing or coordination. For HTTPS behind a
+reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
+example `https://tantrix.example.com`) so cookie security and WebSocket origin
+checks use that origin.
 
 ## Why workers-rs (wasm32) and not the Emscripten target
 

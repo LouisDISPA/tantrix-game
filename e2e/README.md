@@ -1,8 +1,7 @@
 # Browser end-to-end tests
 
-Playwright runs headless Chromium against `wrangler dev`, with the production
-Worker entry point, Rust game logic, and a room Durable Object. Build the web
-client and Worker modules before running tests.
+Playwright runs headless Chromium against either the native Axum server or
+`wrangler dev`. Both use the same Rust room rules and client protocol.
 
 | Spec | Coverage |
 | --- | --- |
@@ -12,7 +11,7 @@ client and Worker modules before running tests.
 | `online-join` | Repeated room join handshake (`JOIN_ATTEMPTS`, default 5). |
 | `online-lobby` | A rejected color claim leaves the player's old seat intact. |
 | `online-retry` | A nonexistent code gives a clear error rather than creating a room. |
-| `online-room-lifecycle` | The creator can leave, another player can start, and late joins are rejected. |
+| `online-room-lifecycle` | The creator can leave, another player can start, and a late visitor can take over a seat. |
 | `online-authority` | Invalid and stale move intents cannot mutate server game state. |
 | `board-layout` | Board controls stay clear of legal positions at several widths. |
 
@@ -28,8 +27,9 @@ cd e2e && npm ci && npx playwright install chromium
 
 ## Run
 
-From the repository root, `just worker-e2e` builds the app and runs all specs.
-`just e2e` is an alias. For a focused run after `just worker-build`:
+From the repository root, `just native-e2e` builds and tests the native server;
+`just worker-e2e` builds and tests the Worker. `just e2e` aliases the Worker
+suite. For a focused Worker run after `just worker-build`:
 
 ```bash
 cd e2e
@@ -37,8 +37,9 @@ npx playwright test tests/online-flow.spec.ts
 JOIN_ATTEMPTS=50 npx playwright test tests/online-join.spec.ts
 ```
 
-The Playwright config starts and stops Wrangler on port 4174. Port 4174 must
-be free. A cold Rust build can take several minutes.
+The Worker config starts Wrangler on port 4174; the native config starts
+`dx run` on port 4175 with an in-memory SQLite database. Those ports must be free.
+A cold Rust build can take several minutes.
 
 ## Failures
 
