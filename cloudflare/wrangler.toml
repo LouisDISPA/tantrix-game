@@ -8,10 +8,12 @@ workers_dev = false
 pattern = "tantrix.louis-dispa.fr"
 custom_domain = true
 
+# The web client built by `just worker-client`. Its index.html is excluded by
+# the `.assetsignore` that recipe writes, so every page request falls through
+# to the Worker, which server-renders it (tantrix-worker).
 [assets]
 directory = "../target/dx/tantrix-app/release/web/public"
 binding = "ASSETS"
-not_found_handling = "single-page-application"
 
 [[durable_objects.bindings]]
 name = "ROOM"

@@ -25,7 +25,10 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-use tokio_util::task::LocalPoolHandle;
+#[cfg(target_arch = "wasm32")]
+use crate::local_pool::{JoinHandle, LocalPoolHandle};
+#[cfg(not(target_arch = "wasm32"))]
+use {tokio::task::JoinHandle, tokio_util::task::LocalPoolHandle};
 
 use crate::StreamingMode;
 
@@ -111,7 +114,7 @@ impl SsrRendererPool {
     > {
         struct ReceiverWithDrop {
             receiver: futures_channel::mpsc::Receiver<Result<String, IncrementalRendererError>>,
-            cancel_task: Option<tokio::task::JoinHandle<()>>,
+            cancel_task: Option<JoinHandle<()>>,
         }
 
         impl Stream for ReceiverWithDrop {

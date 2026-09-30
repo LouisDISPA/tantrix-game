@@ -1,10 +1,15 @@
-# Cloudflare Worker — Tantrix Signaling
+# Cloudflare Worker — Tantrix hosting and signaling
 
-This directory contains the Cloudflare Worker that replaces a self-hosted
-`matchbox_server`. It serves two roles from a single entry point:
+This directory contains the Cloudflare Worker that hosts Tantrix in production
+and replaces a self-hosted `matchbox_server`. It serves three roles from a
+single entry point:
 
-- **Static hosting** — serves the compiled Dioxus WASM app (HTML, JS, WASM,
-  CSS, fonts) via the Workers Static Assets binding.
+- **Server-side rendering** — every page is rendered by the Rust
+  `tantrix-worker` module (Dioxus's fullstack renderer compiled to Wasm), so
+  the browser gets the finished HTML and the web client *hydrates* it instead
+  of rendering from scratch.
+- **Static hosting** — serves the compiled web client (JS, Wasm, CSS) via the
+  Workers Static Assets binding.
 - **WebRTC signaling** — handles WebSocket connections for Matchbox-compatible
   SDP / ICE exchange so peers can discover each other and form a direct
   WebRTC DataChannel.
@@ -17,28 +22,65 @@ peer-to-peer and the Worker is no longer involved.
 ```
 cloudflare/
   src/index.js     Worker entry point + Room Durable Object
+  build/ssr/       SSR module generated from tantrix-worker (gitignored)
   wrangler.toml    Cloudflare project configuration
   package.json     Dev dependency on wrangler CLI
+
+tantrix-worker/    Rust crate compiled to build/ssr (worker-build)
+vendor/dioxus-server/
+                   dioxus-server patched for wasm32 (see its PATCHES.md)
 ```
 
 ## How requests are routed
 
 ```
-Browser GET /                       → env.ASSETS (static app)
-Browser GET /assets/*               → env.ASSETS (static app)
-Browser WS  /signaling/{ROOM_CODE}  → Room Durable Object
+Browser GET /assets/*               → static assets (served before the Worker runs)
 Browser GET /health                 → 200 OK
+Browser WS  /signaling/{ROOM_CODE}  → Room Durable Object
+Browser GET /missing-file.png       → env.ASSETS (404)
+Browser GET /, /game, /online/...   → tantrix-worker (server-side rendering)
 ```
 
-The Worker's `fetch` handler checks three things in order:
+Requests for files that exist in the assets directory are answered by
+Cloudflare's asset layer without invoking the Worker. The client's
+`index.html` is *not* uploaded (the `.assetsignore` written by `just
+worker-client` excludes it), so page requests fall through to the Worker,
+whose `fetch` handler checks, in order:
 
 1. **`/health`** — returns `200 OK`. Useful for uptime monitoring.
 2. **`Upgrade: websocket` header + path matches `/signaling/{ROOM_CODE}`** —
    routes to the `Room` Durable Object for that room code. Returns `400` if
    no room code is present in the path.
-3. **Everything else** — forwarded to `env.ASSETS`, which serves the bundled
-   Dioxus frontend. `not_found_handling = "single-page-application"` is set
-   so deep-links and client-side routes all get `index.html`.
+3. **A path that looks like a file** (has an extension) — a missing static
+   file, forwarded to `env.ASSETS` for its 404 rather than rendered as a route.
+4. **Everything else** — an app route, rendered by `tantrix-worker`: Dioxus
+   renders the route into dx's `index.html` together with hydration markers
+   and the `window.initial_dioxus_hydration_data` payload, and the client
+   (built with the `fullstack` feature) hydrates it. Unknown routes get the
+   router's 404.
+
+## How server-side rendering works
+
+`tantrix-worker` is a `workers-rs` crate. Its `fetch` handler calls
+`dioxus-server`'s axum router (`serve_api_application`) — the same renderer
+the native fullstack server (`tantrix-app --features server`) uses — so the
+Worker's HTML and hydration payload match what the client expects. Upstream
+`dioxus-server` does not build or run on wasm32 (it renders on a pool of OS
+threads), which is what the vendored patch fixes.
+
+The client is built with `hydrate` enabled (`--features fullstack`), and a
+hydrating client has no client-side-rendering fallback: **every HTML page must
+come from the SSR module**. Deploy the client and the SSR module together
+(`just worker-deploy` builds both).
+
+Two build details keep them in step:
+
+- `build.rs` embeds dx's generated `index.html` (it references the hashed JS
+  bundle), so the client must be built first.
+- A plain `cargo` build resolves `asset!()` (the stylesheets) to source paths
+  on disk. `just worker-ssr` runs `dx tools assets` on the compiled Wasm to
+  rewrite them to the same hashed `/assets/*.css` names the client build
+  produced, and fails if a name has no matching file.
 
 ## How the Dioxus app connects
 
@@ -127,22 +169,25 @@ The peer ID is not reserved. A reconnecting browser receives a fresh UUID.
 
 ## Local development
 
-Install wrangler:
+Install the tools once:
 
 ```bash
 cd cloudflare && npm install
+cargo install worker-build
 ```
 
-Build the frontend first (wrangler dev serves it from the assets directory):
+Build the client and the SSR module, then start the local emulator:
 
 ```bash
-dx bundle --web --release --package tantrix-app
+just worker-dev
 ```
 
-Start the local emulator:
+`just worker-build` only builds; `just worker-client` and `just worker-ssr`
+are its two steps (in that order). The e2e suite can run against the Worker
+instead of the native server:
 
 ```bash
-cd cloudflare && npx wrangler dev
+just worker-e2e
 ```
 
 Wrangler dev binds to `http://localhost:8787` by default. Open two tabs at
@@ -164,9 +209,7 @@ npx wrangler login
 Build and deploy:
 
 ```bash
-# from workspace root
-dx bundle --web --release --package tantrix-app
-cd cloudflare && npx wrangler deploy
+just worker-deploy
 ```
 
 Smoke test:

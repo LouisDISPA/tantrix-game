@@ -7,12 +7,16 @@ members = [
     "tantrix-tournament",
     "tantrix-proto",
     "tantrix-net",
+    "tantrix-worker",
 ]
 resolver = "2"
 
-# `matchbox_socket` 0.14.0 with one patch: a bound on how long the SDP
-# offer/answer waits for ICE gathering to finish (see
-# vendor/matchbox_socket/src/webrtc_socket/wasm.rs). Without it a single
-# unresponsive STUN server stalls every join for ~40 s.
+# Vendored crates, each patched locally (see its PATCHES.md):
+# - `matchbox_socket` 0.14.0: a bound on how long the SDP offer/answer waits
+#   for ICE gathering to finish (see vendor/matchbox_socket/src/webrtc_socket/wasm.rs).
+#   Without it a single unresponsive STUN server stalls every join for ~40 s.
+# - `dioxus-server` 0.7.10: wasm32 support, so the fullstack SSR renderer can
+#   run inside a Cloudflare Worker (tantrix-worker).
 [patch.crates-io]
 matchbox_socket = { path = "vendor/matchbox_socket" }
+dioxus-server = { path = "vendor/dioxus-server" }

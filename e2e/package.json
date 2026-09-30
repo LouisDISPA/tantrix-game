@@ -2,7 +2,8 @@
   "name": "tantrix-e2e",
   "private": true,
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:worker": "playwright test --config playwright.worker.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"

@@ -37,8 +37,11 @@ pub(crate) mod document;
 pub(crate) mod ssr;
 pub(crate) mod streaming;
 
-pub use launch::router;
-pub use launch::serve;
+#[cfg(target_arch = "wasm32")]
+mod local_pool;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use launch::{router, serve};
 
 pub mod serverfn;
 pub use serverfn::*;
@@ -47,4 +50,6 @@ pub mod isrg;
 pub use isrg::*;
 
 mod index_html;
-pub(crate) use index_html::IndexHtml;
+// Public so `ServeConfig::with_index_html` can be called from outside the crate
+// (needed where there is no public dir to read index.html from, e.g. Workers).
+pub use index_html::IndexHtml;

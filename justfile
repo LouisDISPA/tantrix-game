@@ -4,6 +4,8 @@
 #   cargo install just              (task runner)
 #   cargo install dioxus-cli        (dx)
 #   ngrok                           (for the tunnel recipe)
+#   cargo install worker-build      (for the worker-* recipes)
+#   cd cloudflare && npm install    (wrangler, for the worker-* recipes)
 #
 # The app is a Dioxus fullstack binary that serves both the client bundle
 # and an embedded matchbox signaling server on a single port. No external
@@ -42,3 +44,53 @@ tunnel:
         sleep 1
     done
     ngrok http {{ port }}
+
+# ── Cloudflare Worker: server-side rendering + hydration ────────────────────
+# Production runs on Cloudflare (cloudflare/): the Worker server-renders every
+# page with the Rust `tantrix-worker` module, static files come from the
+# Workers assets binding, and signaling uses the `Room` Durable Object.
+
+client_public := "target/dx/tantrix-app/release/web/public"
+
+# Release web client that hydrates server-rendered pages.
+worker-client:
+    cd tantrix-app && dx build --web --release --features fullstack
+    # The Worker renders every page, so the static index.html is not uploaded.
+    printf 'index.html\n' > {{ client_public }}/.assetsignore
+
+# SSR module for the Worker. Run after `worker-client`: it embeds the client's
+# index.html and must link the same hashed CSS files.
+worker-ssr:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Same cargo invocation as worker-build's, so its own build step below is a
+    # no-op and keeps the asset paths patched in by `dx tools assets`.
+    (cd tantrix-worker && WASM_BINDGEN_USE_JS_SYS=1 cargo build --lib --release --target wasm32-unknown-unknown)
+    # Plain cargo builds point `asset!()` at the source files on disk; this
+    # rewrites them to the hashed names dx gave the client's copies. Patch the
+    # deps/ artifact: even a no-op cargo build re-copies it over release/.
+    out=target/dx/tantrix-worker-assets
+    rm -rf "$out"
+    dx tools assets target/wasm32-unknown-unknown/release/deps/tantrix_worker.wasm "$out"
+    for f in "$out"/*; do
+        if [ ! -e "{{ client_public }}/assets/$(basename "$f")" ]; then
+            echo "error: $(basename "$f") is not in the client build; run just worker-client" >&2
+            exit 1
+        fi
+    done
+    (cd tantrix-worker && worker-build --release --out-dir ../cloudflare/build/ssr)
+
+# Build the client and the SSR module.
+worker-build: worker-client worker-ssr
+
+# Run the production Worker locally (http://localhost:8787).
+worker-dev: worker-build
+    cd cloudflare && npx wrangler dev
+
+# Run the e2e suite against the Worker (wrangler dev) instead of the native server.
+worker-e2e: worker-build
+    cd e2e && npm run test:worker
+
+# Build and deploy the Worker.
+worker-deploy: worker-build
+    cd cloudflare && npx wrangler deploy

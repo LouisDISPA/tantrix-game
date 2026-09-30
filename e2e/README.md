@@ -1,8 +1,9 @@
 # Browser end-to-end tests
 
 The tests start the Dioxus fullstack app on port 4173, including its embedded
-`matchbox_signaling` server (the Cloudflare Worker in `../cloudflare` is **not**
-exercised). They run in headless Chromium.
+`matchbox_signaling` server. They run in headless Chromium. `just worker-e2e`
+runs the same specs against the production Cloudflare Worker instead (see
+[Against the Cloudflare Worker](#against-the-cloudflare-worker)).
 
 | Spec | What it covers |
 | --- | --- |
@@ -41,6 +42,15 @@ npx playwright show-report                       # HTML report
 
 Playwright starts and stops `dx run` itself; port 4173 must be free. The first
 run compiles the wasm and server targets from cold (several minutes).
+
+## Against the Cloudflare Worker
+
+`just worker-e2e` builds the Worker and runs the suite against it in `wrangler
+dev` on port 4174 (`playwright.worker.config.ts`): pages are server-rendered by
+`tantrix-worker` and hydrated, static files come from the assets binding, and
+signaling goes through the Room Durable Object in `../cloudflare`. It needs the
+extra tools listed in `../cloudflare/README.md`. From `e2e/`, after `just
+worker-build`: `npm run test:worker`.
 
 ## Diagnosing a failing online test
 

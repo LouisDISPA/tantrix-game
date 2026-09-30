@@ -24,6 +24,11 @@ cargo test -p tantrix-game
 
 # Production build
 cd tantrix-app && dx build --release
+
+# Cloudflare Worker (SSR + hydration): build, run locally, deploy
+just worker-build
+just worker-dev
+just worker-deploy
 ```
 
 ## Project Structure
@@ -34,8 +39,9 @@ tantrix-game/src/          # Core library — game rules, no UI
   tiles.rs                 # 56 Tile variants, Color enum (Red/Blue/Yellow/Green)
   coordinate_system.rs     # Position (axial hex), Direction, Rotation
 
-tantrix-app/src/           # Dioxus frontend
-  main.rs                  # App entry, stylesheet loading, Router
+tantrix-app/src/           # Dioxus frontend (lib + bin)
+  lib.rs                   # `app()` root: stylesheet loading, Router
+  main.rs                  # Binary entry: web client or native fullstack server
   route.rs                 # Route enum: MainMenu (/), LocalGame (/game)
   state/                   # Source-of-truth state (no RSX)
     game_state.rs          # GameState (wraps Game + TileMoveInfo cache) + GameContext
@@ -75,6 +81,10 @@ tantrix-app/src/           # Dioxus frontend
     paths.rs               # Color curves (arc/bezier/line), hex polygon
 
 tantrix-tui/src/           # Terminal UI (ratatui)
+
+tantrix-worker/src/        # Cloudflare Worker SSR module (workers-rs → cloudflare/build/ssr)
+cloudflare/                # Worker entry (index.js), Room Durable Object, wrangler.toml
+vendor/dioxus-server/      # dioxus-server 0.7.10 patched for wasm32 (PATCHES.md)
 
 assets/                    # CSS: main.css, board.css, hand.css, menu.css, animations.css
 doc/                       # game_rules.md

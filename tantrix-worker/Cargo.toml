@@ -1,0 +1,24 @@
+[package]
+name = "tantrix-worker"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Cloudflare Worker that server-renders the Tantrix app for client hydration"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tantrix-app = { path = "../tantrix-app", features = ["worker"] }
+
+# Everything below only exists in the wasm32 Worker build; on native targets
+# the crate compiles to an empty library so workspace-wide cargo commands work.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Patched for wasm32 via `[patch.crates-io]` (vendor/dioxus-server). Used
+# directly rather than through `dioxus/server`, whose re-exports (`serve`,
+# `launch`) only exist on native targets.
+dioxus-server = "0.7.10"
+worker = { version = "0.8.7", features = ["http"] }
+axum = { version = "0.8.9", default-features = false }
+tower-service = "0.3.3"
+console_error_panic_hook = "0.1.7"

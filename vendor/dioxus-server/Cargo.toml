@@ -7,7 +7,11 @@
 #
 # If you are reading this file be aware that the original Cargo.toml
 # will likely look very different (and much more reasonable).
-# See Cargo.toml.orig for the original contents.
+# (Cargo.toml.orig is not vendored: it inherits from the Dioxus workspace.)
+#
+# VENDORED: this is the published dioxus-server 0.7.10 manifest with the
+# dependency changes listed in PATCHES.md (networking crates moved under
+# `cfg(not(target_arch = "wasm32"))` so the crate builds for Cloudflare Workers).
 
 [package]
 edition = "2021"
@@ -78,12 +82,8 @@ version = "0.1.88"
 version = "0.8.4"
 features = [
     "multipart",
-    "ws",
     "json",
     "form",
-    "tokio",
-    "http1",
-    "http2",
     "macros",
 ]
 default-features = false
@@ -115,7 +115,6 @@ version = "0.7.10"
 
 [dependencies.dioxus-devtools]
 version = "0.7.10"
-features = ["serve"]
 
 [dependencies.dioxus-document]
 version = "0.7.10"
@@ -177,9 +176,6 @@ version = "1.3.1"
 [dependencies.http-body-util]
 version = "0.1.3"
 
-[dependencies.hyper]
-version = "1.6.0"
-
 [dependencies.hyper-rustls]
 version = "0.27.7"
 features = [
@@ -192,10 +188,6 @@ features = [
 ]
 optional = true
 default-features = false
-
-[dependencies.hyper-util]
-version = "0.1.12"
-features = ["full"]
 
 [dependencies.inventory]
 version = "0.3"
@@ -248,9 +240,6 @@ version = "0.7.10"
 [dependencies.thiserror]
 version = "2.0.12"
 
-[dependencies.tokio-tungstenite]
-version = "0.28.0"
-
 [dependencies.tokio-util]
 version = "0.7.15"
 features = ["rt"]
@@ -261,7 +250,6 @@ features = ["util"]
 
 [dependencies.tower-http]
 version = "0.6.8"
-features = ["fs"]
 
 [dependencies.tower-layer]
 version = "0.3.3"
@@ -296,4 +284,36 @@ features = [
     "sync",
     "macros",
 ]
-optional = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen-futures]
+version = "0.4"
+
+# Native-only: the HTTP server, devserver connection and static file serving
+# used by `launch`/`serve`. None of these compile for wasm32 (tokio `net`).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.axum]
+version = "0.8.4"
+features = [
+    "ws",
+    "tokio",
+    "http1",
+    "http2",
+]
+default-features = false
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.dioxus-devtools]
+version = "0.7.10"
+features = ["serve"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.hyper]
+version = "1.6.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.hyper-util]
+version = "0.1.12"
+features = ["full"]
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio-tungstenite]
+version = "0.28.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tower-http]
+version = "0.6.8"
+features = ["fs"]

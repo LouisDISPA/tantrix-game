@@ -11,12 +11,22 @@ use axum::{
 };
 use dioxus_core::{ComponentFunction, VirtualDom};
 use http::header::*;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
+
+// wasm32 hosts (Cloudflare Workers) are single-threaded: the pinned-task pool
+// is replaced by one that spawns onto the JS event loop (see `local_pool`).
+#[cfg(target_arch = "wasm32")]
+use crate::local_pool::LocalPoolHandle;
+#[cfg(not(target_arch = "wasm32"))]
 use tokio_util::task::LocalPoolHandle;
-use tower::util::MapResponse;
-use tower::ServiceExt;
-use tower_http::services::fs::ServeFileSystemResponseBody;
+
+// Static file serving needs a filesystem, so it only exists on native targets.
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    std::path::Path, tower::util::MapResponse, tower::ServiceExt,
+    tower_http::services::fs::ServeFileSystemResponseBody,
+};
 
 /// A extension trait with utilities for integrating Dioxus with your Axum router.
 pub trait DioxusRouterExt {
@@ -124,7 +134,6 @@ pub trait DioxusRouterExt {
         Self: Sized;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl DioxusRouterExt for Router<FullstackState> {
     fn register_server_functions(mut self) -> Router<FullstackState> {
         use std::collections::HashSet;
@@ -142,6 +151,7 @@ impl DioxusRouterExt for Router<FullstackState> {
         self
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn serve_static_assets(self) -> Router<FullstackState> {
         let Some(public_path) = public_path() else {
             return self;
@@ -149,6 +159,13 @@ impl DioxusRouterExt for Router<FullstackState> {
 
         // Serve all files in public folder except index.html
         serve_dir_cached(self, &public_path, &public_path)
+    }
+
+    /// wasm32 hosts have no filesystem: static assets are served by the platform
+    /// (e.g. the Workers static assets binding) in front of the app.
+    #[cfg(target_arch = "wasm32")]
+    fn serve_static_assets(self) -> Router<FullstackState> {
+        self
     }
 
     fn serve_api_application<M: 'static>(
@@ -399,6 +416,7 @@ pub(crate) fn public_path() -> Option<PathBuf> {
     )
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn serve_dir_cached<S>(mut router: Router<S>, public_path: &Path, directory: &Path) -> Router<S>
 where
     S: Send + Sync + Clone + 'static,
@@ -455,11 +473,13 @@ where
     router
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 type MappedAxumService<S> = MapResponse<
     S,
     fn(Response<ServeFileSystemResponseBody>) -> Response<ServeFileSystemResponseBody>,
 >;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn cache_response_forever<S>(service: S) -> MappedAxumService<S>
 where
     S: ServiceExt<Request<Body>, Response = Response<ServeFileSystemResponseBody>>,
@@ -473,6 +493,7 @@ where
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn file_name_looks_immutable(file_name: &str) -> bool {
     // Check if the file name looks like a hash (e.g., "main-dxh12345678.js")
     file_name.rsplit_once("-dxh").is_some_and(|(_, hash)| {
@@ -482,6 +503,7 @@ fn file_name_looks_immutable(file_name: &str) -> bool {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn test_file_name_looks_immutable() {
     assert!(file_name_looks_immutable("main-dxh12345678.js"));

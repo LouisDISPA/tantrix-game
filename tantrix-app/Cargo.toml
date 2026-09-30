@@ -38,6 +38,10 @@ server = [
     "dep:tracing-subscriber",
 ]
 fullstack = ["dioxus/fullstack"]
+# Server-side rendering inside a Cloudflare Worker (see `tantrix-worker`).
+# The app itself only needs browser-style timers there; the SSR host lives
+# in the worker crate.
+worker = ["dep:gloo-timers"]
 liveview = ["dioxus/liveview"]
 desktop = ["dioxus/desktop", "dep:tokio"]
 native = ["dioxus/native", "dep:tokio"]
