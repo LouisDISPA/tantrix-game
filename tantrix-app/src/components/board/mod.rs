@@ -7,7 +7,12 @@
 //! * [`BoardTilesLayer`] — placed moves (with scoring highlights).
 //! * [`BoardEmptyLayer`] — valid empty slots + ghost preview.
 //! * [`RotationWheel`] — shown only during SelectRotation.
-//! * [`ZoomControls`] / [`EndGameButton`] — floating chrome.
+//! * [`ZoomControls`] / [`EndGameButton`] — chrome in a reserved control bar.
+//!
+//! Layout: the board is a two-row column. The top row (`.board-stage`) is the
+//! clipped playfield; the bottom row (`.board-control-bar`) holds the controls.
+//! The controls sit *beside* the playfield rather than floating over it, so the
+//! camera can never park a legal (clickable) position underneath them.
 
 mod controls;
 mod empty_layer;
@@ -32,20 +37,27 @@ pub fn Board() -> Element {
 
     rsx! {
         div { class: "board-container",
-            StatusBar {}
+            // Playfield: clips the zoomed/panned map, hosts the HUD chip and
+            // the rotation picker (both anchored to this box).
+            div { class: "board-stage",
+                StatusBar {}
 
-            if !is_game_over {
-                EndGameButton {}
+                BoardViewport {
+                    BoardTilesLayer {}
+                    BoardEmptyLayer {}
+                }
+
+                RotationWheel {}
             }
 
-            ZoomControls {}
+            // Reserved strip below the playfield — never overlaps the map.
+            div { class: "board-control-bar",
+                if !is_game_over {
+                    EndGameButton {}
+                }
 
-            BoardViewport {
-                BoardTilesLayer {}
-                BoardEmptyLayer {}
+                ZoomControls {}
             }
-
-            RotationWheel {}
         }
     }
 }

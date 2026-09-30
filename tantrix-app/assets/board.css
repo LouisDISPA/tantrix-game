@@ -55,12 +55,31 @@
 
 /* ===== Board Container ===== */
 
+/* Two rows: the clipped playfield (.board-stage) and a reserved control bar.
+   The controls live in their own row instead of floating over the map, so a
+   legal position can never end up underneath them at any zoom/pan. */
 .board-container {
-    position: relative;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    /* Lets the control bar adapt to the board column width (narrow on phones,
+       where the hands eat most of the screen), not the viewport width. */
+    container-type: inline-size;
+    container-name: board;
     width: 100%;
     height: 100%;
     overflow: hidden;
     background-color: var(--bg-board);
+}
+
+/* The playfield: positioning + clipping context for the zoom/pan viewport,
+   the HUD chip and the rotation bar. Everything clickable on the map is
+   confined to (and clipped by) this box. */
+.board-stage {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230'%3E%3Cpolygon points='100,0 173.2,37.5 173.2,112.5 100,150 26.8,112.5 26.8,37.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='200,115 273.2,152.5 273.2,227.5 200,265 126.8,227.5 126.8,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='0,115 73.2,152.5 73.2,227.5 0,265 -73.2,227.5 -73.2,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3C/svg%3E");
     background-repeat: repeat;
 }
@@ -176,16 +195,27 @@
     stroke-dasharray: 6 4;
 }
 
-/* ===== Board Controls ===== */
+/* ===== Board Control Bar ===== */
+
+/* Reserved strip under the playfield: End Game on the left, zoom on the
+   right. Wraps (End Game above zoom) when the board column is very narrow. */
+.board-control-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 10px;
+    padding: 8px 12px;
+    background: var(--surface-secondary);
+    border-top: 1px solid var(--border-subtle);
+}
 
 .board-controls {
-    position: absolute;
-    bottom: 12px;
-    left: 12px;
-    z-index: 15;
+    display: flex;
 }
 
 .board-ctrl-btn {
+    min-height: 32px;
     padding: 6px 14px;
     border: 1px solid var(--border-subtle);
     border-radius: 12px;
@@ -215,12 +245,10 @@
 /* ===== Zoom Controls ===== */
 
 .zoom-controls {
-    position: absolute;
-    bottom: 12px;
-    right: 12px;
-    z-index: 15;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    /* Stays on the right even when End Game is absent (game over). */
+    margin-left: auto;
     gap: 0;
     background: var(--surface-elevated);
     border: 1px solid var(--border-subtle);
@@ -253,16 +281,47 @@
 }
 
 .zoom-btn.zoom-label {
+    width: 52px;
     font-size: 11px;
     font-weight: 500;
     color: var(--text-secondary);
     cursor: pointer;
-    border-top: 1px solid var(--border-light);
-    border-bottom: 1px solid var(--border-light);
+    border-left: 1px solid var(--border-light);
+    border-right: 1px solid var(--border-light);
 }
 
 .zoom-btn.zoom-label:hover {
     color: var(--text-primary);
+}
+
+/* Narrow board column (phones: the hands take most of the width). Center the
+   controls and shrink the zoom buttons so both rows fit without overflow. */
+@container board (max-width: 260px) {
+    .board-control-bar {
+        justify-content: center;
+        padding: 6px;
+    }
+
+    .board-controls,
+    .board-ctrl-btn {
+        width: 100%;
+    }
+
+    .board-ctrl-btn {
+        padding: 6px 8px;
+    }
+
+    .zoom-controls {
+        margin-left: 0;
+    }
+
+    .zoom-btn {
+        width: 28px;
+    }
+
+    .zoom-btn.zoom-label {
+        width: 40px;
+    }
 }
 
 /* ===== Tile Preview ===== */
