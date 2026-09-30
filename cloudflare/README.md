@@ -41,7 +41,9 @@ never appears in a message. Room sockets whose `Origin` is another site are
 refused with 403.
 
 Clients send a `Hello` (just a nickname), then intents such as `PickColor`,
-`ReplaceSeat`, `StartGame`, and `PlayMove`. The server answers with a
+`ReplaceSeat`, `StartGame`, and `PlayMove` (a tile placement: tile,
+position, rotation; the server decides whether it fills a forced space).
+The server answers with a
 `Welcome`, broadcasts lobby or game snapshots, and rejects invalid intents.
 Public player IDs are separate from session tokens. A reconnect with the
 same cookie resumes the seat and receives the latest snapshot; an older

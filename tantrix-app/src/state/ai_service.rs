@@ -62,7 +62,7 @@ pub async fn run_ai_loop(ctx: GameCtx) {
             break;
         }
 
-        if let Err(err) = game_state.write().play_move(chosen) {
+        if let Err(err) = game_state.write().play_move(chosen.placement()) {
             ui_state.message().set(format!("AI move failed: {err}"));
             break;
         }

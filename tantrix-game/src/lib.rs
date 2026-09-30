@@ -5,7 +5,7 @@
 //! |---|---|
 //! | `tiles` | the 56 [`Tile`]s and their [`Color`]s |
 //! | `coordinate_system` | [`Position`], [`Direction`], [`Rotation`] |
-//! | `moves` | [`Move`], [`PlayedMove`], [`TileMoveInfo`] |
+//! | `moves` | [`Placement`] (a player's input), [`Move`], [`PlayedMove`], [`TileMoveInfo`] |
 //! | `board` | [`Board`] storage, lookups, contour, neighbor counts |
 //! | `rules` | legal moves: golden rule, forced spaces, restriction rules |
 //! | `scoring` | longest lines and loops: [`PlayerScore`], [`ScoringPath`] |
@@ -35,7 +35,7 @@ pub use enum_map::EnumMap;
 pub use error::{MoveError, SetupError};
 pub use game::{is_game_over, Game, GameData};
 pub use hand::{Hand, TILES_IN_HAND};
-pub use moves::{Move, PlayedMove, TileMoveInfo};
+pub use moves::{Move, Placement, PlayedMove, TileMoveInfo};
 pub use player::{Player, TantrixAi};
 pub use scoring::{PlayerScore, ScoringPath};
 pub use tiles::*;

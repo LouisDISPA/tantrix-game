@@ -1,4 +1,5 @@
-//! A tile placed (or to be placed) on the board.
+//! What a player asks to play ([`Placement`]) and what the rules make of it
+//! ([`Move`]): the legal moves and the tiles on the board.
 
 use std::collections::BTreeMap;
 
@@ -6,6 +7,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Color, Direction, Position, Rotation, Tile};
 
+/// A tile a player asks to place: which one, where, and how it is turned.
+/// [`Game::play_move`](crate::Game::play_move) accepts it only if it matches
+/// one of the legal moves, and places that [`Move`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Placement {
+    pub tile: Tile,
+    pub position: Position,
+    pub rotation: Rotation,
+}
+
+/// A legal move, or a tile on the board: a [`Placement`] plus whether it
+/// fills a forced space. The rules decide `forced`
+/// ([`Board::possible_moves`](crate::Board::possible_moves)); players only
+/// ever send a [`Placement`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Move {
     pub tile: Tile,
@@ -18,11 +33,26 @@ impl Move {
     pub fn color(&self, dir: Direction) -> Color {
         self.tile.color(dir - self.rotation)
     }
+
+    /// The tile, position and rotation, without the rules' `forced` flag.
+    pub fn placement(&self) -> Placement {
+        Placement {
+            tile: self.tile,
+            position: self.position,
+            rotation: self.rotation,
+        }
+    }
+}
+
+impl From<Move> for Placement {
+    fn from(m: Move) -> Self {
+        m.placement()
+    }
 }
 
 /// A move as [`Game::play_move`](crate::Game::play_move) placed it: the
-/// board's own copy (its `forced` flag is the board's, not the caller's),
-/// and where the tile was in the hand.
+/// board's own copy (with the board's `forced` flag), and where the tile
+/// was in the hand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayedMove {
     pub m: Move,

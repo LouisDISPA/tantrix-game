@@ -44,7 +44,7 @@ tantrix-game/src/          # Core library — game rules, no UI
   lib.rs                   # Module list + crate-root re-exports
   tiles.rs                 # 56 Tile variants, Color enum (Red/Blue/Yellow/Green)
   coordinate_system.rs     # Position (axial hex), Direction, Rotation
-  moves.rs                 # Move, PlayedMove, TileMoveInfo (legal moves per hand tile)
+  moves.rs                 # Placement (player input), Move, PlayedMove, TileMoveInfo (legal moves per hand tile)
   board.rs                 # Board storage, lookups, contour, neighbor counts
   rules.rs                 # Legal moves: golden rule, forced spaces, restriction rules
   scoring.rs               # Longest line/loop per color: scores, scoring_paths
@@ -118,7 +118,8 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 | **Position** | Axial hex coordinate `(i8, i8)`, center is `(0,0)` |
 | **Direction** | 6 hex edges: `Left`, `TopLeft`, `TopRight`, `Right`, `BottomRight`, `BottomLeft` |
 | **Rotation** | 0°–300° in 60° increments: `None`, `R60`, `R120`, `R180`, `R240`, `R300` |
-| **Move** | Tile + Position + Rotation + forced flag |
+| **Placement** | Tile + Position + Rotation — what a player asks to play (`Game::play_move` input, `PlayMove` on the wire) |
+| **Move** | Placement + forced flag, decided by the rules — legal moves, board contents, `PlayedMove` |
 | **Board** | `ArrayVec<Move, 56>` of placed tiles, sorted by position |
 | **Forced space** | Empty hex with 3+ neighbors — must be filled if possible |
 | **Golden rule** | Touching edges must match in color |

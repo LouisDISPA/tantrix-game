@@ -1,5 +1,4 @@
 use dioxus::prelude::*;
-use tantrix_game::Move;
 
 use crate::components::tile::HexSvg;
 use crate::hooks::use_phase_view;
@@ -26,13 +25,11 @@ pub fn RotationWheel() -> Element {
     };
 
     let tile = wheel.tile;
-    let position = wheel.position;
 
     rsx! {
         div { class: "rotation-bar",
             for rotation in wheel.rotations.iter() {
                 {
-                    let m = Move { tile, position, rotation: *rotation, forced: false };
                     let cx = SVG_SIZE / 2.0;
                     let cy = SVG_SIZE / 2.0;
                     let rot = *rotation;
@@ -61,7 +58,13 @@ pub fn RotationWheel() -> Element {
                             svg {
                                 view_box: "0 0 {SVG_SIZE:.0} {SVG_SIZE:.0}",
                                 class: "rotation-bar-svg",
-                                HexSvg { m, cx, cy, hex_size: HEX_SIZE }
+                                HexSvg {
+                                    tile,
+                                    rotation: rot,
+                                    cx,
+                                    cy,
+                                    hex_size: HEX_SIZE,
+                                }
                             }
                         }
                     }

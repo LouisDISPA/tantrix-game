@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use tantrix_game::Move;
+use tantrix_game::Placement;
 
 use crate::components::tile::hex_svg::HexSvg;
 use crate::hooks::{use_highlight_map, use_is_game_over};
@@ -20,21 +20,22 @@ pub enum BoardTileVariant {
 /// A tile rendered at its board position. Absolutely positioned via
 /// [`hex_position_style`] using the tile's axial coordinates.
 #[component]
-pub fn BoardTile(m: Move, hex_size: f64, variant: BoardTileVariant) -> Element {
+pub fn BoardTile(placement: Placement, hex_size: f64, variant: BoardTileVariant) -> Element {
     let ctx = use_context::<GameCtx>();
     let highlight_map = use_highlight_map();
 
     let highlight_colors = use_memo(move || {
         highlight_map
             .read()
-            .get(&m.position)
+            .get(&placement.position)
             .cloned()
             .unwrap_or_default()
     });
     let is_game_over = use_is_game_over();
-    let just_placed = use_memo(move || ctx.ui_state.last_placed_position()() == Some(m.position));
+    let just_placed =
+        use_memo(move || ctx.ui_state.last_placed_position()() == Some(placement.position));
 
-    let style = hex_position_style(m.position, hex_size);
+    let style = hex_position_style(placement.position, hex_size);
     let is_preview = matches!(variant, BoardTileVariant::Preview);
 
     rsx! {
@@ -44,10 +45,11 @@ pub fn BoardTile(m: Move, hex_size: f64, variant: BoardTileVariant) -> Element {
             class: if just_placed() { "just-placed" },
             class: if is_game_over() { "dimmed-tile" },
             style: "{style}",
-            "data-position": "{m.position.x()},{m.position.y()}",
+            "data-position": "{placement.position.x()},{placement.position.y()}",
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                 HexSvg {
-                    m,
+                    tile: placement.tile,
+                    rotation: placement.rotation,
                     cx: TILE_CX,
                     cy: TILE_CY,
                     hex_size: TILE_HEX,

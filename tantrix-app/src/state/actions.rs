@@ -13,36 +13,30 @@
 //! own stable scope.
 
 use dioxus::prelude::*;
-use tantrix_game::{Move, Player, Position, Rotation};
+use tantrix_game::{Placement, Player, Position, Rotation};
 use tantrix_net::SessionCommand;
 
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
-/// Build a move from the current selection, play it, and hand off to
-/// [`advance_turn`]. No-op if the tile index is out of range.
+/// Place the selected tile, play it, and hand off to [`advance_turn`].
+/// No-op if the tile index is out of range.
 pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rotation) {
     let mut game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 
-    let (player_color, tile, forced) = {
+    let (player_color, tile) = {
         let gs = game_state.read();
         let color = gs.current_player();
         let Some(&tile) = gs.hand(color).get(tile_idx) else {
             return;
         };
-        let forced = gs
-            .hand_info()
-            .get(tile_idx)
-            .map(|info| info.has_forced)
-            .unwrap_or(false);
-        (color, tile, forced)
+        (color, tile)
     };
-    let m = Move {
+    let placement = Placement {
         tile,
         position: pos,
         rotation,
-        forced,
     };
 
     // Online play: forward the intent and let the server's StateUpdate drive
@@ -56,20 +50,18 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
             ui_state.write().reset_selection();
             return;
         }
-        sender.send(SessionCommand::PlayMove(m));
+        sender.send(SessionCommand::PlayMove(placement));
         ui_state.write().reset_selection();
         return;
     }
 
-    let result = game_state.write().play_move(m);
+    let result = game_state.write().play_move(placement);
     if let Err(e) = result {
         ui_state.message().set(format!("Error: {}", e));
         return;
     }
 
-    ui_state
-        .write()
-        .after_move(player_color, tile_idx, m.position);
+    ui_state.write().after_move(player_color, tile_idx, pos);
     advance_turn(ctx);
 }
 

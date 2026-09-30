@@ -67,10 +67,10 @@ a memo.
 | `BoardEmptyLayer` | — |
 | `ZoomControls`, `EndGameButton` | — |
 | `RotationWheel` | — (reads `use_phase_view` itself) |
-| `BoardTile` | `m: Move`, `hex_size: f64`, `variant: BoardTileVariant` |
+| `BoardTile` | `placement: Placement`, `hex_size: f64`, `variant: BoardTileVariant` |
 | `EmptyHex` | `position: Position`, `hex_size: f64`, `forced: bool`, `faint: bool` |
 | `HandTile` | `color: Color`, `index: usize` |
-| `HexSvg` | `m: Move`, `cx: f64`, `cy: f64`, `hex_size: f64`, `base_class`, `highlight_colors` |
+| `HexSvg` | `tile: Tile`, `rotation: Rotation`, `cx: f64`, `cy: f64`, `hex_size: f64`, `base_class`, `highlight_colors` |
 | `PlayerHand` | `color: Color`, `position: HandPosition` |
 | `ScoresPanel` | `children: Element` (action buttons) |
 | `ScoreRow` | `color: Color` |

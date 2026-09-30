@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::SeedableRng;
 use serde::Deserialize;
-use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile, TurnStep};
+use tantrix_game::{
+    Color, Direction, Game, Move, Placement, Player, Position, Rotation, Tile, TurnStep,
+};
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
 use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
 use tantrix_room::session_cookie::{self, SessionToken};
@@ -29,6 +31,15 @@ struct FixtureMove {
 }
 
 impl FixtureMove {
+    fn placement(&self) -> Placement {
+        Placement {
+            tile: self.tile,
+            position: self.position,
+            rotation: self.rotation,
+        }
+    }
+
+    /// The move the server should place, `forced` flag included.
     fn placed(&self) -> Move {
         Move {
             tile: self.tile,
@@ -39,7 +50,9 @@ impl FixtureMove {
     }
 
     fn intent(&self) -> PeerMessage {
-        PeerMessage::PlayMove { m: self.placed() }
+        PeerMessage::PlayMove {
+            placement: self.placement(),
+        }
     }
 }
 
@@ -85,26 +98,24 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
         (&blue, &red)
     };
     let tile = snapshot.hands[snapshot.current_player][0];
-    let invalid = Move {
-        tile,
-        position: Position::default()
-            .neighbor(Direction::Left)
-            .neighbor(Direction::Left),
-        rotation: Rotation::None,
-        forced: false,
+    let invalid = PeerMessage::PlayMove {
+        placement: Placement {
+            tile,
+            position: Position::default()
+                .neighbor(Direction::Left)
+                .neighbor(Direction::Left),
+            rotation: Rotation::None,
+        },
     };
     assert_eq!(
-        room.apply(other, PeerMessage::PlayMove { m: invalid }, &connected)
+        room.apply(other, invalid.clone(), &connected)
             .err()
             .unwrap()
             .0,
         RejectCode::NotYourTurn
     );
     assert_eq!(
-        room.apply(turn, PeerMessage::PlayMove { m: invalid }, &connected)
-            .err()
-            .unwrap()
-            .0,
+        room.apply(turn, invalid, &connected).err().unwrap().0,
         RejectCode::InvalidMove
     );
     assert!(room.snapshot(&connected).unwrap().board.is_empty());
@@ -185,17 +196,9 @@ fn state_updates_carry_the_move_as_the_server_placed_it() {
     let token = |color| if color == Color::Red { &red } else { &blue };
 
     for step in &fixture.moves {
-        // A client can get `forced` wrong; the server's board decides it.
-        let careless = Move {
-            forced: !step.forced,
-            ..step.placed()
-        };
+        // Clients send a bare placement; the server's board decides `forced`.
         let change = room
-            .apply(
-                token(step.player),
-                PeerMessage::PlayMove { m: careless },
-                &connected,
-            )
+            .apply(token(step.player), step.intent(), &connected)
             .unwrap();
         let HostMessage::StateUpdate { last_move, .. } = change.message else {
             panic!("a move mid-game sends a state update");

@@ -1,7 +1,7 @@
 //! Public session types shared by the browser transport and Dioxus UI.
 
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use tantrix_game::{Color, Move};
+use tantrix_game::{Color, Move, Placement};
 use tantrix_proto::{EndReason, GameSnapshot, LobbyState, PeerId, RejectCode};
 
 /// Commands the UI sends into the session.
@@ -13,8 +13,8 @@ pub enum SessionCommand {
     ReplaceSeat(Color),
     /// Transition the lobby into a running game.
     StartGame,
-    /// Submit a move for the current turn.
-    PlayMove(Move),
+    /// Place a tile for the current turn.
+    PlayMove(Placement),
     /// Pass because there are no legal moves.
     SkipTurn,
     /// Finish the running game early.

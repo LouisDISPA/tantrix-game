@@ -3,7 +3,7 @@ use std::ops::Deref;
 use dioxus::prelude::*;
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::SeedableRng;
-use tantrix_game::{Color, EnumMap, Game, Move, MoveError, PlayedMove, TileMoveInfo};
+use tantrix_game::{Color, EnumMap, Game, MoveError, Placement, PlayedMove, TileMoveInfo};
 use tantrix_proto::GameSnapshot;
 
 use super::config::GameConfig;
@@ -95,10 +95,11 @@ impl GameState {
         &self.hand_info
     }
 
-    /// Play `m` for the current player. They keep the turn while forced
-    /// spaces remain to fill after their free move.
-    pub fn play_move(&mut self, m: Move) -> Result<PlayedMove, MoveError> {
-        let played = self.game.play_move(m)?;
+    /// Play `placement` for the current player (see [`Game::play_move`]).
+    /// They keep the turn while forced spaces remain to fill after their
+    /// free move.
+    pub fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
+        let played = self.game.play_move(placement)?;
         self.refresh_hand_info();
         Ok(played)
     }
@@ -119,7 +120,7 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};
-    use tantrix_game::{Board, Color, EnumMap, Move, Position, Rotation, Tile, TurnStep};
+    use tantrix_game::{Board, Color, EnumMap, Placement, Position, Rotation, Tile, TurnStep};
     use tantrix_proto::GameSnapshot;
 
     use super::GameState;
@@ -147,6 +148,16 @@ mod tests {
         next: Color,
     }
 
+    impl FixtureMove {
+        fn placement(&self) -> Placement {
+            Placement {
+                tile: self.tile,
+                position: self.position,
+                rotation: self.rotation,
+            }
+        }
+    }
+
     fn seeded(seed: u64) -> GameState {
         GameState::new(&GameConfig::new(Some(seed)))
     }
@@ -166,19 +177,17 @@ mod tests {
 
         for (i, step) in fixture.moves.iter().enumerate() {
             assert_eq!(game.current_player(), step.player, "move {i}");
-            game.play_move(Move {
-                tile: step.tile,
-                position: step.position,
-                rotation: step.rotation,
-                forced: step.forced,
-            })
-            .unwrap_or_else(|e| panic!("move {i}: {e}"));
+            let played = game
+                .play_move(step.placement())
+                .unwrap_or_else(|e| panic!("move {i}: {e}"));
+            // The board decides whether the move filled a forced space.
+            assert_eq!(played.m.forced, step.forced, "move {i}");
             let placed = game
                 .board()
                 .iter()
                 .find(|m| m.position == step.position)
                 .unwrap();
-            assert_eq!(placed.forced, step.forced, "move {i}");
+            assert_eq!(*placed, played.m, "move {i}");
             assert_eq!(game.current_player(), step.next, "move {i}");
         }
 
@@ -196,13 +205,7 @@ mod tests {
         let mut game = seeded(fixture.seed);
         assert_eq!(game.hand_info(), game.moves_by_tile());
         for step in &fixture.moves {
-            game.play_move(Move {
-                tile: step.tile,
-                position: step.position,
-                rotation: step.rotation,
-                forced: step.forced,
-            })
-            .unwrap();
+            game.play_move(step.placement()).unwrap();
             assert_eq!(game.hand_info(), game.moves_by_tile());
         }
     }
@@ -249,7 +252,7 @@ mod tests {
         while moves.len() < 20 {
             let player = game.current_player();
             let m = *game.legal_moves().first()?;
-            game.play_move(m).ok()?;
+            game.play_move(m.placement()).ok()?;
             let next = game.current_player();
             moves.push(FixtureMove {
                 player,

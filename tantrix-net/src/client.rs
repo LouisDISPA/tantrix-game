@@ -207,7 +207,7 @@ async fn run_session(
                         SessionCommand::PickColor(color) => PeerMessage::PickColor { color },
                         SessionCommand::ReplaceSeat(color) => PeerMessage::ReplaceSeat { color },
                         SessionCommand::StartGame => PeerMessage::StartGame,
-                        SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
+                        SessionCommand::PlayMove(placement) => PeerMessage::PlayMove { placement },
                         SessionCommand::SkipTurn => PeerMessage::SkipTurn,
                         SessionCommand::EndGame => PeerMessage::EndGame,
                         SessionCommand::UpdateNickname(nickname) => PeerMessage::UpdateNickname { nickname },

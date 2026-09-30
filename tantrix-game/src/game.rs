@@ -7,8 +7,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Bag, Board, Color, Hand, Move, MoveError, PlayedMove, Player, PlayerScore, ScoringPath,
-    SetupError, TileMoveInfo, TurnStep, TurnTracker, TILES_IN_HAND,
+    Bag, Board, Color, Hand, Move, MoveError, Placement, PlayedMove, Player, PlayerScore,
+    ScoringPath, SetupError, TileMoveInfo, TurnStep, TurnTracker, TILES_IN_HAND,
 };
 
 pub fn is_game_over(bag: &Bag, hands: &EnumMap<Color, Hand>) -> bool {
@@ -265,25 +265,27 @@ impl Game {
 
     // --- Changes ---
 
-    /// Play `m` for the current player, draw a replacement tile, and pass the
-    /// turn once it is over. `m` must match a legal move's tile, position
-    /// and rotation; the returned [`PlayedMove`] holds the move as placed.
+    /// Play `placement` for the current player, draw a replacement tile, and
+    /// pass the turn once it is over. `placement` must match one of the
+    /// [`Self::legal_moves`]; the returned [`PlayedMove`] holds that move as
+    /// placed, with the board's `forced` flag.
     ///
     /// A turn has three steps: fill forced spaces, make one free move, then fill
     /// forced spaces again. The player keeps the turn until the free move is
     /// played and no forced space is left that they can fill.
-    pub fn play_move(&mut self, m: impl Into<Move>) -> Result<PlayedMove, MoveError> {
-        let m = m.into();
+    pub fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
         let current = self.current_player();
-        if !self.hands[current].contains(&m.tile) {
+        if !self.hands[current].contains(&placement.tile) {
             return Err(MoveError::TileNotInHand);
         }
         if self.legal_moves.is_empty() {
             return Err(MoveError::NoLegalMoves);
         }
-        let Some(&canonical) = self.legal_moves.iter().find(|legal| {
-            legal.tile == m.tile && legal.position == m.position && legal.rotation == m.rotation
-        }) else {
+        let Some(&canonical) = self
+            .legal_moves
+            .iter()
+            .find(|legal| legal.placement() == placement)
+        else {
             return Err(MoveError::InvalidMove);
         };
 
@@ -336,7 +338,8 @@ impl Game {
             let Some(m) = self.ai_choose() else {
                 return; // Game over, or a human player with moves
             };
-            self.play_move(m).expect("AI chose invalid move");
+            self.play_move(m.placement())
+                .expect("AI chose invalid move");
         }
     }
 
@@ -370,8 +373,8 @@ mod tests {
     use rand::SeedableRng;
 
     use crate::{
-        Bag, Board, Color, Direction, Game, Hand, Move, MoveError, Player, Position, Rotation,
-        SetupError, TantrixAi, Tile, TurnStep,
+        Bag, Board, Color, Direction, Game, Hand, Move, MoveError, Placement, Player, Position,
+        Rotation, SetupError, TantrixAi, Tile, TurnStep,
     };
 
     #[test]
@@ -379,7 +382,7 @@ mod tests {
         let mut game =
             Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
         let first = game.legal_moves()[0];
-        game.play_move(first).unwrap();
+        game.play_move(first.placement()).unwrap();
 
         let encoded = serde_json::to_vec(&game.to_data()).unwrap();
         let restored = Game::from_data(serde_json::from_slice(&encoded).unwrap());
@@ -401,7 +404,7 @@ mod tests {
         let _player_tiles = game.hand(active_color);
         let possible_moves = game.legal_moves();
         let m = possible_moves[0];
-        game.play_move(m).unwrap();
+        game.play_move(m.placement()).unwrap();
     }
 
     #[test]
@@ -409,25 +412,44 @@ mod tests {
         let mut game =
             Game::new(Player::Someone, Player::Someone, Player::None, Player::None).unwrap();
         let first = game.legal_moves()[0];
-        game.play_move(first).unwrap();
+        game.play_move(first.placement()).unwrap();
 
         let possible = game.legal_moves().to_vec();
         let illegal = possible
             .iter()
             .find_map(|m| {
                 enum_iterator::all::<Rotation>()
-                    .find(|&rotation| {
-                        !possible.iter().any(|legal| {
-                            legal.tile == m.tile
-                                && legal.position == m.position
-                                && legal.rotation == rotation
-                        })
+                    .map(|rotation| Placement {
+                        rotation,
+                        ..m.placement()
                     })
-                    .map(|rotation| Move { rotation, ..*m })
+                    .find(|placement| !possible.iter().any(|legal| legal.placement() == *placement))
             })
             .expect("post-opening moves should include a constrained position");
 
+        let board = game.board().clone();
         assert_eq!(game.play_move(illegal), Err(MoveError::InvalidMove));
+        assert_eq!(game.board(), &board);
+    }
+
+    #[test]
+    fn play_move_refuses_a_tile_not_in_hand() {
+        let mut game = seeded_game(0);
+        let legal = game.legal_moves()[0];
+        let other = game
+            .playing_colors()
+            .iter()
+            .copied()
+            .find(|&c| c != game.current_player())
+            .unwrap();
+        let tile = game.hand(other)[0];
+
+        let placement = Placement {
+            tile,
+            ..legal.placement()
+        };
+        assert_eq!(game.play_move(placement), Err(MoveError::TileNotInHand));
+        assert!(game.board().is_empty());
     }
 
     #[test]
@@ -437,14 +459,10 @@ mod tests {
         let legal = game.legal_moves()[0];
         let index = game.hand(player).iter().position(|&t| t == legal.tile);
 
-        // The board decides whether a move is forced, not the caller.
-        let played = game
-            .play_move(Move {
-                forced: false,
-                ..legal
-            })
-            .unwrap();
+        // A placement says nothing about forced spaces: the board decides.
+        let played = game.play_move(legal.placement()).unwrap();
 
+        assert!(played.m.forced);
         assert_eq!(played.m, legal);
         assert_eq!(Some(played.hand_index), index);
         assert!(game.board().contains(&legal));
@@ -619,7 +637,7 @@ mod tests {
                 legal.sort_by_key(|&(t, p, r)| (t as u8, p, r as u8));
                 assert_eq!(grouped, legal, "seed {seed}");
 
-                game.play_move(m).unwrap();
+                game.play_move(m.placement()).unwrap();
             }
         }
     }
@@ -790,7 +808,7 @@ mod tests {
                 let Some(&m) = game.legal_moves().first() else {
                     break;
                 };
-                game.play_move(m).unwrap();
+                game.play_move(m.placement()).unwrap();
             }
         }
         panic!("no seeded game reached the wanted state");
@@ -802,7 +820,7 @@ mod tests {
 
     /// A placement the current player could make outside every forced space,
     /// respecting the restriction rules.
-    fn free_placement(game: &Game) -> Option<Move> {
+    fn free_placement(game: &Game) -> Option<Placement> {
         let board = game.board();
         let contour = board.contour_positions();
         let controlled = board.controlled_positions(&contour);
@@ -812,6 +830,7 @@ mod tests {
                 .filter(|p| !board.position_is_forced(p) && !controlled.contains(p))
                 .flat_map(|&p| board.get_possible_move(tile, p))
                 .find(|m| !board.creates_same_color_triple(m))
+                .map(Placement::from)
         })
     }
 
@@ -822,7 +841,7 @@ mod tests {
         let opening = game.legal_moves()[0];
         assert!(!opening.forced);
 
-        game.play_move(opening).unwrap();
+        game.play_move(opening.placement()).unwrap();
 
         assert_ne!(game.current_player(), first);
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
@@ -837,7 +856,7 @@ mod tests {
         let player = game.current_player();
 
         let fill = game.legal_moves()[0];
-        game.play_move(fill).unwrap();
+        game.play_move(fill.placement()).unwrap();
 
         assert_eq!(game.current_player(), player);
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
@@ -862,7 +881,7 @@ mod tests {
         while game.current_player() == player {
             let fill = game.legal_moves()[0];
             assert!(fill.forced);
-            game.play_move(fill).unwrap();
+            game.play_move(fill.placement()).unwrap();
         }
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
     }
@@ -877,7 +896,7 @@ mod tests {
                 let player = game.current_player();
                 let step = game.turn_step();
 
-                game.play_move(m).unwrap();
+                game.play_move(m.placement()).unwrap();
 
                 // After the free move, only forced spaces may be filled.
                 assert!(step == TurnStep::BeforeFreeMove || m.forced, "seed {seed}");

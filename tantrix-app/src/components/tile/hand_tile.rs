@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use tantrix_game::{Color, Move, Position, Rotation};
+use tantrix_game::{Color, Rotation};
 
 use crate::components::tile::hex_svg::HexSvg;
 use crate::state::actions::execute_move;
@@ -49,12 +49,6 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
             {
                 let cx = TILE_VB / 2.0;
                 let cy = TILE_VB / 2.0;
-                let m = Move {
-                    tile,
-                    position: Position::CENTER,
-                    rotation: Rotation::None,
-                    forced: false,
-                };
                 let state = state();
                 let show_outline = matches!(state, HandTileState::Selected | HandTileState::Forced);
                 let outline_class = match state {
@@ -101,7 +95,13 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                             if show_outline {
                                 polygon { points: "{outline_points}", class: "{outline_class}" }
                             }
-                            HexSvg { m, cx, cy, hex_size: TILE_HEX }
+                            HexSvg {
+                                tile,
+                                rotation: Rotation::None,
+                                cx,
+                                cy,
+                                hex_size: TILE_HEX,
+                            }
                         }
                     }
                 }

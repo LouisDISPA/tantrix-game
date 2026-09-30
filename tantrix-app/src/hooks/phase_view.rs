@@ -1,5 +1,5 @@
 use dioxus::prelude::*;
-use tantrix_game::{Move, Position, Rotation, Tile};
+use tantrix_game::{Placement, Position, Rotation, Tile};
 
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
@@ -13,11 +13,11 @@ pub struct ValidPosition {
     pub faint: bool,
 }
 
-/// Rotation wheel display data.
+/// Rotation wheel display data: the selected tile and the rotations that
+/// fit at the selected position.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WheelData {
     pub tile: Tile,
-    pub position: Position,
     pub rotations: Vec<Rotation>,
 }
 
@@ -28,8 +28,8 @@ pub struct WheelData {
 pub struct PhaseView {
     /// Empty hex positions to show as click targets (empty in Idle / game over).
     pub positions: Vec<ValidPosition>,
-    /// Ghost preview of the move being considered (hover or selection-driven).
-    pub preview: Option<Move>,
+    /// Ghost preview of the placement being considered (hover or selection-driven).
+    pub preview: Option<Placement>,
     /// Rotation wheel data — present only during SelectRotation.
     pub wheel: Option<WheelData>,
 }
@@ -70,11 +70,10 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                     if info.positions.len() == 1 {
                         let (&position, rots) = info.positions.iter().next()?;
                         if rots.len() == 1 {
-                            return Some(Move {
+                            return Some(Placement {
                                 tile,
                                 position,
                                 rotation: rots[0],
-                                forced: false,
                             });
                         }
                     }
@@ -110,11 +109,10 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                     let tile = *hand.get(idx)?;
                     let rotations = info.positions.get(&position)?;
                     let rotation = hovered.rotation().unwrap_or(*rotations.first()?);
-                    Some(Move {
+                    Some(Placement {
                         tile,
                         position,
                         rotation,
-                        forced: false,
                     })
                 });
 
@@ -168,17 +166,12 @@ pub fn use_phase_view() -> Memo<PhaseView> {
                     .rotation()
                     .or_else(|| rotations.first().copied())
                     .unwrap_or(Rotation::None);
-                let preview = Some(Move {
+                let preview = Some(Placement {
                     tile,
                     position,
                     rotation,
-                    forced: false,
                 });
-                let wheel = Some(WheelData {
-                    tile,
-                    position,
-                    rotations,
-                });
+                let wheel = Some(WheelData { tile, rotations });
 
                 PhaseView {
                     positions,

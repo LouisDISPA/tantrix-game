@@ -1,11 +1,12 @@
 use dioxus::prelude::*;
-use tantrix_game::{Color, Move};
+use tantrix_game::{Color, Rotation, Tile};
 
 use crate::svg::paths::{
     color_css_class, color_link_path, color_name, find_color_pairs, hex_polygon_points,
 };
 
-/// Shared inner SVG content for every hex tile in the app.
+/// Shared inner SVG content for every hex tile in the app: `tile` turned by
+/// `rotation`, centered on (`cx`, `cy`).
 ///
 /// Emits (in order, as SVG siblings):
 /// 1. A `<g class="{base_class}">` wrapping the fill polygon + 3 color curves.
@@ -18,7 +19,8 @@ use crate::svg::paths::{
 /// read context. Callers provide their own outer `<svg>` / viewBox.
 #[component]
 pub fn HexSvg(
-    m: Move,
+    tile: Tile,
+    rotation: Rotation,
     cx: f64,
     cy: f64,
     hex_size: f64,
@@ -26,7 +28,7 @@ pub fn HexSvg(
     #[props(default)] highlight_colors: Vec<Color>,
 ) -> Element {
     let points = hex_polygon_points(cx, cy, hex_size);
-    let pairs = find_color_pairs(&m);
+    let pairs = find_color_pairs(tile, rotation);
 
     rsx! {
         g { class: "{base_class}",

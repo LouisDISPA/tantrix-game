@@ -11,7 +11,9 @@ use ratatui::widgets::{Block, Paragraph, Widget, Wrap};
 use ratatui::DefaultTerminal;
 use ratatui_macros::line;
 use tantrix_ai::RandomAi;
-use tantrix_game::{Color, Direction, Game, Move, Player, Position, Rotation, Tile, TileMoveInfo};
+use tantrix_game::{
+    Color, Direction, Game, Placement, Player, Position, Rotation, Tile, TileMoveInfo,
+};
 
 // Hex geometry constants for Canvas rendering
 const HEX_RADIUS: f64 = 10.0;
@@ -89,8 +91,8 @@ fn edge_separation(d1: Direction, d2: Direction) -> usize {
     diff.min(6 - diff)
 }
 
-/// Find the 3 pairs of directions sharing the same color on a placed tile.
-fn find_color_pairs(m: &Move) -> [(Direction, Direction, Color); 3] {
+/// Find the 3 pairs of directions sharing the same color on `tile` turned by `rotation`.
+fn find_color_pairs(tile: Tile, rotation: Rotation) -> [(Direction, Direction, Color); 3] {
     let dirs = [
         Direction::Left,
         Direction::TopLeft,
@@ -107,9 +109,9 @@ fn find_color_pairs(m: &Move) -> [(Direction, Direction, Color); 3] {
         if used[i] {
             continue;
         }
-        let c = m.color(dirs[i]);
+        let c = tile.color(dirs[i] - rotation);
         for j in (i + 1)..6 {
-            if !used[j] && m.color(dirs[j]) == c {
+            if !used[j] && tile.color(dirs[j] - rotation) == c {
                 pairs[count] = (dirs[i], dirs[j], c);
                 count += 1;
                 used[i] = true;
@@ -175,11 +177,20 @@ fn draw_color_link(
     }
 }
 
-/// Draw a hex tile with colored interior lines connecting same-colored edge pairs.
-fn draw_hex_tile(ctx: &mut Context<'_>, cx: f64, cy: f64, m: &Move, r: f64, outline: RColor) {
+/// Draw `tile` turned by `rotation`, with colored interior lines connecting
+/// same-colored edge pairs.
+fn draw_hex_tile(
+    ctx: &mut Context<'_>,
+    cx: f64,
+    cy: f64,
+    tile: Tile,
+    rotation: Rotation,
+    r: f64,
+    outline: RColor,
+) {
     let verts = hex_vertices(cx, cy, r);
     draw_hex_outline_verts(ctx, &verts, outline);
-    for (d1, d2, game_color) in find_color_pairs(m) {
+    for (d1, d2, game_color) in find_color_pairs(tile, rotation) {
         draw_color_link(
             ctx,
             cx,
@@ -414,16 +425,14 @@ impl App {
         let tile = self.current_hand()[self.tile_index];
         let position = self.sorted_positions[self.position_index];
         let rotation = self.sorted_rotations[self.rotation_index];
-        let forced = self.hand_info[self.tile_index].has_forced;
 
-        let m = Move {
+        let placement = Placement {
             tile,
             position,
             rotation,
-            forced,
         };
 
-        match self.game.play_move(m) {
+        match self.game.play_move(placement) {
             Ok(_) => {
                 self.message = String::new();
                 self.tile_index = 0;
@@ -465,7 +474,7 @@ impl App {
         self.game.hand(self.game.current_player())
     }
 
-    fn preview_move(&self) -> Option<Move> {
+    fn preview_placement(&self) -> Option<Placement> {
         let tile = *self.current_hand().get(self.tile_index)?;
         let position = *self.sorted_positions.get(self.position_index)?;
         let rotation = if self.phase == TurnPhase::SelectRotation {
@@ -473,11 +482,10 @@ impl App {
         } else {
             *self.sorted_rotations.first()?
         };
-        Some(Move {
+        Some(Placement {
             tile,
             position,
             rotation,
-            forced: false,
         })
     }
 }
@@ -531,10 +539,10 @@ impl Widget for BoardWidget<'_> {
         let position_index = self.app.position_index;
 
         // Collect placed tiles
-        let placed_moves: Vec<Move> = self.app.game.board().to_vec();
+        let placed_moves = self.app.game.board().to_vec();
         let hand_info = &self.app.hand_info;
         let sorted_positions = &self.app.sorted_positions;
-        let preview = self.app.preview_move();
+        let preview = self.app.preview_placement();
 
         let overlay_positions: Vec<(f64, f64, usize, bool)> = match phase {
             TurnPhase::SelectTile if tile_index < hand_info.len() => {
@@ -575,7 +583,15 @@ impl Widget for BoardWidget<'_> {
             .paint(move |ctx| {
                 for m in &placed_moves {
                     let (cx, cy) = axial_to_canvas(m.position.x(), m.position.y());
-                    draw_hex_tile(ctx, cx, cy, m, HEX_RADIUS, RColor::DarkGray);
+                    draw_hex_tile(
+                        ctx,
+                        cx,
+                        cy,
+                        m.tile,
+                        m.rotation,
+                        HEX_RADIUS,
+                        RColor::DarkGray,
+                    );
                 }
 
                 ctx.layer();
@@ -585,8 +601,16 @@ impl Widget for BoardWidget<'_> {
                         .is_some_and(|(sx, sy)| (sx - cx).abs() < 0.1 && (sy - cy).abs() < 0.1);
 
                     if is_selected {
-                        if let Some(ref pv) = preview {
-                            draw_hex_tile(ctx, cx, cy, pv, HEX_RADIUS, RColor::White);
+                        if let Some(pv) = preview {
+                            draw_hex_tile(
+                                ctx,
+                                cx,
+                                cy,
+                                pv.tile,
+                                pv.rotation,
+                                HEX_RADIUS,
+                                RColor::White,
+                            );
                         }
                         if rots > 1 {
                             let label = rotation_count_label(rots);
@@ -695,15 +719,8 @@ impl Widget for HandWidget<'_> {
                         break;
                     }
 
-                    let m = Move {
-                        tile,
-                        position: Position::CENTER,
-                        rotation: Rotation::None,
-                        forced: false,
-                    };
-
                     if draw_curves {
-                        draw_hex_tile(ctx, cx, cy, &m, r, RColor::DarkGray);
+                        draw_hex_tile(ctx, cx, cy, tile, Rotation::None, r, RColor::DarkGray);
                     } else {
                         draw_hex_outline(ctx, cx, cy, r, RColor::DarkGray);
                     }

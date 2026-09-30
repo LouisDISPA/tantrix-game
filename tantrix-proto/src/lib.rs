@@ -11,7 +11,7 @@
 
 use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};
-use tantrix_game::{Board, Color, Hand, Move, TurnStep};
+use tantrix_game::{Board, Color, Hand, Move, Placement, TurnStep};
 
 /// Raw keepalive frames. The room answers the ping with the pong through the
 /// runtime's auto-response, without waking the Durable Object.
@@ -143,8 +143,9 @@ pub enum PeerMessage {
     ReplaceSeat { color: Color },
     /// A seated player's request to transition lobby → game.
     StartGame,
-    /// Submit a move for the current turn.
-    PlayMove { m: Move },
+    /// Place a tile for the current turn. The server checks it against the
+    /// legal moves; whether it fills a forced space is the board's call.
+    PlayMove { placement: Placement },
     /// Current player has no legal moves and wants to pass.
     SkipTurn,
     /// Finish the running game and score the board as it stands.
@@ -169,6 +170,7 @@ pub enum HostMessage {
     /// Lobby → playing transition. Clients should render the game view.
     GameStarted { snapshot: GameSnapshot },
     /// New authoritative state after a move / skip / roster change.
+    /// `last_move` is the move as the server placed it.
     StateUpdate {
         snapshot: GameSnapshot,
         last_move: Option<Move>,
@@ -195,4 +197,29 @@ pub fn encode<T: Serialize>(msg: &T) -> Vec<u8> {
 
 pub fn decode<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, serde_json::Error> {
     serde_json::from_slice(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Direction, Placement, Position, Rotation, Tile};
+
+    use super::{decode, encode, PeerMessage};
+
+    /// Clients send a placement with no `forced` flag. The e2e suite's raw
+    /// room sockets (`e2e/tests/online-authority.spec.ts`) write this JSON
+    /// by hand, so the shape is part of the protocol.
+    #[test]
+    fn play_move_sends_a_bare_placement() {
+        let placement = Placement {
+            tile: Tile::RYYBRB,
+            position: Position::CENTER.neighbor(Direction::Left),
+            rotation: Rotation::R60,
+        };
+        let json = r#"{"PlayMove":{"placement":{"tile":"RYYBRB","position":{"x":-1,"y":0},"rotation":"R60"}}}"#;
+
+        let encoded = encode(&PeerMessage::PlayMove { placement });
+        assert_eq!(String::from_utf8(encoded).unwrap(), json);
+        let decoded: PeerMessage = decode(json.as_bytes()).unwrap();
+        assert!(matches!(decoded, PeerMessage::PlayMove { placement: p } if p == placement));
+    }
 }

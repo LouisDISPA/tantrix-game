@@ -84,11 +84,12 @@ test('server rejects out-of-turn and invalid moves without changing the board', 
     const started = await until(page, (m) => 'GameStarted' in m);
     const current = started.GameStarted.snapshot.current_player as 'Red' | 'Blue';
     const [right, wrong] = current === 'Red' ? [page, guest] : [guest, page];
-    const invalidMove = { tile: 'RYYBRB', position: { x: 99, y: 99 }, rotation: 'None', forced: false };
+    // A placement carries no `forced` flag: the server's board decides it.
+    const invalidPlacement = { tile: 'RYYBRB', position: { x: 99, y: 99 }, rotation: 'None' };
 
-    await send(wrong, { PlayMove: { m: invalidMove } });
+    await send(wrong, { PlayMove: { placement: invalidPlacement } });
     await until(wrong, (m) => m.Error?.code === 'NotYourTurn');
-    await send(right, { PlayMove: { m: invalidMove } });
+    await send(right, { PlayMove: { placement: invalidPlacement } });
     await until(right, (m) => m.Error?.code === 'InvalidMove');
 
     const before = (await messages(right)).filter((m) => 'GameStarted' in m).length;

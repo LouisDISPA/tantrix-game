@@ -260,10 +260,10 @@ impl RoomData {
                     persist: true,
                 })
             }
-            PeerMessage::PlayMove { m } => {
+            PeerMessage::PlayMove { placement } => {
                 let mut game = self.turn_game(token)?;
                 let played = game
-                    .play_move(m)
+                    .play_move(placement)
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
                 let stalled = game.skip_stuck_players();
                 self.finish_turn(game, Some(played.m), stalled, connected)

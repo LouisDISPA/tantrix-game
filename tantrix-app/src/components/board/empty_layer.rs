@@ -22,7 +22,7 @@ pub fn BoardEmptyLayer() -> Element {
         }
         if let Some(preview) = view.preview {
             BoardTile {
-                m: preview,
+                placement: preview,
                 hex_size: HEX_SIZE,
                 variant: BoardTileVariant::Preview,
             }

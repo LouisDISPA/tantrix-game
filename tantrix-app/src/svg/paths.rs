@@ -1,4 +1,4 @@
-use tantrix_game::{Color, Direction, Move};
+use tantrix_game::{Color, Direction, Rotation, Tile};
 
 use super::geometry::{direction_edge, edge_midpoint, edge_separation, hex_vertices};
 
@@ -12,8 +12,8 @@ pub fn hex_polygon_points(cx: f64, cy: f64, size: f64) -> String {
         .join(" ")
 }
 
-/// Find the 3 pairs of directions sharing the same color on a tile (with rotation applied).
-pub fn find_color_pairs(m: &Move) -> [(Direction, Direction, Color); 3] {
+/// Find the 3 pairs of directions sharing the same color on `tile` turned by `rotation`.
+pub fn find_color_pairs(tile: Tile, rotation: Rotation) -> [(Direction, Direction, Color); 3] {
     let dirs = [
         Direction::Left,
         Direction::TopLeft,
@@ -30,9 +30,9 @@ pub fn find_color_pairs(m: &Move) -> [(Direction, Direction, Color); 3] {
         if used[i] {
             continue;
         }
-        let c = m.color(dirs[i]);
+        let c = tile.color(dirs[i] - rotation);
         for j in (i + 1)..6 {
-            if !used[j] && m.color(dirs[j]) == c {
+            if !used[j] && tile.color(dirs[j] - rotation) == c {
                 pairs[count] = (dirs[i], dirs[j], c);
                 count += 1;
                 used[i] = true;

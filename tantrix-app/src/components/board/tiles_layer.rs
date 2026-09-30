@@ -14,7 +14,7 @@ pub fn BoardTilesLayer() -> Element {
                 rsx! {
                     BoardTile {
                         key: "{m.position.x()},{m.position.y()}",
-                        m: *m,
+                        placement: m.placement(),
                         hex_size: HEX_SIZE,
                         variant: BoardTileVariant::Placed,
                     }
