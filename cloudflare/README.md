@@ -169,12 +169,9 @@ The peer ID is not reserved. A reconnecting browser receives a fresh UUID.
 
 ## Local development
 
-Install the tools once:
-
-```bash
-cd cloudflare && npm install
-cargo install worker-build
-```
+Besides the Rust toolchain and `dx`, you need Node.js/npm. The recipes install
+the rest on first use: `worker-build` at the version matching the `worker` crate
+(into `target/tools/`) and wrangler from `package-lock.json` (`npm ci`).
 
 Build the client and the SSR module, then start the local emulator:
 

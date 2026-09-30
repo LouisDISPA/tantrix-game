@@ -421,7 +421,10 @@ fn serve_dir_cached<S>(mut router: Router<S>, public_path: &Path, directory: &Pa
 where
     S: Send + Sync + Clone + 'static,
 {
-    use tower_http::services::{ServeDir, ServeFile};
+    // `ServeDir` is only used by the debug-build branch below.
+    #[cfg(debug_assertions)]
+    use tower_http::services::ServeDir;
+    use tower_http::services::ServeFile;
 
     let dir = std::fs::read_dir(directory)
         .unwrap_or_else(|e| panic!("Couldn't read public directory at {:?}: {}", &directory, e));

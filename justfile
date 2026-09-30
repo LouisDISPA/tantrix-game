@@ -4,8 +4,8 @@
 #   cargo install just              (task runner)
 #   cargo install dioxus-cli        (dx)
 #   ngrok                           (for the tunnel recipe)
-#   cargo install worker-build      (for the worker-* recipes)
-#   cd cloudflare && npm install    (wrangler, for the worker-* recipes)
+#   Node.js/npm                     (for the worker-* recipes; they install
+#                                    worker-build and wrangler on first use)
 #
 # The app is a Dioxus fullstack binary that serves both the client bundle
 # and an embedded matchbox signaling server on a single port. No external
@@ -54,6 +54,9 @@ client_public := "target/dx/tantrix-app/release/web/public"
 
 # Release web client that hydrates server-rendered pages.
 worker-client:
+    # dx never deletes superseded hashed bundles: start clean so only this
+    # build's files are uploaded and checked against the SSR module.
+    rm -rf {{ client_public }}
     cd tantrix-app && dx build --web --release --features fullstack
     # The Worker renders every page, so the static index.html is not uploaded.
     printf 'index.html\n' > {{ client_public }}/.assetsignore
@@ -63,6 +66,11 @@ worker-client:
 worker-ssr:
     #!/usr/bin/env bash
     set -euo pipefail
+    # worker-build must match the `worker` crate: install that exact version
+    # into target/tools (a no-op once it is there).
+    version=$(grep -A1 '^name = "worker"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')
+    cargo install worker-build --version "$version" --locked --root target/tools --quiet
+    worker_build="$PWD/target/tools/bin/worker-build"
     # Same cargo invocation as worker-build's, so its own build step below is a
     # no-op and keeps the asset paths patched in by `dx tools assets`.
     (cd tantrix-worker && WASM_BINDGEN_USE_JS_SYS=1 cargo build --lib --release --target wasm32-unknown-unknown)
@@ -78,19 +86,23 @@ worker-ssr:
             exit 1
         fi
     done
-    (cd tantrix-worker && worker-build --release --out-dir ../cloudflare/build/ssr)
+    (cd tantrix-worker && "$worker_build" --release --out-dir ../cloudflare/build/ssr)
 
 # Build the client and the SSR module.
 worker-build: worker-client worker-ssr
 
+# Install wrangler, pinned by cloudflare/package-lock.json, on first use.
+_wrangler:
+    cd cloudflare && if [ ! -d node_modules ]; then npm ci; fi
+
 # Run the production Worker locally (http://localhost:8787).
-worker-dev: worker-build
+worker-dev: worker-build _wrangler
     cd cloudflare && npx wrangler dev
 
 # Run the e2e suite against the Worker (wrangler dev) instead of the native server.
-worker-e2e: worker-build
-    cd e2e && npm run test:worker
+worker-e2e: worker-build _wrangler
+    cd e2e && if [ ! -d node_modules ]; then npm ci; fi && npm run test:worker
 
 # Build and deploy the Worker.
-worker-deploy: worker-build
+worker-deploy: worker-build _wrangler
     cd cloudflare && npx wrangler deploy

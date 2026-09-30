@@ -53,6 +53,13 @@ files) and the `tower-http` file-serving helpers are compiled out.
 next to the executable (Workers have no filesystem) need it to provide dx's
 client `index.html`.
 
+## 5. Release-build warning (`src/server.rs`)
+
+`serve_dir_cached` imports `ServeDir` unconditionally but only uses it under
+`cfg(debug_assertions)`, so native release builds warned about an unused
+import (registry crates hide this; a path dependency prints it on every
+build). The import is now gated the same way.
+
 ## Not changed
 
 `dioxus::server` (the umbrella crate's `server` feature) still does not
