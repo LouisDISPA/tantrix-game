@@ -1,37 +1,17 @@
-//! Public session types shared by host and client implementations.
+//! Public session types shared by the browser transport and Dioxus UI.
 
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
 use tantrix_game::{Color, Move};
 use tantrix_proto::{EndReason, GameSnapshot, LobbyState, PeerId, RejectCode};
-
-/// Which role this peer is playing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionRole {
-    Host,
-    Client,
-}
-
-/// The stage of connecting to a room that ran out of time.
-///
-/// Joining goes through three separate waits that can each stall on their own:
-/// the signaling server, the WebRTC link to the host (SDP exchange + ICE), and
-/// the host's answer to our `Hello`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectStage {
-    /// The signaling server never assigned us an id.
-    Signaling,
-    /// Signaling worked, but no WebRTC data channel to another peer opened.
-    PeerLink,
-    /// The data channel is open, but the host never answered our `Hello`.
-    Welcome,
-}
 
 /// Commands the UI sends into the session.
 #[derive(Debug, Clone)]
 pub enum SessionCommand {
     /// Claim/release a color in the lobby.
     PickColor(Option<Color>),
-    /// Host-only: transition the lobby into a running game.
+    /// Take a seat someone else holds (after the user confirmed).
+    ReplaceSeat(Color),
+    /// Transition the lobby into a running game.
     StartGame,
     /// Submit a move for the current turn.
     PlayMove(Move),
@@ -39,8 +19,6 @@ pub enum SessionCommand {
     SkipTurn,
     /// Change the local player's display name.
     UpdateNickname(String),
-    /// Host-only: remove another participant from the room.
-    Kick(PeerId),
     /// Leave the room. After this the session task exits.
     Leave,
 }
@@ -48,14 +26,8 @@ pub enum SessionCommand {
 /// Events the session emits for the UI to render.
 #[derive(Debug, Clone)]
 pub enum SessionEvent {
-    /// Signaling succeeded and the socket is live. For clients this fires
-    /// once a `Welcome` arrives; for hosts it fires as soon as a peer id is
-    /// assigned.
-    Connected {
-        role: SessionRole,
-        my_peer_id: PeerId,
-        host_peer_id: PeerId,
-    },
+    /// The server accepted our Hello and assigned a public participant id.
+    Connected { my_peer_id: PeerId },
     /// Lobby state changed.
     Lobby(LobbyState),
     /// Lobby → game transition.
@@ -70,14 +42,13 @@ pub enum SessionEvent {
         reason: EndReason,
         snapshot: GameSnapshot,
     },
-    /// The host rejected an intent or reported an error.
+    /// The server rejected an intent or reported an error.
     Error {
         code: Option<RejectCode>,
         message: String,
     },
-    /// Connecting did not finish in time. The session task has exited; the UI
-    /// should offer a retry.
-    ConnectTimeout { stage: ConnectStage },
+    /// Connecting did not finish in time. The UI should offer a retry.
+    ConnectTimeout,
     /// Fatal transport error. The session task has exited.
     Disconnected { reason: String },
 }

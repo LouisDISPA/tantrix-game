@@ -18,10 +18,12 @@ fn main() {
         return;
     }
 
-    let source = env::var("TANTRIX_INDEX_HTML").map(PathBuf::from).unwrap_or_else(|_| {
-        PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-            .join("../target/dx/tantrix-app/release/web/public/index.html")
-    });
+    let source = env::var("TANTRIX_INDEX_HTML")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+                .join("../target/dx/tantrix-app/release/web/public/index.html")
+        });
     println!("cargo::rerun-if-changed={}", source.display());
 
     let html = fs::read_to_string(&source).unwrap_or_else(|err| {

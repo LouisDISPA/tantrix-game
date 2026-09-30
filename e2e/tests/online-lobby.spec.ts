@@ -3,19 +3,16 @@ import { attachAll, instrument } from './diagnostics';
 import { openApp } from './open-app';
 
 /**
- * A pick that loses the race for a color (the other player's seat had not yet
- * reached this screen) is rejected by the host. When the *host* is the one who
- * loses, the rejection used to be sent over a data channel to itself, which
- * does not exist: matchbox panics on that and the whole session died. The host
- * must instead show the error, keep its own seat, and carry on.
+ * Anyone can take a seat someone else holds, so a player who walks away
+ * can't block it. Because that removes someone, the UI asks first.
  */
-test('a host whose pick loses a race for a color keeps its seat and its session', async ({
+test('taking an occupied seat asks for confirmation, then replaces its holder', async ({
   page,
   browser,
 }, testInfo) => {
   test.setTimeout(60_000);
 
-  const hostDiag = await instrument(page, 'host');
+  const creatorDiag = await instrument(page, 'creator');
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   const guestDiag = await instrument(guest, 'guest');
@@ -23,9 +20,9 @@ test('a host whose pick loses a race for a color keeps its seat and its session'
   try {
     await openApp(page);
     await page.getByRole('button', { name: 'Online' }).click();
-    await page.getByRole('button', { name: 'Host a new room' }).click();
+    await page.getByRole('button', { name: 'Create a room' }).click();
     await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
-    const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})\/host$/)?.[1] ?? '';
+    const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})$/)?.[1] ?? '';
 
     await openApp(guest);
     await guest.getByRole('button', { name: 'Online' }).click();
@@ -33,34 +30,42 @@ test('a host whose pick loses a race for a color keeps its seat and its session'
     await guest.getByRole('button', { name: 'Join room' }).click();
     await expect(guest.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
 
-    // Host sits in Red; the guest takes Blue.
+    // The creator sits in Red.
     await page.getByRole('button', { name: /Red.*Open/ }).click();
-    await guest.getByRole('button', { name: /Blue.*Open/ }).click();
-    const blueOnHost = page.locator('.lobby-color-chip.color-blue');
-    await expect(blueOnHost).toHaveClass(/taken/);
+    const redOnGuest = guest.locator('.lobby-color-chip.color-red');
+    await expect(redOnGuest).toHaveClass(/taken/);
+    const dialog = guest.getByRole('dialog');
 
-    // Simulate the stale screen: the host clicks Blue as if it still looked free.
-    await blueOnHost.evaluate((el: HTMLButtonElement) => {
-      el.disabled = false;
-      el.click();
-    });
-
-    await expect(page.getByText('That color is taken.')).toBeVisible();
-    // The failed pick must not have cost the host the seat it already held.
+    // Cancel and Escape both leave the seat alone.
+    await redOnGuest.click();
+    await expect(dialog).toContainText('Take the Red seat?');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+    await redOnGuest.click();
+    await guest.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
     await expect(page.locator('.lobby-color-chip.color-red')).toHaveClass(/mine/);
-    await expect(guest.locator('.lobby-color-chip.color-red')).toHaveClass(/taken/);
 
-    // The session is alive: the game still starts with both seats.
+    // Confirming takes it: the guest now holds Red, the creator is unseated
+    // but still in the room.
+    await redOnGuest.click();
+    await dialog.getByRole('button', { name: 'Take seat' }).click();
+    await expect(redOnGuest).toHaveClass(/mine/);
+    await expect(page.locator('.lobby-color-chip.color-red')).toHaveClass(/taken/);
+    await expect(page.locator('.lobby-unseated')).toContainText('Waiting for a seat');
+
+    // The replaced creator picks another color and the game starts.
+    await page.getByRole('button', { name: /Blue.*Open/ }).click();
     const startGame = page.getByRole('button', { name: 'Start game' });
     await expect(startGame).toBeEnabled();
     await startGame.click();
     await expect(page.getByText('Select a tile from your hand')).toBeVisible();
     await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
 
-    expect(hostDiag.problems(), 'host runtime problems (a panic shows up here)').toEqual([]);
+    expect(creatorDiag.problems(), 'creator runtime problems').toEqual([]);
     expect(guestDiag.problems(), 'guest runtime problems').toEqual([]);
   } catch (error) {
-    await attachAll(testInfo, hostDiag, guestDiag);
+    await attachAll(testInfo, creatorDiag, guestDiag);
     throw error;
   } finally {
     await guestContext.close();

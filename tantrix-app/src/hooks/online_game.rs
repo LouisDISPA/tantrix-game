@@ -46,7 +46,7 @@ pub fn use_online_game_ctx(
 }
 
 /// Read the Playing/Ended snapshot out of the online state, if any. Returns
-/// `None` while the host hasn't sent `GameStarted` yet.
+/// `None` while the server hasn't sent `GameStarted` yet.
 pub fn use_initial_snapshot(state: Store<OnlineState>) -> Option<GameSnapshot> {
     let phase = state.phase();
     let phase = phase.read();

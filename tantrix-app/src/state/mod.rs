@@ -4,7 +4,6 @@ pub mod config;
 pub mod game_state;
 pub mod nickname;
 pub mod online_state;
-pub mod session_token;
-pub mod signaling;
+pub mod room_connection;
 pub mod theme;
 pub mod ui_state;

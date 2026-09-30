@@ -1,11 +1,10 @@
-import { homedir } from 'node:os';
 import path from 'node:path';
 import { defineConfig } from '@playwright/test';
 
-const port = 4173;
+// Tests use the same Worker + Durable Object runtime as production. Build the
+// client and Rust Worker modules first with `just worker-build`.
+const port = 4174;
 const baseURL = `http://127.0.0.1:${port}`;
-const cargoHome = process.env.CARGO_HOME ?? path.join(homedir(), '.cargo');
-const dx = path.join(cargoHome, 'bin', 'dx');
 
 export default defineConfig({
   testDir: './tests',
@@ -16,23 +15,15 @@ export default defineConfig({
   use: {
     baseURL,
     browserName: 'chromium',
-    launchOptions: {
-      // Chromium hides host candidates behind mDNS names (`<uuid>.local`) that the
-      // other peer must resolve over multicast. That resolution silently fails on
-      // VPN interfaces and in many containers, so two browsers on the *same*
-      // machine could not pair up. Real IPs make the tests independent of it.
-      args: ['--disable-features=WebRtcHideLocalIpsWithMdns'],
-    },
     actionTimeout: 15_000,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: `"${dx}" run --web --fullstack true --features fullstack --port ${port} --open false --interactive false --hot-reload false --watch false`,
-    cwd: path.join(__dirname, '..', 'tantrix-app'),
+    command: `npx wrangler dev --port ${port} --ip 127.0.0.1`,
+    cwd: path.join(__dirname, '..', 'cloudflare'),
     url: baseURL,
-    timeout: 10 * 60_000,
+    timeout: 60_000,
     reuseExistingServer: false,
-    gracefulShutdown: { signal: 'SIGINT', timeout: 5_000 },
   },
 });

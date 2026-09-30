@@ -38,10 +38,10 @@ test('completes an online game with synchronized boards and final scores', async
 
   await openApp(page);
   await page.getByRole('button', { name: 'Online' }).click();
-  await page.getByRole('button', { name: 'Host a new room' }).click();
+  await page.getByRole('button', { name: 'Create a room' }).click();
   await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
 
-  const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})\/host$/)?.[1] ?? '';
+  const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})$/)?.[1] ?? '';
   expect(code).toMatch(/^[A-Z]{6}$/);
 
   const guestContext = await browser.newContext();

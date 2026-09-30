@@ -19,10 +19,9 @@ log = "0.4.34"
 web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
 wasm-bindgen-futures = "0.4.79"
 
-# Server-only: Axum + embedded matchbox signaling server. Pulled in by the
-# `server` feature so wasm builds don't compile them.
+# Server-only: Axum serves the native fullstack app for local UI development.
+# Online rooms are hosted by the Cloudflare Durable Object.
 axum = { version = "0.8.9", optional = true }
-matchbox_signaling = { version = "0.14.0", optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
 
 [features]
@@ -34,7 +33,7 @@ server = [
     "tokio/macros",
     "tokio/rt-multi-thread",
     "dep:axum",
-    "dep:matchbox_signaling",
+    "tokio/net",
     "dep:tracing-subscriber",
 ]
 fullstack = ["dioxus/fullstack"]

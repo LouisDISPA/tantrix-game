@@ -7,31 +7,26 @@
 #   Node.js/npm                     (for the worker-* recipes; they install
 #                                    worker-build and wrangler on first use)
 #
-# The app is a Dioxus fullstack binary that serves both the client bundle
-# and an embedded matchbox signaling server on a single port. No external
-# matchbox_server is needed — the server binary (built with the "server"
-# feature) hosts signaling at `/signaling/*` and the client everywhere else.
+# The native Dioxus fullstack binary serves the UI for local development.
+# Online rooms run in the Cloudflare Worker Durable Object.
 
 port := "8080"
 
 default:
     @just --list
 
-# Fullstack dev server with hot reload for the client. Server + client
-# share one port. Signaling rides at /signaling.
+# Fullstack UI dev server with hot reload. Online play needs the Worker.
 dev:
-    cd tantrix-app && dx serve --port {{ port }} --hot-reload
+    cd tantrix-app && dx serve --port {{ port }} --web --features fullstack --hot-reload true
 
 # Build + serve the release fullstack binary (no hot reload, no browser).
 run:
     cd tantrix-app && dx run --release --port {{ port }} --hot-reload false --open false
 
-# Build the fullstack app and run browser end-to-end tests against it.
-e2e:
-    cd e2e && npm test
+# Build the Worker and run the browser end-to-end suite against it.
+e2e: worker-e2e
 
-# Expose the fullstack server via an ngrok tunnel. Signaling rides on the
-# same tunnel because the client and the signaling server share the port.
+# Expose the native UI development server via an ngrok tunnel.
 # Ctrl+C stops both the server and the tunnel.
 tunnel:
     #!/usr/bin/env bash
@@ -48,7 +43,7 @@ tunnel:
 # ── Cloudflare Worker: server-side rendering + hydration ────────────────────
 # Production runs on Cloudflare (cloudflare/): the Worker server-renders every
 # page with the Rust `tantrix-worker` module, static files come from the
-# Workers assets binding, and signaling uses the `Room` Durable Object.
+# Workers assets binding, and room WebSockets use the `Room` Durable Object.
 
 client_public := "target/dx/tantrix-app/release/web/public"
 
@@ -99,7 +94,7 @@ _wrangler:
 worker-dev: worker-build _wrangler
     cd cloudflare && npx wrangler dev
 
-# Run the e2e suite against the Worker (wrangler dev) instead of the native server.
+# Run the e2e suite against the Worker in wrangler dev.
 worker-e2e: worker-build _wrangler
     cd e2e && if [ ! -d node_modules ]; then npm ci; fi && npm run test:worker
 

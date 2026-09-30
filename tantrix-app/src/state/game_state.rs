@@ -17,7 +17,7 @@ use super::ui_state::{Screen, UiState};
 /// * `game_state` — the atomic game snapshot; components read it wholesale
 /// * `ui_state` — per-field reactive UI state (zoom, hover, selection, …)
 /// * `online` — if set, `actions::execute_move` forwards the move to the
-///   host instead of mutating the local `game_state`. Local games leave
+///   server instead of mutating the local `game_state`. Local games leave
 ///   this as `None`.
 /// * `my_color` — if `Some(c)`, only this color's hand is interactive on
 ///   this device. Online games set this from the lobby seat; local games

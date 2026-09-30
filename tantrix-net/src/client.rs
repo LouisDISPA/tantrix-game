@@ -1,329 +1,257 @@
-//! Client-side session: thin mirror of the host's authoritative state.
+//! Browser WebSocket session. The room server owns the game and this client
+//! only sends intents and renders the snapshots it receives.
 
 use std::future::Future;
 
-use futures::future::FutureExt;
-use futures::{select, StreamExt};
-use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use log::{debug, info, warn};
-use matchbox_socket::{PeerId as MatchboxPeerId, PeerState};
-use tantrix_proto::{
-    decode, encode, HostMessage, PeerId, PeerMessage, RejectCode, SessionToken, PROTO_VERSION,
-};
+use futures_channel::mpsc::{unbounded, UnboundedSender};
 
-use crate::session::{ConnectStage, SessionCommand, SessionEvent, SessionHandle, SessionRole};
-use crate::socket::{open as open_socket, wait_for_peer_id, PEER_LINK_TIMEOUT, WELCOME_TIMEOUT};
+use crate::session::{SessionCommand, SessionEvent, SessionHandle};
 
-pub fn open_client_session(
+#[cfg(target_arch = "wasm32")]
+struct SocketGuard {
+    socket: web_sys::WebSocket,
+    _onopen: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::Event)>,
+    _onmessage: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::MessageEvent)>,
+    _onclose: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::CloseEvent)>,
+    _onerror: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::Event)>,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        self.socket.set_onopen(None);
+        self.socket.set_onmessage(None);
+        self.socket.set_onclose(None);
+        self.socket.set_onerror(None);
+        let _ = self.socket.close();
+    }
+}
+
+/// Open a room socket. The browser's identity travels as the HttpOnly
+/// session cookie on the handshake, so there is no token to pass here.
+pub fn open_session(
     room_url: String,
     nickname: String,
-    session_token: SessionToken,
 ) -> (SessionHandle, impl Future<Output = ()>) {
-    let (commands_tx, commands_rx) = futures_channel::mpsc::unbounded();
-    let (events_tx, events_rx) = futures_channel::mpsc::unbounded();
-
-    let fut = run_client(room_url, nickname, session_token, commands_rx, events_tx);
-
+    let (commands_tx, commands_rx) = unbounded();
+    let (events_tx, events_rx) = unbounded();
+    let run = run_session(room_url, nickname, commands_rx, events_tx);
     (
         SessionHandle {
             commands: commands_tx,
             events: events_rx,
         },
-        fut,
+        run,
     )
 }
 
-async fn run_client(
+#[cfg(target_arch = "wasm32")]
+async fn run_session(
     room_url: String,
     nickname: String,
-    session_token: SessionToken,
-    mut commands_rx: UnboundedReceiver<SessionCommand>,
-    events_tx: UnboundedSender<SessionEvent>,
+    mut commands: futures_channel::mpsc::UnboundedReceiver<SessionCommand>,
+    events: UnboundedSender<SessionEvent>,
 ) {
-    let (mut socket, mut channel, mut loop_fut) = open_socket(room_url);
+    use std::time::Duration;
 
-    let Some(my_mb_id) = wait_for_peer_id(
-        &mut socket,
-        &mut loop_fut,
-        &events_tx,
-        "signaling closed before id assigned",
-    )
-    .await
-    else {
-        return;
-    };
+    use futures::{future, FutureExt, StreamExt};
+    use tantrix_proto::{decode, encode, HostMessage, PeerMessage, KEEPALIVE_PING, KEEPALIVE_PONG};
 
-    // Wait for the first WebRTC link to open. In a two-player room that is the
-    // host; with more guests it may be another guest (every guest offers a
-    // link to each newcomer), so `Hello` goes to every link until one of them
-    // answers with a `Welcome` — that peer is the host.
-    let mut link_deadline = futures_timer::Delay::new(PEER_LINK_TIMEOUT).fuse();
-    let first_peer = loop {
-        select! {
-            res = &mut loop_fut => {
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                    reason: match res {
-                        Ok(()) => "no host in room".into(),
-                        Err(e) => format!("signaling error: {e}"),
-                    },
-                });
-                return;
-            }
-            update = socket.next().fuse() => match update {
-                Some((peer, PeerState::Connected)) => break peer,
-                Some((_, PeerState::Disconnected)) => continue,
-                None => return,
-            },
-            cmd = commands_rx.next() => match cmd {
-                Some(SessionCommand::Leave) | None => return,
-                Some(_) => {} // discard pre-connect intents
-            },
-            _ = &mut link_deadline => {
-                warn!(
-                    "client: no WebRTC link opened within {PEER_LINK_TIMEOUT:?} \
-                     (signaling ok, ICE/SDP exchange stalled or nobody is hosting)"
-                );
-                let _ = events_tx.unbounded_send(SessionEvent::ConnectTimeout {
-                    stage: ConnectStage::PeerLink,
-                });
-                return;
-            }
+    /// Keeps idle sockets from being dropped by proxies during long turns.
+    const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+    use wasm_bindgen::{closure::Closure, JsCast};
+    use web_sys::{CloseEvent, Event, MessageEvent, WebSocket};
+
+    enum SocketEvent {
+        Open,
+        Message(String),
+        Closed(String),
+        Error,
+    }
+
+    let socket = match WebSocket::new(&room_url) {
+        Ok(socket) => socket,
+        Err(err) => {
+            let _ = events.unbounded_send(SessionEvent::Disconnected {
+                reason: format!("Could not open the game connection: {err:?}"),
+            });
+            return;
         }
     };
-    info!("client: first WebRTC link open (peer {first_peer}), sending Hello");
+    let (socket_tx, mut socket_rx) = unbounded::<SocketEvent>();
 
-    let hello = encode(&PeerMessage::Hello {
-        nickname,
-        proto_version: PROTO_VERSION,
-        session_token: session_token.clone(),
+    let onopen = Closure::<dyn FnMut(Event)>::new({
+        let tx = socket_tx.clone();
+        move |_| {
+            let _ = tx.unbounded_send(SocketEvent::Open);
+        }
     });
-    let _ = channel.try_send(hello.clone().into_boxed_slice(), first_peer);
+    socket.set_onopen(Some(onopen.as_ref().unchecked_ref()));
 
-    let mut welcome_deadline = futures_timer::Delay::new(WELCOME_TIMEOUT).fuse();
+    let onmessage = Closure::<dyn FnMut(MessageEvent)>::new({
+        let tx = socket_tx.clone();
+        move |event: MessageEvent| {
+            if let Some(text) = event.data().as_string() {
+                let _ = tx.unbounded_send(SocketEvent::Message(text));
+            }
+        }
+    });
+    socket.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+
+    let onclose = Closure::<dyn FnMut(CloseEvent)>::new({
+        let tx = socket_tx.clone();
+        move |event: CloseEvent| {
+            let reason = if event.reason().is_empty() {
+                "Connection closed.".to_string()
+            } else {
+                event.reason()
+            };
+            let _ = tx.unbounded_send(SocketEvent::Closed(reason));
+        }
+    });
+    socket.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+
+    let onerror = Closure::<dyn FnMut(Event)>::new(move |_| {
+        let _ = socket_tx.unbounded_send(SocketEvent::Error);
+    });
+    socket.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+
+    // The guard closes the socket even when Dioxus cancels this future on
+    // unmount (the code after the loop would not run in that case).
+    let _guard = SocketGuard {
+        socket: socket.clone(),
+        _onopen: onopen,
+        _onmessage: onmessage,
+        _onclose: onclose,
+        _onerror: onerror,
+    };
+    let mut timeout = future::Either::<_, future::Pending<()>>::Left(futures_timer::Delay::new(
+        Duration::from_secs(20),
+    ))
+    .fuse();
     let mut welcomed = false;
-    // The peer that answered our `Hello` with a `Welcome`; only it is trusted.
-    let mut host_mb_id: Option<MatchboxPeerId> = None;
-    // The wire PeerId the host assigned to us — populated on Welcome and
-    // used to recognise `Kicked { target: self }` broadcasts.
-    let mut my_wire_id: Option<PeerId> = None;
+    let mut keepalive = futures_timer::Delay::new(KEEPALIVE_INTERVAL).fuse();
 
     loop {
-        select! {
-            cmd = commands_rx.next() => match cmd {
-                Some(SessionCommand::Leave) | None => break,
-                Some(other) => {
-                    if let Some(host) = host_mb_id {
-                        let wire = encode(&intent_from_command(other));
-                        let _ = channel.try_send(wire.into_boxed_slice(), host);
+        futures::select! {
+            socket_event = socket_rx.next().fuse() => match socket_event {
+                Some(SocketEvent::Open) => {
+                    let hello = PeerMessage::Hello {
+                        nickname: nickname.clone(),
+                    };
+                    if !send(&socket, &hello) {
+                        let _ = events.unbounded_send(SessionEvent::Disconnected {
+                            reason: "Could not join the room.".into(),
+                        });
+                        break;
                     }
                 }
-            },
-            packet = channel.next().fuse() => match packet {
-                Some((peer, bytes)) => {
-                    if host_mb_id.is_some_and(|host| host != peer) {
-                        continue;
-                    }
-                    let msg: HostMessage = match decode(&bytes) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            // Other guests' `Hello`s are not `HostMessage`s.
-                            debug!("client: ignoring undecodable message from {peer}: {e}");
+                Some(SocketEvent::Message(text)) if text == KEEPALIVE_PONG => {}
+                Some(SocketEvent::Message(text)) => {
+                    let message: HostMessage = match decode(text.as_bytes()) {
+                        Ok(message) => message,
+                        Err(err) => {
+                            log::warn!("online: invalid server message: {err}");
                             continue;
                         }
                     };
-                    if host_mb_id.is_none() {
-                        if !matches!(msg, HostMessage::Welcome { .. }) {
-                            continue;
+                    match message {
+                        HostMessage::Welcome { your_peer_id, lobby, rejected } => {
+                            if let Some(code) = rejected {
+                                let _ = events.unbounded_send(SessionEvent::Error {
+                                    code: Some(code),
+                                    message: "The room rejected this connection.".into(),
+                                });
+                                let _ = events.unbounded_send(SessionEvent::Disconnected {
+                                    reason: "The room rejected this connection.".into(),
+                                });
+                                break;
+                            }
+                            welcomed = true;
+                            timeout = future::Either::Right(future::pending()).fuse();
+                            let _ = events.unbounded_send(SessionEvent::Connected { my_peer_id: your_peer_id });
+                            let _ = events.unbounded_send(SessionEvent::Lobby(lobby));
                         }
-                        info!("client: Welcome from host {peer}");
-                        host_mb_id = Some(peer);
+                        HostMessage::LobbyUpdate { lobby } => {
+                            let _ = events.unbounded_send(SessionEvent::Lobby(lobby));
+                        }
+                        HostMessage::GameStarted { snapshot } => {
+                            let _ = events.unbounded_send(SessionEvent::GameStarted { snapshot });
+                        }
+                        HostMessage::StateUpdate { snapshot, last_move } => {
+                            let _ = events.unbounded_send(SessionEvent::StateUpdate { snapshot, last_move });
+                        }
+                        HostMessage::GameEnded { reason, snapshot } => {
+                            let _ = events.unbounded_send(SessionEvent::GameEnded { reason, snapshot });
+                        }
+                        HostMessage::Error { code, message } => {
+                            let _ = events.unbounded_send(SessionEvent::Error { code: Some(code), message });
+                        }
                     }
-                    if handle_host_message(
-                        msg,
-                        &events_tx,
-                        &mut welcomed,
-                        &my_mb_id,
-                        &peer,
-                        &mut my_wire_id,
-                    ) {
-                        channel.close();
-                        socket.close();
-                        return;
-                    }
+                }
+                Some(SocketEvent::Closed(reason)) => {
+                    let _ = events.unbounded_send(SessionEvent::Disconnected { reason });
+                    break;
+                }
+                Some(SocketEvent::Error) => {
+                    log::warn!("online: WebSocket error");
+                    // Browsers send a Close event immediately after Error,
+                    // which carries the only useful connection detail.
                 }
                 None => break,
             },
-            update = socket.next().fuse() => match update {
-                Some((peer, PeerState::Connected)) if host_mb_id.is_none() => {
-                    info!("client: another WebRTC link open (peer {peer}), sending Hello");
-                    let _ = channel.try_send(hello.clone().into_boxed_slice(), peer);
-                }
-                Some((peer, PeerState::Disconnected)) if host_mb_id == Some(peer) => {
-                    warn!("client: the host disconnected");
-                    let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                        reason: "The host left the room.".into(),
-                    });
-                    break;
+            command = commands.next().fuse() => match command {
+                Some(SessionCommand::Leave) | None => break,
+                Some(command) if welcomed => {
+                    let message = match command {
+                        SessionCommand::PickColor(color) => PeerMessage::PickColor { color },
+                        SessionCommand::ReplaceSeat(color) => PeerMessage::ReplaceSeat { color },
+                        SessionCommand::StartGame => PeerMessage::StartGame,
+                        SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
+                        SessionCommand::SkipTurn => PeerMessage::SkipTurn,
+                        SessionCommand::UpdateNickname(nickname) => PeerMessage::UpdateNickname { nickname },
+                        SessionCommand::Leave => unreachable!(),
+                    };
+                    if !send(&socket, &message) {
+                        let _ = events.unbounded_send(SessionEvent::Disconnected {
+                            reason: "Could not send to the game server.".into(),
+                        });
+                        break;
+                    }
                 }
                 Some(_) => {}
-                None => break,
             },
-            _ = &mut welcome_deadline => {
+            _ = keepalive => {
+                if welcomed {
+                    let _ = socket.send_with_str(KEEPALIVE_PING);
+                }
+                keepalive = futures_timer::Delay::new(KEEPALIVE_INTERVAL).fuse();
+            },
+            _ = timeout => {
                 if !welcomed {
-                    warn!(
-                        "client: WebRTC link is open but the host sent no Welcome within \
-                         {WELCOME_TIMEOUT:?}"
-                    );
-                    let _ = events_tx.unbounded_send(SessionEvent::ConnectTimeout {
-                        stage: ConnectStage::Welcome,
-                    });
+                    let _ = events.unbounded_send(SessionEvent::ConnectTimeout);
                     break;
                 }
             },
-            res = &mut loop_fut => {
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                    reason: match res {
-                        Ok(()) => "signaling closed".into(),
-                        Err(e) => format!("signaling error: {e}"),
-                    },
-                });
-                break;
-            }
         }
     }
-
-    channel.close();
-    socket.close();
-}
-
-fn intent_from_command(cmd: SessionCommand) -> PeerMessage {
-    match cmd {
-        SessionCommand::PickColor(c) => PeerMessage::PickColor { color: c },
-        SessionCommand::StartGame => PeerMessage::StartGame,
-        SessionCommand::PlayMove(m) => PeerMessage::PlayMove { m },
-        SessionCommand::SkipTurn => PeerMessage::SkipTurn,
-        SessionCommand::UpdateNickname(n) => PeerMessage::UpdateNickname { nickname: n },
-        SessionCommand::Kick(target) => PeerMessage::Kick { target },
-        SessionCommand::Leave => PeerMessage::RequestSnapshot, // never dispatched
+    fn send(socket: &WebSocket, message: &PeerMessage) -> bool {
+        let bytes = encode(message);
+        let Ok(text) = String::from_utf8(bytes) else {
+            return false;
+        };
+        socket.send_with_str(&text).is_ok()
     }
 }
 
-/// Translate an inbound `HostMessage` into a `SessionEvent`. Returns `true`
-/// once the message flow terminates (game ended, rejected welcome, etc.)
-/// so the caller can tear down the socket.
-fn handle_host_message(
-    msg: HostMessage,
-    events_tx: &UnboundedSender<SessionEvent>,
-    welcomed: &mut bool,
-    my_id: &MatchboxPeerId,
-    host_id: &MatchboxPeerId,
-    my_wire_id: &mut Option<PeerId>,
-) -> bool {
-    match msg {
-        HostMessage::Welcome {
-            your_peer_id,
-            host_peer_id,
-            lobby,
-            rejected,
-        } => {
-            if let Some(code) = rejected {
-                let reason = match code {
-                    RejectCode::Kicked => "You were removed from the room.".into(),
-                    RejectCode::IncompatibleVersion => {
-                        "The host is running a different game version.".into()
-                    }
-                    _ => "rejected by host".into(),
-                };
-                let _ = events_tx.unbounded_send(SessionEvent::Error {
-                    code: Some(code),
-                    message: "host rejected the connection".into(),
-                });
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected { reason });
-                return true;
-            }
-            *my_wire_id = Some(your_peer_id.clone());
-            if !*welcomed {
-                *welcomed = true;
-                let _ = events_tx.unbounded_send(SessionEvent::Connected {
-                    role: SessionRole::Client,
-                    my_peer_id: your_peer_id,
-                    host_peer_id,
-                });
-            }
-            let _ = events_tx.unbounded_send(SessionEvent::Lobby(lobby));
-            false
-        }
-        HostMessage::LobbyUpdate { lobby } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
-            let _ = events_tx.unbounded_send(SessionEvent::Lobby(lobby));
-            false
-        }
-        HostMessage::GameStarted { snapshot } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
-            let _ = events_tx.unbounded_send(SessionEvent::GameStarted { snapshot });
-            false
-        }
-        HostMessage::StateUpdate {
-            snapshot,
-            last_move,
-        } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
-            let _ = events_tx.unbounded_send(SessionEvent::StateUpdate {
-                snapshot,
-                last_move,
-            });
-            false
-        }
-        HostMessage::GameEnded { reason, snapshot } => {
-            ensure_welcomed(welcomed, events_tx, my_id, host_id, my_wire_id);
-            let _ = events_tx.unbounded_send(SessionEvent::GameEnded { reason, snapshot });
-            true
-        }
-        HostMessage::Kicked { target, reason } => {
-            if my_wire_id.as_ref() == Some(&target) {
-                let _ = events_tx.unbounded_send(SessionEvent::Error {
-                    code: Some(RejectCode::Kicked),
-                    message: reason.clone(),
-                });
-                let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
-                    reason: format!("Removed from the room: {reason}"),
-                });
-                true
-            } else {
-                // Another participant was kicked — host will follow up with
-                // a fresh LobbyUpdate / StateUpdate, so nothing else to do
-                // here.
-                false
-            }
-        }
-        HostMessage::Error { code, message } => {
-            let _ = events_tx.unbounded_send(SessionEvent::Error {
-                code: Some(code),
-                message,
-            });
-            false
-        }
-    }
-}
-
-fn ensure_welcomed(
-    welcomed: &mut bool,
-    events_tx: &UnboundedSender<SessionEvent>,
-    my_id: &MatchboxPeerId,
-    host_id: &MatchboxPeerId,
-    my_wire_id: &mut Option<PeerId>,
+#[cfg(not(target_arch = "wasm32"))]
+async fn run_session(
+    _room_url: String,
+    _nickname: String,
+    _commands: futures_channel::mpsc::UnboundedReceiver<SessionCommand>,
+    events: UnboundedSender<SessionEvent>,
 ) {
-    if !*welcomed {
-        *welcomed = true;
-        let fallback = PeerId(my_id.to_string());
-        let assigned = my_wire_id.clone().unwrap_or_else(|| fallback.clone());
-        if my_wire_id.is_none() {
-            *my_wire_id = Some(assigned.clone());
-        }
-        let _ = events_tx.unbounded_send(SessionEvent::Connected {
-            role: SessionRole::Client,
-            my_peer_id: assigned,
-            host_peer_id: PeerId(host_id.to_string()),
-        });
-    }
+    let _ = events.unbounded_send(SessionEvent::Disconnected {
+        reason: "Online play requires the web client.".into(),
+    });
 }

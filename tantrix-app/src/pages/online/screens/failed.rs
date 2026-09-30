@@ -1,8 +1,7 @@
-//! Terminal screen shown when the session ends — either because the host
+//! Terminal screen shown when the session ends — either because the server
 //! rejected the connection, the transport died, or connecting timed out.
 
 use dioxus::prelude::*;
-use tantrix_proto::RejectCode;
 
 use crate::state::online_state::FailureReason;
 
@@ -42,14 +41,12 @@ pub fn FailedView(reason: FailureReason, on_retry: EventHandler<()>) -> Element 
     }
 }
 
-/// A rejection message from the host is user-actionable; a generic
-/// transport failure is not. Tailor the heading so the former stands out as
-/// "room full / kicked" rather than "something broke".
+/// A rejection message from the server is user-actionable; a generic
+/// transport failure is not.
 fn heading_for(reason: &FailureReason) -> (&'static str, bool) {
     match reason {
-        FailureReason::Rejected(RejectCode::Kicked) => ("Removed from room", true),
         FailureReason::Rejected(_) => ("Can't join this room", true),
         FailureReason::Transport(_) => ("Disconnected", false),
-        FailureReason::Timeout(_) => ("Couldn't connect", false),
+        FailureReason::Timeout => ("Couldn't connect", false),
     }
 }

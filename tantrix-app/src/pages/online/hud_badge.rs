@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 
-use crate::state::online_state::{queries, OnlinePhase, OnlineState, OnlineStateStoreExt};
+use crate::state::online_state::{OnlinePhase, OnlineState, OnlineStateStoreExt};
 
 #[component]
 pub fn OnlineHudBadge(state: Store<OnlineState>) -> Element {
@@ -18,16 +18,11 @@ pub fn OnlineHudBadge(state: Store<OnlineState>) -> Element {
             OnlinePhase::Failed { .. } => ("Disconnected", "dot failed"),
         }
     });
-    let spectating = use_memo(move || queries::is_spectator_of(state));
-
     rsx! {
         div { class: "online-hud-badge",
             span { class: "hud-chip-conn-dot {label_and_dot().1}" }
             span { class: "hud-chip-conn-label", "{label_and_dot().0}" }
             span { class: "hud-chip-room", "{state.room_code()}" }
-            if spectating() {
-                span { class: "online-spectator-badge", "Spectating" }
-            }
         }
     }
 }

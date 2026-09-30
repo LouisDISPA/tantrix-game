@@ -82,16 +82,15 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
 
 tantrix-tui/src/           # Terminal UI (ratatui)
 
-tantrix-worker/src/        # Cloudflare Worker SSR module (workers-rs → cloudflare/build/ssr)
-cloudflare/                # Worker entry (index.js), Room Durable Object, wrangler.toml
+tantrix-worker/src/        # Cloudflare Worker (workers-rs): SSR + Room Durable Object (room.rs, room_logic.rs)
+cloudflare/                # Worker entry (index.js), wrangler.toml
 vendor/dioxus-server/      # dioxus-server 0.7.10 patched for wasm32 (PATCHES.md)
 
 assets/                    # CSS: main.css, board.css, hand.css, menu.css, animations.css
 doc/                       # game_rules.md
 
-tantrix-net/src/           # matchbox_socket glue: host.rs (authoritative Game), client.rs, socket.rs
-vendor/matchbox_socket/    # matchbox_socket 0.14.0 + one patch (bounded ICE-gathering wait); see PATCHES.md
-cloudflare/                # Worker + Durable Object signaling server (production)
+tantrix-net/src/           # Browser WebSocket client for server-authoritative rooms
+tantrix-proto/src/         # Client ↔ room wire messages (JSON)
 e2e/                       # Playwright browser tests (see e2e/README.md)
 ```
 

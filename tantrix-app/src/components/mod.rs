@@ -1,8 +1,8 @@
 pub mod alert_banner;
 pub mod board;
 pub mod color_chip;
+pub mod confirm_dialog;
 pub mod nickname_input;
-pub mod participant_row;
 pub mod player_hand;
 pub mod room_code_badge;
 pub mod scores_panel;

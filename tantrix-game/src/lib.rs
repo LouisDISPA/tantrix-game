@@ -728,7 +728,45 @@ pub struct Game {
     current_moves: Option<Vec<Move>>,
 }
 
+/// Complete server-side game state, including the hidden draw order. Never send
+/// this over the player protocol; [`tantrix_proto::GameSnapshot`] omits the bag.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameData {
+    board: Board,
+    bag: Bag,
+    turn_tracker: TurnTracker,
+    hands: EnumMap<Color, Hand>,
+}
+
 impl Game {
+    /// Capture everything needed to resume an authoritative game after a
+    /// server restart. Legal-move caches and AI implementations are runtime
+    /// details and are deliberately excluded.
+    pub fn to_data(&self) -> GameData {
+        GameData {
+            board: self.board.clone(),
+            bag: self.bag.clone(),
+            turn_tracker: self.turn_tracker.clone(),
+            hands: self.hands.clone(),
+        }
+    }
+
+    /// Restore a multiplayer game where every active color is human-owned.
+    pub fn from_data(data: GameData) -> Self {
+        let mut players = enum_map! { _ => Player::None };
+        for &color in data.turn_tracker.playing_colors() {
+            players[color] = Player::Someone;
+        }
+        Self {
+            board: data.board,
+            bag: data.bag,
+            players,
+            turn_tracker: data.turn_tracker,
+            hands: data.hands,
+            current_moves: None,
+        }
+    }
+
     pub fn new(
         red: Player,
         blue: Player,
@@ -930,6 +968,29 @@ impl Game {
 mod tests {
 
     use crate::{Board, Color, Direction, Game, Move, MoveError, Player, Position, Rotation, Tile};
+
+    #[test]
+    fn persisted_game_keeps_bag_and_turn() {
+        let mut game = Game::new(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+        )
+        .unwrap();
+        let first = game.get_possible_moves()[0];
+        game.play_move(first).unwrap();
+
+        let encoded = serde_json::to_vec(&game.to_data()).unwrap();
+        let restored = Game::from_data(serde_json::from_slice(&encoded).unwrap());
+        assert_eq!(restored.board(), game.board());
+        assert_eq!(restored.bag_count(), game.bag_count());
+        assert_eq!(restored.currently_playing(), game.currently_playing());
+        for &color in game.playing_colors() {
+            assert_eq!(restored.get_hand(color), game.get_hand(color));
+        }
+        assert!(!encoded.is_empty());
+    }
 
     /// Get the neighbor of a position in a given direction.
     fn neighbor(pos: Position, dir: Direction) -> Position {

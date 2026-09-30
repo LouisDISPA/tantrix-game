@@ -1,10 +1,9 @@
 //! Routes the `log` crate to the browser console.
 //!
 //! Dioxus only installs a `tracing` subscriber, so every `log::…!` call in
-//! `matchbox_socket` and `tantrix-net` was silently discarded. That is where
-//! the interesting online-play events live: signaling ids, SDP offer/answer,
-//! ICE gathering and connection state, data-channel open/close, and the join
-//! timeouts. With this logger they show up in DevTools (and in the e2e test
+//! `tantrix-net` was silently discarded. That is where the interesting
+//! online-play events live: WebSocket errors and join timeouts. With this
+//! logger they show up in DevTools (and in the e2e test
 //! timelines) at the level chosen in [`max_level_for`].
 
 /// Install the console logger. Safe to call more than once.
@@ -28,7 +27,7 @@ pub fn init_logging() {}
 /// who cannot connect. Everything else stays at `Info`.
 #[cfg(target_arch = "wasm32")]
 fn max_level_for(target: &str) -> log::Level {
-    const NETWORKING: [&str; 2] = ["matchbox_socket", "tantrix_net"];
+    const NETWORKING: [&str; 1] = ["tantrix_net"];
     if NETWORKING.iter().any(|prefix| target.starts_with(prefix)) {
         log::Level::Debug
     } else {

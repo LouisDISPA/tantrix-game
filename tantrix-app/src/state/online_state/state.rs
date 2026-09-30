@@ -2,11 +2,10 @@
 //!
 //! Backed by a `Store` so each field has its own signal accessor — writing
 //! `state.phase().set(..)` only wakes phase subscribers, not error or
-//! peer-id subscribers. See [`super::queries`] for read-only derivations
+//! participant-id subscribers. See [`super::queries`] for read-only derivations
 //! that take narrow slices of this state and can be memoed cheaply.
 
 use dioxus::prelude::*;
-use tantrix_net::SessionRole;
 use tantrix_proto::{PeerId, RejectCode};
 
 use super::phase::OnlinePhase;
@@ -14,21 +13,17 @@ use super::phase::OnlinePhase;
 #[derive(Debug, Clone, PartialEq, Eq, Store)]
 pub struct OnlineState {
     pub room_code: String,
-    pub role: SessionRole,
     pub my_peer_id: Option<PeerId>,
-    pub host_peer_id: Option<PeerId>,
     pub phase: OnlinePhase,
     /// Last error shown to the user, cleared on next successful update.
     pub last_error: Option<RejectCode>,
 }
 
 impl OnlineState {
-    pub fn new(room_code: String, role: SessionRole) -> Self {
+    pub fn new(room_code: String) -> Self {
         Self {
             room_code,
-            role,
             my_peer_id: None,
-            host_peer_id: None,
             phase: OnlinePhase::Connecting,
             last_error: None,
         }

@@ -1,44 +1,28 @@
 //! Wire format for Tantrix online games.
 //!
-//! Two message enums flow over the WebRTC data channel between peers:
+//! Two message enums flow over a WebSocket between clients and a room server:
 //!
-//! * [`PeerMessage`] — what a non-host peer tells the host (intents).
-//! * [`HostMessage`] — what the host broadcasts back to everyone (authoritative
+//! * [`PeerMessage`] — client intents.
+//! * [`HostMessage`] — server responses and broadcasts (authoritative
 //!   state updates, errors, lifecycle events).
 //!
-//! Only the host ever validates and mutates the [`tantrix_game::Game`]. Clients
+//! Only the server validates and mutates the [`tantrix_game::Game`]. Clients
 //! render whatever snapshots arrive and send intents when the user interacts.
 
 use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};
 use tantrix_game::{Board, Color, Hand, Move};
 
-/// Protocol version. Host and clients refuse to start a game if their values
-/// differ; bump this whenever the wire format breaks compatibility.
-pub const PROTO_VERSION: u32 = 2;
+/// Raw keepalive frames. The room answers the ping with the pong through the
+/// runtime's auto-response, without waking the Durable Object.
+pub const KEEPALIVE_PING: &str = "ping";
+pub const KEEPALIVE_PONG: &str = "pong";
 
-/// Opaque peer identifier. Mirrors the string form of `matchbox`'s `PeerId`
-/// so the protocol stays transport-agnostic.
+/// Public, server-generated participant identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PeerId(pub String);
 
 impl PeerId {
-    pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// Client-generated, per-room persistent identity. Survives reload and
-/// reconnect so the host can rebind a returning peer to its seat without
-/// relying on the ephemeral matchbox `PeerId`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SessionToken(pub String);
-
-impl SessionToken {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
@@ -64,11 +48,7 @@ pub struct Seat {
 pub enum ParticipantRole {
     /// A colored seat in the current / upcoming game.
     Seated(Color),
-    /// Watching only; can never submit moves.
-    Spectator,
-    /// The host. Implicitly the authoritative peer.
-    Host,
-    /// Joined but not yet seated (lobby only, before the game starts).
+    /// In the room without a color: waiting for a seat, or watching a game.
     Unseated,
 }
 
@@ -77,17 +57,11 @@ pub enum ParticipantRole {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Participant {
     pub peer_id: PeerId,
-    pub token: SessionToken,
     pub nickname: String,
     pub role: ParticipantRole,
-    /// Which color (if any) this participant is currently seated in. Mirrors
-    /// `seats[c] == this.peer_id` so the UI can render a consistent color
-    /// dot regardless of the `role` enum (e.g. a host who picked a color
-    /// still has `role = Host` but `seated_color = Some(..)`).
+    /// Mirrors `seats[c] == this.peer_id` for the UI color dot.
     pub seated_color: Option<Color>,
-    /// `true` if the host currently holds a live transport channel to this
-    /// peer. Disconnected-but-remembered participants have `false` and
-    /// keep their seat reserved.
+    /// Disconnected players retain their seat after a game starts.
     pub connected: bool,
 }
 
@@ -97,7 +71,6 @@ pub struct Participant {
 /// entry means the color is available.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LobbyState {
-    pub host: PeerId,
     pub seats: EnumMap<Color, Option<Seat>>,
     /// Players connected but not yet seated.
     pub unseated: Vec<Seat>,
@@ -119,8 +92,7 @@ pub struct GameSnapshot {
     pub current_player: Color,
     pub playing_colors: Vec<Color>,
     pub seats: EnumMap<Color, Option<Seat>>,
-    /// Full roster including spectators and disconnected-but-remembered
-    /// seated players. Drives the in-game participants panel.
+    /// Full roster including disconnected players. Drives the in-game panel.
     pub participants: Vec<Participant>,
 }
 
@@ -129,38 +101,42 @@ pub struct GameSnapshot {
 pub enum EndReason {
     /// All tiles placed; `winners` holds the tied top-scoring colors.
     Completed { winners: Vec<Color> },
-    /// Host closed the room.
-    HostLeft,
 }
 
-/// Client-side rejection reasons the host sends back.
+/// Client-side rejection reasons the server sends back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RejectCode {
     ColorTaken,
-    IncompatibleVersion,
     NotYourTurn,
     InvalidMove,
     GameInProgress,
-    Kicked,
+    RoomNotFound,
+    /// The room already holds its maximum number of members.
+    RoomFull,
 }
 
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
 
-/// A non-host peer's message to the host.
+/// A client's message to the room server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PeerMessage {
-    /// First message after the data channel opens. The `session_token` lets
-    /// the host rebind a returning peer to an existing seat across reload.
-    Hello {
-        nickname: String,
-        proto_version: u32,
-        session_token: SessionToken,
-    },
-    /// Claim or release a color. `color: None` = leave the seat.
+    /// First message after the WebSocket opens. The player's identity is
+    /// not in the message: the room reads it from the HttpOnly session
+    /// cookie on the WebSocket handshake, which is how a reload or
+    /// reconnect rebinds a returning player to their seat.
+    Hello { nickname: String },
+    /// Claim a free color or release mine (`color: None`). A color someone
+    /// else holds is rejected with `ColorTaken`, so two players racing for
+    /// the same free seat can't silently replace each other.
     PickColor { color: Option<Color> },
-    /// Host-only request to transition lobby → game.
+    /// Deliberately take `color` from whoever holds it (the UI asks for
+    /// confirmation first). In the lobby anyone may do this; during a game
+    /// only someone without a seat can, and inherits that seat's hand and
+    /// turn. The replaced player stays in the room without a seat.
+    ReplaceSeat { color: Color },
+    /// A seated player's request to transition lobby → game.
     StartGame,
     /// Submit a move for the current turn.
     PlayMove { m: Move },
@@ -168,21 +144,16 @@ pub enum PeerMessage {
     SkipTurn,
     /// Pull the latest snapshot (e.g. after reconnect).
     RequestSnapshot,
-    /// Change my display name. Host updates the roster and any seat binding
-    /// and rebroadcasts the lobby so other clients see the new label.
+    /// Change my display name and publish the updated roster.
     UpdateNickname { nickname: String },
-    /// Host-only: remove a participant from the room.
-    Kick { target: PeerId },
 }
 
-/// The host's broadcast to one or all peers.
+/// The server's response or broadcast to one or all peers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HostMessage {
-    /// Host replies to a `Hello` with the peer's assigned nickname and the
-    /// current lobby. If `rejected` is Some, the peer should close.
+    /// Server replies to `Hello`. If `rejected` is Some, the client should close.
     Welcome {
         your_peer_id: PeerId,
-        host_peer_id: PeerId,
         lobby: LobbyState,
         rejected: Option<RejectCode>,
     },
@@ -200,9 +171,6 @@ pub enum HostMessage {
         reason: EndReason,
         snapshot: GameSnapshot,
     },
-    /// Host removed someone. Every peer receives this; the targeted peer
-    /// should close its session and clear its stored token for the room.
-    Kicked { target: PeerId, reason: String },
     /// Per-peer rejection for the most recent intent.
     Error { code: RejectCode, message: String },
 }
@@ -211,8 +179,8 @@ pub enum HostMessage {
 // Framing
 // ---------------------------------------------------------------------------
 
-/// Encode any serializable message to a byte vector suitable for a matchbox
-/// packet. We use JSON for readability during development; switching to a
+/// Encode any serializable message to a byte vector suitable for a WebSocket
+/// frame. We use JSON for readability during development; switching to a
 /// binary codec later only requires changing these two functions.
 pub fn encode<T: Serialize>(msg: &T) -> Vec<u8> {
     serde_json::to_vec(msg).expect("tantrix-proto messages are always serializable")

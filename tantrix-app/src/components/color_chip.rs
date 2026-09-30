@@ -13,8 +13,10 @@ pub enum ColorChipState {
     Free,
     /// The local viewer owns this seat.
     Mine,
-    /// Another peer owns this seat.
+    /// Another peer owns this seat (it can still be taken over).
     TakenByOther,
+    /// Held by a player who is offline; anyone may take it over.
+    Offline,
 }
 
 #[component]
@@ -28,6 +30,7 @@ pub fn ColorChip(
         ColorChipState::Mine => "mine",
         ColorChipState::TakenByOther => "taken",
         ColorChipState::Free => "free",
+        ColorChipState::Offline => "offline",
     };
     let is_mine = state == ColorChipState::Mine;
     let taken = state == ColorChipState::TakenByOther;
@@ -36,7 +39,6 @@ pub fn ColorChip(
     rsx! {
         button {
             class: "lobby-color-chip {state_class} {color_class}",
-            disabled: taken,
             onclick: move |_| on_click.call(()),
             div { class: "lobby-color-hex",
                 div { class: "lobby-color-hex-inner" }
@@ -56,6 +58,8 @@ pub fn ColorChip(
                 span { class: "lobby-color-tag", "You" }
             } else if taken {
                 span { class: "lobby-color-tag dim", "Taken" }
+            } else if state == ColorChipState::Offline {
+                span { class: "lobby-color-tag dim", "Offline" }
             }
         }
     }

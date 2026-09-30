@@ -1,14 +1,14 @@
-//! Lobby screen: shows joined peers, lets each player claim a color and
-//! edit their nickname, and lets the host start the game.
+//! Lobby screen: choose a color, share the room, and start with 2–4 players.
+//! Any number of people can wait here; the four seats are taken and released
+//! freely, and anyone still unseated at the start watches the game.
 
 mod color_seat;
 mod nickname_editor;
-mod participants;
 mod share_link;
 
 use dioxus::prelude::*;
 use tantrix_game::Color;
-use tantrix_net::{SessionCommand, SessionRole};
+use tantrix_net::SessionCommand;
 
 use crate::components::alert_banner::AlertBanner;
 use crate::components::room_code_badge::RoomCodeBadge;
@@ -21,8 +21,6 @@ use color_seat::LobbyColorSeat;
 use nickname_editor::LobbyNicknameEditor;
 use share_link::share_link;
 
-pub(super) use participants::LobbyParticipants;
-
 const COLORS: [Color; 4] = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
 
 #[component]
@@ -30,7 +28,6 @@ pub fn OnlineLobbyView(
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
 ) -> Element {
-    let is_host = use_memo(move || *state.role().read() == SessionRole::Host);
     let my_color = use_memo(move || queries::my_color_of(state));
     let seated_count = use_memo(move || {
         let phase = state.phase();
@@ -42,14 +39,20 @@ pub fn OnlineLobbyView(
         let phase = phase.read();
         connected_seats_filled(&phase)
     });
-    let can_start =
-        use_memo(move || seated_count() >= 2 && connected_seated_count() == seated_count());
+    let can_start = use_memo(move || {
+        my_color().is_some() && seated_count() >= 2 && connected_seated_count() == seated_count()
+    });
     let error_message = use_memo(move || {
         let last = state.last_error();
         let last = last.read();
         last.as_ref().map(reject_message)
     });
     let share_url = use_memo(move || share_link(&state.room_code().read()));
+    let waiting = use_memo(move || {
+        let phase = state.phase();
+        let phase = phase.read();
+        waiting_names(&phase)
+    });
 
     // Gate on actually being in the Lobby phase — otherwise render nothing
     // (the router should already have picked a different screen).
@@ -77,11 +80,6 @@ pub fn OnlineLobbyView(
                 }
 
                 section { class: "lobby-section",
-                    h2 { class: "lobby-section-title", "Players" }
-                    LobbyParticipants { state, sender }
-                }
-
-                section { class: "lobby-section",
                     h2 { class: "lobby-section-title", "Pick your color" }
                     div { class: "lobby-color-row",
                         for color in COLORS.iter().copied() {
@@ -99,32 +97,44 @@ pub fn OnlineLobbyView(
                             "Release my seat"
                         }
                     }
+                    if !waiting.read().is_empty() {
+                        p { class: "lobby-waiting lobby-unseated", "Waiting for a seat: {waiting}" }
+                    }
                 }
 
                 AlertBanner { message: error_message }
 
                 div { class: "lobby-actions",
-                    if is_host() {
-                        button {
-                            class: "title-btn title-btn-primary",
-                            disabled: !can_start(),
-                            onclick: move |_| {
-                                if can_start() {
-                                    if let Some(s) = sender.read().as_ref() {
-                                        s.send(SessionCommand::StartGame);
-                                    }
+                    button {
+                        class: "title-btn title-btn-primary",
+                        disabled: !can_start(),
+                        onclick: move |_| {
+                            if can_start() {
+                                if let Some(s) = sender.read().as_ref() {
+                                    s.send(SessionCommand::StartGame);
                                 }
-                            },
-                            div { class: "title-btn-inner",
-                                if can_start() { "Start game" } else if seated_count() >= 2 { "Waiting for reconnection…" } else { "Waiting for players…" }
                             }
+                        },
+                        div { class: "title-btn-inner",
+                            if can_start() { "Start game" } else if my_color().is_none() { "Pick a color" } else if seated_count() >= 2 { "Waiting for reconnection…" } else { "Waiting for players…" }
                         }
-                    } else {
-                        p { class: "lobby-waiting", "Waiting for the host to start the game…" }
                     }
                 }
             }
         }
+    }
+}
+
+/// Members without a color, joined for display ("Ann, Bob").
+fn waiting_names(phase: &OnlinePhase) -> String {
+    match phase {
+        OnlinePhase::Lobby { lobby } => lobby
+            .unseated
+            .iter()
+            .map(|seat| seat.nickname.as_str())
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => String::new(),
     }
 }
 

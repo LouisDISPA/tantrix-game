@@ -1,92 +1,61 @@
-# Multiplayer — local testing guide
+# Online multiplayer
 
-End-to-end walkthrough for running the online mode on one machine. Everything
-happens between two browser tabs and a signaling server; no external infra.
+Online games are server-authoritative. Each room is one Cloudflare Durable
+Object, written in Rust (`tantrix-worker/src/room.rs`, rules in
+`room_logic.rs`), that owns the `tantrix_game::Game`, persists it, and
+broadcasts snapshots over WebSockets. Browsers only send intents
+(`tantrix-proto`) and render what the room sends back (`tantrix-net`). See
+[`cloudflare/README.md`](../cloudflare/README.md) for routing, storage, and
+free-plan notes.
 
-## 1. Start the signaling server
+## Player flow
 
-We use upstream `matchbox_server` unmodified. Install it once (matching the
-`matchbox_socket` version pinned in `tantrix-net/Cargo.toml`):
+1. **Create a room** generates a 6-letter code and opens the lobby. Share the
+   invite link (`/join/{CODE}`) or the code.
+2. Any number of people can be in the lobby; the four colors are seats.
+   Take a free seat, or **Release my seat** to leave it for someone else. The
+   lobby lists who is waiting for a seat. Clicking a seat someone else holds
+   asks for confirmation, then takes it; they stay in the room without a seat. Any seated player can press
+   **Start game** once at least two seated players are connected. There is no
+   host role: the room belongs to nobody, and its creator can leave.
+3. Players take turns; the server rejects out-of-turn or illegal moves.
+   Anyone without a seat watches, and can take over any playing seat (after
+   confirming), inheriting its hand and turn — e.g. when a player drops out
+   and would otherwise stall the game. The replaced player watches instead.
+4. Results stay available in the room after the game ends.
 
-```bash
-cargo install matchbox_server --version 0.12
-```
+## Disconnects and joining
 
-Then run it:
+- Identity is a `tantrix_session` cookie (`HttpOnly`, `SameSite=Lax`) the
+  Worker sets on the first page visit. Scripts can't read it, and it is never
+  in a WebSocket message: the room reads it from the socket handshake. Public
+  player IDs sent to others are separate.
+- Same browser, same player: reloading, pressing **Retry** on the
+  disconnected screen, or coming back later resumes your seat. Opening the
+  room in a second tab takes over from the first tab.
+- A seated player who drops keeps the seat, shown as *Offline*, until they
+  come back or someone takes it over. In the lobby **Start game** waits for
+  them. People without a seat who leave are removed.
+- Newcomers can join at any time; after the game started they watch. A room
+  accepts up to 32 members, a bound that only guards against scripted joins.
+- There is no protocol versioning: the Worker serves the client and the room
+  together, so they always deploy in step. A tab left open across a deploy
+  should be reloaded.
 
-```bash
-matchbox_server
-```
+## Running locally
 
-It binds `0.0.0.0:3536` by default and logs every WS connection to stdout.
-Leave it running in its own terminal — it holds the WebRTC rendezvous for
-the whole test session.
-
-## 2. Start the app
-
-In a second terminal:
-
-```bash
-dx serve --package tantrix-app
-```
-
-Dioxus will serve the web build at `http://localhost:8080` (check the
-console for the exact URL).
-
-## 3. Create a room (host tab)
-
-1. Open `http://localhost:8080` in a browser window.
-2. Click **Online**.
-3. Enter a nickname and click **Host a new room**.
-4. You land on the lobby. Note the 6-character room code (e.g. `ABCXYZ`) —
-   it's the path matchbox_server uses for signaling (`ws://localhost:3536/ABCXYZ`).
-5. Pick a color by clicking one of the color chips.
-
-## 4. Join the room (guest tab)
-
-Open a second browser window (private/incognito or a different profile
-works too — it just needs its own storage). Two paths:
-
-**Option A — paste the code:** open `http://localhost:8080`, click
-**Online**, enter a nickname, type the room code, click **Join room**.
-
-**Option B — share link:** the lobby shows a share URL of the shape
-`/join/ABCXYZ`. Navigate to `http://localhost:8080/join/ABCXYZ` in the
-second tab; you'll be dropped straight into the lobby with an auto-generated
-nickname that can be edited there.
-
-Pick a different color in the guest tab. Both tabs should now show both
-players seated.
-
-## 5. Start the game
-
-In the **host** tab, the **Start game** button lights up once at least two
-colors are seated and all seated players are connected. Click it. Both tabs switch to the board view and the
-host's authoritative `Game` drives turns from there on. Play a tile; the
-guest tab should receive the state update and render the move within a
-frame or two.
-
-## Troubleshooting
-
-- **"signaling closed before peer id was assigned"**: `matchbox_server`
-  isn't running, or isn't reachable at `ws://localhost:3536`. Start it, or
-  override via `TANTRIX_SIGNALING_URL=ws://... dx serve`.
-- **Both tabs stuck on "Joining room…"**: the host tab closed before the
-  guest connected. Matchbox rooms exist only while at least one WS is
-  open; reopen the host tab first.
-- **Host drops / game ends**: expected. Per the agreed spec, the room dies
-  when the host disconnects; survivors see `GameEnded { HostLeft }`.
-- **NAT / different machines**: `matchbox_server` relays only signaling.
-  The actual data channels are direct p2p and may fail across symmetric
-  NATs without a TURN server. For LAN tests this is irrelevant.
-
-## Pointing at a remote server
-
-Rebuild the app with the signaling URL baked in:
+Online play needs the Worker runtime (the native `dx serve` app has no room
+server):
 
 ```bash
-TANTRIX_SIGNALING_URL=wss://matchbox.example.com dx build --release --package tantrix-app
+just worker-dev   # http://localhost:8787
+just e2e          # Playwright suite against wrangler dev
 ```
 
-The constant lives in `tantrix-app/src/state/signaling.rs` and is read via
-`option_env!` at compile time.
+## Why workers-rs (wasm32) and not the Emscripten target
+
+Cloudflare's Emscripten target for Rust Workers mainly helps crates that need
+a C toolchain or a libc. Everything here is pure Rust, and the Worker already
+builds with `workers-rs` for server rendering, so the room Durable Object
+lives in the same `wasm32-unknown-unknown` module rather than adding a second
+toolchain.

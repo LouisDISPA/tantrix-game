@@ -1002,12 +1002,22 @@
 
 .lobby-color-chip.taken {
   opacity: 0.55;
-  cursor: not-allowed;
   filter: saturate(0.6);
 }
 
 .lobby-color-chip.taken:hover {
   transform: none;
+}
+
+/* Held by an offline player: dimmed, but free to take over. */
+.lobby-color-chip.offline {
+  opacity: 0.75;
+  border-style: dashed;
+}
+
+.lobby-color-chip.offline:hover {
+  border-color: var(--seat-color);
+  opacity: 1;
 }
 
 .lobby-color-hex {
@@ -1142,4 +1152,138 @@
   font-style: italic;
   font-size: 14px;
   padding: 12px;
+}
+
+/* ===== Confirmation modal ===== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+}
+
+.modal {
+  width: min(420px, 100%);
+  padding: 24px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+
+.modal-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.modal-message {
+  margin: 0 0 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-btn {
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modal-btn:hover {
+  border-color: var(--text-primary);
+}
+
+.modal-btn-primary {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-card);
+}
+
+/* ===== In-game seat takeover (members watching a game) ===== */
+
+.seat-takeover {
+  position: fixed;
+  top: 60px;
+  /* Not left:50% + translate: that caps the shrink-to-fit width at half
+     the viewport and wraps the row early. */
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+}
+
+.seat-takeover-title {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 0 4px;
+}
+
+.seat-takeover-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--seat-color), transparent 40%);
+  background: none;
+  color: white;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.seat-takeover-btn:hover {
+  background: color-mix(in oklch, var(--seat-color), transparent 70%);
+}
+
+.seat-takeover-btn.offline {
+  border-style: dashed;
+}
+
+.seat-takeover-dot {
+  width: 10px;
+  height: 10px;
+  clip-path: var(--clip-hex);
+  background: var(--seat-color);
+}
+
+.seat-takeover-offline {
+  font-weight: 400;
+  opacity: 0.7;
 }

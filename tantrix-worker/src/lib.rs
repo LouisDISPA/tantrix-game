@@ -6,18 +6,23 @@
 //! fullstack server, and the web client (built with `fullstack`) hydrates it.
 //!
 //! This module is called by the JS entry point (`cloudflare/src/index.js`),
-//! which keeps signaling and static assets; see `cloudflare/README.md`.
+//! which routes room WebSockets to the [`room::Room`] Durable Object and
+//! static files to the assets binding; see `cloudflare/README.md`.
 
 #![cfg(target_arch = "wasm32")]
 
 use std::sync::LazyLock;
 
 use axum::body::Body;
-use axum::http::Response;
+use axum::http::{header, HeaderValue, Response};
 use axum::Router;
 use dioxus_server::{DioxusRouterExt, IndexHtml, ServeConfig};
 use tower_service::Service;
 use worker::{event, Context, Env, HttpRequest};
+
+mod room;
+mod room_logic;
+mod session_cookie;
 
 const INDEX_HTML: &str = include_str!(concat!(env!("OUT_DIR"), "/index.html"));
 
@@ -36,5 +41,20 @@ fn start() {
 
 #[event(fetch)]
 async fn fetch(request: HttpRequest, _env: Env, _ctx: Context) -> worker::Result<Response<Body>> {
-    Ok(ROUTER.clone().call(request).await?)
+    // Every visit starts on a server-rendered page, so this is where a new
+    // browser gets its identity cookie, before it opens any room socket.
+    let cookie = request
+        .headers()
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok());
+    let needs_cookie = session_cookie::read(cookie).is_none();
+    let secure = request.uri().scheme_str() == Some("https");
+    let mut response = ROUTER.clone().call(request).await?;
+    if needs_cookie {
+        let token = session_cookie::SessionToken::generate();
+        if let Ok(value) = HeaderValue::from_str(&session_cookie::set_cookie(&token, secure)) {
+            response.headers_mut().append(header::SET_COOKIE, value);
+        }
+    }
+    Ok(response)
 }

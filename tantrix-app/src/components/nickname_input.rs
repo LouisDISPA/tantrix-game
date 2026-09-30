@@ -1,6 +1,6 @@
 //! Editable nickname field. Owns the draft signal and the "resync draft
 //! when the authoritative name first arrives" effect — auto-generated
-//! names assigned by the host after mount show up automatically. Once the
+//! names assigned by the server after mount show up automatically. Once the
 //! user has typed anything, their input is never overwritten.
 //!
 //! The parent only feeds in the authoritative value and a commit callback.
@@ -16,7 +16,7 @@ pub fn NicknameInput(
     let mut draft = use_signal(|| authoritative.read().clone());
 
     // Seed the draft the first time we see a non-empty authoritative
-    // name. Re-runs when the host-assigned name changes but we stop
+    // name. Re-runs when the server-assigned name changes but we stop
     // clobbering once the user has typed.
     use_effect(move || {
         let current = authoritative.read().clone();

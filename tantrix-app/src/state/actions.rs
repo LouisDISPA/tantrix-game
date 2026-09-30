@@ -45,7 +45,7 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
         forced,
     };
 
-    // Online play: forward the intent and let the host's StateUpdate drive
+    // Online play: forward the intent and let the server's StateUpdate drive
     // the next render. The local GameState stays untouched until then.
     if let Some(sender) = ctx.online.read().as_ref().cloned() {
         // Only the peer who owns the current seat may dispatch a move.
@@ -122,7 +122,7 @@ pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
 pub fn advance_turn(ctx: GameCtx) {
     let ui_state = ctx.ui_state;
 
-    // Online rooms are host-authoritative: we never schedule AI turns or
+    // Online rooms are server-authoritative: we never schedule AI turns or
     // mutate local state here.
     if ctx.online.read().is_some() {
         return;

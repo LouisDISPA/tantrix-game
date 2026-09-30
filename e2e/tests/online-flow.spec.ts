@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { attachAll, instrument, type Diagnostics } from './diagnostics';
+import { attachAll, instrument } from './diagnostics';
 import { openApp } from './open-app';
 import { placedTiles, playMove } from './play-move';
 
@@ -8,8 +8,8 @@ import { placedTiles, playMove } from './play-move';
  *
  * Unlike `full-game.spec.ts` (which only asserts the end state), this walks the
  * whole lifecycle — lobby, color seats, start, every move, game over — and after
- * *each* step cross-checks both browsers, the WebRTC connection state and the
- * signaling socket. On failure the merged network/console timeline is attached.
+ * *each* step cross-checks both browsers and the server WebSocket state. On
+ * failure the merged network/console timeline is attached.
  */
 
 const tileCount = 56;
@@ -17,40 +17,23 @@ const initiallyDealtTiles = 12;
 
 interface Player {
   page: Page;
-  diag: Diagnostics;
-  color: 'Red' | 'Blue';
-}
-
-async function rtcHealth(page: Page) {
-  return page.evaluate(() => {
-    const w = window as unknown as { __rtc?: { kind: string; detail?: { state?: string } }[] };
-    const events = w.__rtc ?? [];
-    const bad = events.filter(
-      (e) =>
-        e.kind === 'dc-error' ||
-        e.kind === 'dc-send-throw' ||
-        (e.kind === 'pc-connection' && ['failed', 'disconnected'].includes(e.detail?.state ?? '')) ||
-        (e.kind === 'pc-ice' && ['failed', 'disconnected'].includes(e.detail?.state ?? '')),
-    );
-    return { total: events.length, bad };
-  });
 }
 
 test('plays a fully instrumented online game', async ({ page, browser }, testInfo) => {
   test.setTimeout(10 * 60_000);
 
-  const hostDiag = await instrument(page, 'host');
+  const creatorDiag = await instrument(page, 'creator');
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   const guestDiag = await instrument(guest, 'guest');
 
   try {
-    // 1. Host creates a room.
+    // 1. The first player creates a room.
     await openApp(page);
     await page.getByRole('button', { name: 'Online' }).click();
-    await page.getByRole('button', { name: 'Host a new room' }).click();
+    await page.getByRole('button', { name: 'Create a room' }).click();
     await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
-    const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})\/host$/)?.[1] ?? '';
+    const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})$/)?.[1] ?? '';
     expect(code).toMatch(/^[A-Z]{6}$/);
 
     // 2. Guest joins through the entry form.
@@ -60,10 +43,10 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
     await guest.getByRole('button', { name: 'Join room' }).click();
     await expect(guest.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
 
-    // Both browsers must agree the peer connection is established.
+    // Both browsers must connect to the room WebSocket.
     await expect(page.locator('.hud-chip-room, .lobby-code, body')).toContainText(code);
-    await expect.poll(() => rtcHealth(page).then((h) => h.total), { timeout: 20_000 }).toBeGreaterThan(0);
-    await expect.poll(() => rtcHealth(guest).then((h) => h.total), { timeout: 20_000 }).toBeGreaterThan(0);
+    expect(creatorDiag.events().some((e) => e.text.startsWith('ws-open /room/'))).toBe(true);
+    expect(guestDiag.events().some((e) => e.text.startsWith('ws-open /room/'))).toBe(true);
 
     // 3. Seats: each side claims one, and the other side must see it.
     await page.getByRole('button', { name: /Red.*Open/ }).click();
@@ -71,7 +54,7 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
     await expect(guest.getByRole('button', { name: /Red/ }).first()).not.toContainText('Open');
     await expect(page.getByRole('button', { name: /Blue/ }).first()).not.toContainText('Open');
 
-    // 4. Host starts the game; both browsers must switch to play.
+    // 4. A seated player starts the game; both browsers must switch to play.
     const startGame = page.getByRole('button', { name: 'Start game' });
     await expect(startGame).toBeEnabled();
     await startGame.click();
@@ -81,8 +64,8 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
     await expect(guest.getByText('44 in bag')).toBeVisible();
 
     const players: Record<'Red' | 'Blue', Player> = {
-      Red: { page, diag: hostDiag, color: 'Red' },
-      Blue: { page: guest, diag: guestDiag, color: 'Blue' },
+      Red: { page },
+      Blue: { page: guest },
     };
 
     // 5. Play to the end, cross-checking both browsers after every move.
@@ -109,19 +92,12 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
         await expect(placedTiles(guest)).toHaveCount(count);
 
         // Bag counters stay in lockstep on both sides.
-        const hostBag = (await page.getByText(/\d+ in bag/).first().textContent()) ?? '';
-        await expect(guest.getByText(hostBag).first()).toBeVisible();
+        const creatorBag = (await page.getByText(/\d+ in bag/).first().textContent()) ?? '';
+        await expect(guest.getByText(creatorBag).first()).toBeVisible();
 
-        // The roster badge must never claim someone is offline while the data
-        // channel is demonstrably alive (that would be a stale `connected` flag).
-        for (const [who, p] of [['host', page], ['guest', guest]] as const) {
-          const badge = await p.locator('.online-participants-toggle').textContent();
-          expect(badge, `${who} players badge after move ${move + 1}`).not.toMatch(/offline/i);
-        }
-
-        // No dropped connection at any point mid-game.
-        expect((await rtcHealth(page)).bad, 'host rtc bad events').toEqual([]);
-        expect((await rtcHealth(guest)).bad, 'guest rtc bad events').toEqual([]);
+        // Neither room socket should have closed during the game.
+        expect(creatorDiag.events().filter((e) => e.text.startsWith('ws-close /room/'))).toEqual([]);
+        expect(guestDiag.events().filter((e) => e.text.startsWith('ws-close /room/'))).toEqual([]);
         await expect(page.locator('.hud-chip-conn-label')).toHaveText(/Connected|Game over/);
         await expect(guest.locator('.hud-chip-conn-label')).toHaveText(/Connected|Game over/);
       });
@@ -143,10 +119,10 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
       await page.locator('.results-row').allTextContents(),
     );
 
-    expect(hostDiag.problems(), 'host runtime problems').toEqual([]);
+    expect(creatorDiag.problems(), 'creator runtime problems').toEqual([]);
     expect(guestDiag.problems(), 'guest runtime problems').toEqual([]);
   } catch (error) {
-    await attachAll(testInfo, hostDiag, guestDiag);
+    await attachAll(testInfo, creatorDiag, guestDiag);
     throw error;
   } finally {
     await guestContext.close();
@@ -156,7 +132,7 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
 test('guest can reload mid-game and resume with the same seat', async ({ page, browser }, testInfo) => {
   test.setTimeout(3 * 60_000);
 
-  const hostDiag = await instrument(page, 'host');
+  const creatorDiag = await instrument(page, 'creator');
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   const guestDiag = await instrument(guest, 'guest');
@@ -164,9 +140,9 @@ test('guest can reload mid-game and resume with the same seat', async ({ page, b
   try {
     await openApp(page);
     await page.getByRole('button', { name: 'Online' }).click();
-    await page.getByRole('button', { name: 'Host a new room' }).click();
+    await page.getByRole('button', { name: 'Create a room' }).click();
     await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
-    const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})\/host$/)?.[1] ?? '';
+    const code = new URL(page.url()).pathname.match(/^\/online\/([A-Z]{6})$/)?.[1] ?? '';
 
     await guest.goto(`/join/${code}`);
     await expect(guest.getByRole('heading', { name: 'LOBBY' })).toBeVisible({ timeout: 20_000 });
@@ -175,7 +151,7 @@ test('guest can reload mid-game and resume with the same seat', async ({ page, b
     await page.getByRole('button', { name: 'Start game' }).click();
     await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
 
-    // Red (host) plays one move so the board is non-empty when the guest reloads.
+    // One player moves so the board is non-empty when the guest reloads.
     const firstColor = (await page.locator('.hud-chip-name').textContent())?.trim();
     const first = firstColor === 'Red' ? page : guest;
     const count = await playMove(first);
@@ -196,7 +172,7 @@ test('guest can reload mid-game and resume with the same seat', async ({ page, b
     await expect(placedTiles(page)).toHaveCount(nextCount);
     await expect(placedTiles(guest)).toHaveCount(nextCount);
   } catch (error) {
-    await attachAll(testInfo, hostDiag, guestDiag);
+    await attachAll(testInfo, creatorDiag, guestDiag);
     throw error;
   } finally {
     await guestContext.close();

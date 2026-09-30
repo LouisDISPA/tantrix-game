@@ -8,3 +8,12 @@ export async function openApp(page: Page) {
     /\d+/,
   );
 }
+
+/** Open `/online` and wait until its buttons are hydrated and clickable. */
+export async function openOnline(page: Page) {
+  await page.goto('/online');
+  await expect(page.getByRole('button', { name: 'Create a room' })).toHaveAttribute(
+    'data-dioxus-id',
+    /\d+/,
+  );
+}

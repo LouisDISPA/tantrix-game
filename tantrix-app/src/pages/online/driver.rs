@@ -3,40 +3,37 @@
 
 use dioxus::prelude::*;
 use futures::StreamExt;
-use tantrix_net::{
-    open_client_session, open_host_session, SessionEvent, SessionHandle, SessionRole,
-};
+use tantrix_net::{open_session, SessionEvent};
 use tantrix_proto::RejectCode;
 
 use crate::state::online_state::{
     CommandSender, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
-use crate::state::session_token;
-use crate::state::signaling::signaling_url;
+use crate::state::room_connection::room_url;
 
-/// Open a session (host or client) for the given room and pump events into
+/// Open a session for the given room and pump events into
 /// the `OnlineState` store. The spawned tasks live as long as the component
 /// that owns the store is mounted.
 pub fn spawn_session(
     store: Store<OnlineState>,
     mut sender: Signal<Option<CommandSender>>,
     room_code: String,
-    role: SessionRole,
+    create: bool,
     nickname: String,
 ) {
-    let url = signaling_url(&room_code);
+    // This hook also runs while Dioxus server-renders the room page. Only a
+    // hydrated browser owns a player connection; SSR must stay on Connecting.
+    #[cfg(target_arch = "wasm32")]
+    if web_sys::window().is_none() {
+        return;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    if cfg!(feature = "server") {
+        return;
+    }
 
-    let (handle, run_fut): (SessionHandle, _) = match role {
-        SessionRole::Host => {
-            let (h, f) = open_host_session(url, nickname);
-            (h, futures::future::Either::Left(f))
-        }
-        SessionRole::Client => {
-            let token = session_token::load_or_create(&room_code);
-            let (h, f) = open_client_session(url, nickname, token);
-            (h, futures::future::Either::Right(f))
-        }
-    };
+    let url = room_url(&room_code, create);
+    let (handle, run_fut) = open_session(url, nickname);
 
     // Publish the command sender so child components can dispatch actions.
     sender.set(Some(CommandSender::new(handle.commands)));
@@ -48,10 +45,9 @@ pub fn spawn_session(
 
     // Pipe events into state.
     let mut events = handle.events;
-    let room_for_events = room_code.clone();
     spawn(async move {
         while let Some(event) = events.next().await {
-            apply_event(store, event, &room_for_events);
+            apply_event(store, event);
         }
         // The event stream closed without a terminal `Disconnected` — the
         // network task exited early. Park the UI on the Failed screen so
@@ -70,15 +66,10 @@ pub fn spawn_session(
 
 /// Per-field writes: each event only wakes the specific Store-field
 /// subscribers it actually changes. Unrelated UI stays asleep.
-fn apply_event(store: Store<OnlineState>, event: SessionEvent, room_code: &str) {
+fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
     match event {
-        SessionEvent::Connected {
-            role: _,
-            my_peer_id,
-            host_peer_id,
-        } => {
+        SessionEvent::Connected { my_peer_id } => {
             store.my_peer_id().set(Some(my_peer_id));
-            store.host_peer_id().set(Some(host_peer_id));
         }
         SessionEvent::Lobby(lobby) => {
             store.phase().set(OnlinePhase::Lobby { lobby });
@@ -104,41 +95,37 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent, room_code: &str) 
             store.phase().set(OnlinePhase::Ended { reason, snapshot });
         }
         SessionEvent::Error { code, message } => {
-            if matches!(code, Some(RejectCode::Kicked)) {
-                // Drop our stored token so a fresh rejoin mints a new one
-                // instead of immediately re-tripping the kick-seen record.
-                session_token::clear(room_code);
-            }
             if let Some(code) = code {
                 store.last_error().set(Some(code));
             } else {
                 log::warn!("online: Error event without code: {message}");
             }
         }
-        SessionEvent::ConnectTimeout { stage } => {
-            log::warn!("online: connecting timed out at {stage:?}");
+        SessionEvent::ConnectTimeout => {
+            log::warn!("online: connecting timed out");
             store.phase().set(OnlinePhase::Failed {
-                reason: FailureReason::Timeout(stage),
+                reason: FailureReason::Timeout,
             });
         }
         SessionEvent::Disconnected { reason } => {
-            // The results screen is final: the host keeps its socket open after
+            // The results screen is final: the server keeps the socket open after
             // the game ends, and its later teardown must not replace the
             // scores with a "Disconnected" screen.
             if matches!(&*store.phase().read(), OnlinePhase::Ended { .. }) {
                 log::info!("online: ignoring disconnect after the game ended ({reason})");
                 return;
             }
-            // Prefer a structured host-reject over the generic transport
-            // reason. Consume last_error (take) so a later reconnect isn't
-            // seeded with a stale value.
+            // The server closes after refusing a join. Only those join codes
+            // should replace the transport reason; a prior move or color
+            // error must not be mistaken for why the socket closed.
             let last_error = store.last_error().read().clone();
             let failure = match last_error {
-                Some(code) => {
+                Some(code @ (RejectCode::RoomNotFound
+                | RejectCode::RoomFull)) => {
                     store.last_error().set(None);
                     FailureReason::Rejected(code)
                 }
-                None => FailureReason::Transport(reason),
+                _ => FailureReason::Transport(reason),
             };
             store.phase().set(OnlinePhase::Failed { reason: failure });
         }

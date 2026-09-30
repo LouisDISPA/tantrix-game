@@ -4,11 +4,11 @@
 use dioxus::prelude::*;
 
 #[component]
-pub fn WaitingForHost() -> Element {
+pub fn WaitingForGame() -> Element {
     rsx! {
         div { class: "title-screen",
             div { class: "title-content",
-                p { class: "title-subtitle", "Waiting for host…" }
+                p { class: "title-subtitle", "Waiting for game…" }
             }
         }
     }

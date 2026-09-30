@@ -28,9 +28,7 @@ pub fn HandTile(color: Color, index: usize) -> Element {
 
     let just_drawn = use_memo(move || ctx.ui_state.new_tile()() == Some((color, index)));
 
-    // Hover works on the current player's tiles for anyone watching — so
-    // spectators can see where moves would land — but only the peer who
-    // actually owns the seat gets to commit a move.
+    // Only the player who owns the current seat can commit a move.
     let is_active_seat = use_memo(move || ctx.game_state.read().turn_tracker.current() == color);
     let can_play = use_memo(move || {
         if !is_active_seat() {
@@ -39,7 +37,7 @@ pub fn HandTile(color: Color, index: usize) -> Element {
         match (*ctx.my_color.read(), ctx.online.read().is_some()) {
             (Some(mine), _) => mine == color, // online, own this seat
             (None, false) => true,            // local game: any current-player tile is live
-            (None, true) => false,            // online spectator: look, don't touch
+            (None, true) => false,            // online player without a seat
         }
     });
 

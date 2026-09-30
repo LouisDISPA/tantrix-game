@@ -6,9 +6,10 @@
 use dioxus::prelude::*;
 use tantrix_net::{generate_room_code, normalize_room_code, ROOM_CODE_LEN};
 
-use crate::route::{RoleParam, Route};
+use crate::route::Route;
+use crate::state::room_connection;
 
-/// `/online` landing page: host a fresh room or enter a code to join.
+/// `/online` landing page: create a fresh room or enter a code to join.
 #[component]
 pub fn OnlineEntry() -> Element {
     let nav = navigator();
@@ -20,7 +21,7 @@ pub fn OnlineEntry() -> Element {
             div { class: "title-content",
                 div { class: "title-logo-area",
                     h1 { class: "title-logo", "ONLINE" }
-                    p { class: "title-subtitle", "Play over WebRTC" }
+                    p { class: "title-subtitle", "Play together online" }
                 }
 
                 div { class: "online-entry",
@@ -28,12 +29,13 @@ pub fn OnlineEntry() -> Element {
                         button {
                             class: "title-btn title-btn-primary",
                             onclick: move |_| {
+                                let code = generate_room_code();
+                                room_connection::mark_create(&code);
                                 let _ = nav.push(Route::OnlineRoom {
-                                    code: generate_room_code(),
-                                    role: RoleParam::Host,
+                                    code,
                                 });
                             },
-                            div { class: "title-btn-inner", "Host a new room" }
+                            div { class: "title-btn-inner", "Create a room" }
                         }
 
                         div { class: "online-join",
@@ -87,16 +89,16 @@ pub fn JoinRoom(code: String) -> Element {
     let normalized_code = normalize_room_code(&code_upper);
     let code_is_valid = normalized_code.is_some();
 
-    // Auto-redirect into the room on first mount if the code looks sane.
-    use_hook({
+    // Auto-redirect into the room if the code looks sane. An effect runs
+    // after hydration (never during SSR): navigating mid-hydration would
+    // mount the room twice and drop its first WebSocket. `replace` keeps
+    // Back from bouncing through this redirect again.
+    use_effect({
         let code = normalized_code.clone().unwrap_or_default();
         let valid = code_is_valid;
         move || {
             if valid {
-                let _ = nav.push(Route::OnlineRoom {
-                    code,
-                    role: RoleParam::Client,
-                });
+                nav.replace(Route::OnlineRoom { code: code.clone() });
             }
         }
     });
@@ -138,8 +140,5 @@ fn try_join(
         ));
         return;
     };
-    let _ = nav.push(Route::OnlineRoom {
-        code,
-        role: RoleParam::Client,
-    });
+    let _ = nav.push(Route::OnlineRoom { code });
 }

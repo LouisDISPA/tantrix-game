@@ -9,8 +9,8 @@ use crate::components::scores_panel::ScoresPanel;
 use crate::hooks::{use_initial_snapshot, use_online_game_ctx};
 use crate::pages::local_game::GamePlay;
 use crate::pages::online::hud_badge::OnlineHudBadge;
-use crate::pages::online::participants_drawer::ParticipantsDrawer;
-use crate::pages::online::screens::WaitingForHost;
+use crate::pages::online::seat_takeover::OnlineSeatTakeover;
+use crate::pages::online::screens::WaitingForGame;
 use crate::route::Route;
 use crate::state::online_state::{CommandSender, OnlineState};
 use crate::state::online_state::{OnlinePhase, OnlineStateStoreExt};
@@ -18,7 +18,7 @@ use crate::state::online_state::{OnlinePhase, OnlineStateStoreExt};
 #[component]
 pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSender>>) -> Element {
     let Some(initial) = use_initial_snapshot(state) else {
-        return rsx! { WaitingForHost {} };
+        return rsx! { WaitingForGame {} };
     };
 
     let ctx = use_online_game_ctx(state, sender, initial);
@@ -47,14 +47,13 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
                     }
                 }
                 OnlineHudBadge { state }
-                ParticipantsDrawer { state, sender }
             }
         };
     }
 
     rsx! {
         GamePlay {}
+        OnlineSeatTakeover { state, sender }
         OnlineHudBadge { state }
-        ParticipantsDrawer { state, sender }
     }
 }
