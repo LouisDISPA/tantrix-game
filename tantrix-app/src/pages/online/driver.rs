@@ -120,8 +120,7 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
             // error must not be mistaken for why the socket closed.
             let last_error = store.last_error().read().clone();
             let failure = match last_error {
-                Some(code @ (RejectCode::RoomNotFound
-                | RejectCode::RoomFull)) => {
+                Some(code @ (RejectCode::RoomNotFound | RejectCode::RoomFull)) => {
                     store.last_error().set(None);
                     FailureReason::Rejected(code)
                 }

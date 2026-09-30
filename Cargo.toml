@@ -15,3 +15,17 @@ resolver = "2"
 # Vendored dioxus-server 0.7.10 adds wasm32 support for Cloudflare SSR.
 [patch.crates-io]
 dioxus-server = { path = "vendor/dioxus-server" }
+
+# Size-optimized wasm. `dx build --web --release` builds the client with this
+# profile by name, and `just worker-ssr` builds the Worker SSR module with it.
+# Native binaries keep the default release profile: the server unwinds a
+# panicking room task instead of aborting every room, and the tournament
+# stays optimized for speed. No `strip`: `dx tools assets` reads the Worker
+# module's symbols (dx forces `strip=false` on its own builds for the same
+# reason).
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

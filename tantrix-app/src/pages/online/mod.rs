@@ -6,8 +6,8 @@ mod game;
 mod hud_badge;
 mod lobby;
 mod room;
-mod seat_takeover;
 mod screens;
+mod seat_takeover;
 
 pub use entry::{JoinRoom, OnlineEntry};
 pub use room::OnlineRoom;

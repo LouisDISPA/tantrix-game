@@ -14,6 +14,23 @@ port := "8080"
 default:
     @just --list
 
+# ── Rust checks (CI runs these same recipes) ────────────────────────────────
+
+# Fail on unformatted Rust code.
+fmt-check:
+    cargo fmt --all --check
+
+# Clippy, warnings denied, for the native workspace, native server and wasm client.
+lint:
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy -p tantrix-app --features server --all-targets -- -D warnings
+    cargo clippy -p tantrix-app --features web --target wasm32-unknown-unknown -- -D warnings
+
+# Unit and integration tests, including the native server's.
+test:
+    cargo test --workspace
+    cargo test -p tantrix-app --features server
+
 # Fullstack UI and online rooms with hot reload.
 dev:
     cd tantrix-app && dx serve --port {{ port }} --web --features fullstack --hot-reload true
@@ -70,21 +87,22 @@ worker-ssr:
     cargo install worker-build --version "$version" --locked --root target/tools --quiet
     worker_build="$PWD/target/tools/bin/worker-build"
     # Same cargo invocation as worker-build's, so its own build step below is a
-    # no-op and keeps the asset paths patched in by `dx tools assets`.
-    (cd tantrix-worker && WASM_BINDGEN_USE_JS_SYS=1 cargo build --lib --release --target wasm32-unknown-unknown)
+    # no-op and keeps the asset paths patched in by `dx tools assets`. The
+    # size-optimized `wasm-release` profile is defined in the root Cargo.toml.
+    (cd tantrix-worker && WASM_BINDGEN_USE_JS_SYS=1 cargo build --lib --profile wasm-release --target wasm32-unknown-unknown)
     # Plain cargo builds point `asset!()` at the source files on disk; this
     # rewrites them to the hashed names dx gave the client's copies. Patch the
-    # deps/ artifact: even a no-op cargo build re-copies it over release/.
+    # deps/ artifact: even a no-op cargo build re-copies it over wasm-release/.
     out=target/dx/tantrix-worker-assets
     rm -rf "$out"
-    dx tools assets target/wasm32-unknown-unknown/release/deps/tantrix_worker.wasm "$out"
+    dx tools assets target/wasm32-unknown-unknown/wasm-release/deps/tantrix_worker.wasm "$out"
     for f in "$out"/*; do
         if [ ! -e "{{ client_public }}/assets/$(basename "$f")" ]; then
             echo "error: $(basename "$f") is not in the client build; run just worker-client" >&2
             exit 1
         fi
     done
-    (cd tantrix-worker && "$worker_build" --release --out-dir ../cloudflare/build/ssr)
+    (cd tantrix-worker && "$worker_build" --profile wasm-release --out-dir ../cloudflare/build/ssr)
 
 # Build the client and the SSR module.
 worker-build: worker-client worker-ssr

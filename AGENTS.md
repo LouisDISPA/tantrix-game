@@ -19,8 +19,14 @@ cd tantrix-app && dx serve --hot-reload
 # TUI
 cargo run -p tantrix-tui
 
-# Tests
-cargo test -p tantrix-game
+# Rust checks (the same recipes CI runs)
+just fmt-check
+just lint
+just test
+
+# Browser e2e (Worker / native server)
+just worker-e2e
+just native-e2e
 
 # Production build
 cd tantrix-app && dx build --release

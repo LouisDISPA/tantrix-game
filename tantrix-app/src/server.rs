@@ -1,7 +1,7 @@
 //! Fullstack server entrypoint.
 //!
 //! Serves the Dioxus app and native online rooms, with **server-side rendering
-//! + hydration** out of the box — `dioxus::server::router(app)` returns an
+//! and hydration** out of the box — `dioxus::server::router(app)` returns an
 //! Axum router that renders each route on the server into HTML, ships a
 //! hydration payload, and the wasm bundle picks up interactivity on the
 //! client. See https://dioxuslabs.com/learn/0.7/essentials/fullstack/ssr.

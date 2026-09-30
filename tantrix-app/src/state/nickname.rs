@@ -116,10 +116,12 @@ pub fn persist(nickname: &str) {
 fn load_stored() -> Option<String> {
     #[cfg(target_arch = "wasm32")]
     {
-        return local_storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten());
+        local_storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
     }
     #[cfg(not(target_arch = "wasm32"))]
-    None
+    {
+        None
+    }
 }
 
 fn clear_legacy() {

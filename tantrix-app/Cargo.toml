@@ -53,11 +53,3 @@ liveview = ["dioxus/liveview"]
 desktop = ["dioxus/desktop", "dep:tokio"]
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
-
-# Cargo.toml
-[profile.release]
-opt-level = "z" # Optimize for size
-lto = true
-codegen-units = 1
-panic = "abort"
-strip = true
