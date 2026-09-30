@@ -9,3 +9,10 @@ members = [
     "tantrix-net",
 ]
 resolver = "2"
+
+# `matchbox_socket` 0.14.0 with one patch: a bound on how long the SDP
+# offer/answer waits for ICE gathering to finish (see
+# vendor/matchbox_socket/src/webrtc_socket/wasm.rs). Without it a single
+# unresponsive STUN server stalls every join for ~40 s.
+[patch.crates-io]
+matchbox_socket = { path = "vendor/matchbox_socket" }

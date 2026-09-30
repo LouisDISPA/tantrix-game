@@ -13,7 +13,7 @@ use enum_map::EnumMap;
 use futures::future::FutureExt;
 use futures::{select, StreamExt};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use matchbox_socket::{PeerId as MatchboxPeerId, PeerState, WebRtcChannel};
 use tantrix_game::{Color, Game, Hand, Player};
 use tantrix_proto::{
@@ -262,6 +262,7 @@ async fn run_host(
         return;
     };
 
+    info!("host: room open, waiting for guests (peer id {my_mb_id})");
     let mut state = HostState::new(my_mb_id, nickname);
     let my_wire_id = token_to_wire(&state.my_token);
 
@@ -303,9 +304,9 @@ async fn run_host(
                 None => break,
             },
             peer_update = socket.next().fuse() => match peer_update {
-                Some((peer, PeerState::Connected)) => debug!("host: peer {peer} connected"),
+                Some((peer, PeerState::Connected)) => info!("host: WebRTC link to {peer} open"),
                 Some((peer, PeerState::Disconnected)) => {
-                    debug!("host: peer {peer} disconnected");
+                    info!("host: WebRTC link to {peer} closed");
                     if !state.ended {
                         handle_peer_disconnect(&mut state, &peer, &events_tx, &mut channel);
                     }
@@ -423,8 +424,10 @@ fn handle_intent(
         }
         PeerMessage::PickColor { color } => {
             if state.locked_for_game {
-                send_error(
+                reject(
                     channel,
+                    events_tx,
+                    state.my_mb_id,
                     &from,
                     RejectCode::GameInProgress,
                     "game already started",
@@ -434,6 +437,24 @@ fn handle_intent(
             let Some(token) = state.token_for_peer(&from).cloned() else {
                 return;
             };
+            // Validate before mutating anything: a rejected pick must leave the
+            // sender's current seat exactly as it was.
+            if let Some(c) = color {
+                if state.seats[c]
+                    .as_ref()
+                    .is_some_and(|holder| *holder != token)
+                {
+                    reject(
+                        channel,
+                        events_tx,
+                        state.my_mb_id,
+                        &from,
+                        RejectCode::ColorTaken,
+                        "color already taken",
+                    );
+                    return;
+                }
+            }
             // Release any seat they currently hold.
             for slot in state.seats.values_mut() {
                 if slot.as_ref() == Some(&token) {
@@ -447,15 +468,6 @@ fn handle_intent(
                 }
             }
             if let Some(c) = color {
-                if state.seats[c].is_some() {
-                    send_error(
-                        channel,
-                        &from,
-                        RejectCode::ColorTaken,
-                        "color already taken",
-                    );
-                    return;
-                }
                 state.seats[c] = Some(token.clone());
                 if let Some(r) = state.participants.get_mut(&token) {
                     if !matches!(r.role, ParticipantRole::Host) {
@@ -467,8 +479,10 @@ fn handle_intent(
         }
         PeerMessage::StartGame => {
             if from != state.my_mb_id {
-                send_error(
+                reject(
                     channel,
+                    events_tx,
+                    state.my_mb_id,
                     &from,
                     RejectCode::InvalidMove,
                     "only the host can start",
@@ -480,8 +494,10 @@ fn handle_intent(
             }
             let seated_count = state.seated_count();
             if seated_count < 2 {
-                send_error(
+                reject(
                     channel,
+                    events_tx,
+                    state.my_mb_id,
                     &from,
                     RejectCode::InvalidMove,
                     "need at least two seated players",
@@ -489,8 +505,10 @@ fn handle_intent(
                 return;
             }
             if !state.all_seated_connected() {
-                send_error(
+                reject(
                     channel,
+                    events_tx,
+                    state.my_mb_id,
                     &from,
                     RejectCode::InvalidMove,
                     "all seated players must be connected",
@@ -532,12 +550,19 @@ fn handle_intent(
             auto_skip_stuck_players(state, channel, events_tx);
         }
         PeerMessage::PlayMove { m } => {
-            if !ensure_turn(state, &from, channel) {
+            if !ensure_turn(state, &from, channel, events_tx) {
                 return;
             }
             let game = state.game.as_mut().unwrap();
             if let Err(e) = game.play_move(m) {
-                send_error(channel, &from, RejectCode::InvalidMove, &e.to_string());
+                reject(
+                    channel,
+                    events_tx,
+                    state.my_mb_id,
+                    &from,
+                    RejectCode::InvalidMove,
+                    &e.to_string(),
+                );
                 return;
             }
             let snap = state.snapshot().unwrap();
@@ -559,13 +584,15 @@ fn handle_intent(
             }
         }
         PeerMessage::SkipTurn => {
-            if !ensure_turn(state, &from, channel) {
+            if !ensure_turn(state, &from, channel, events_tx) {
                 return;
             }
             let game = state.game.as_mut().unwrap();
             if !game.get_possible_moves().is_empty() {
-                send_error(
+                reject(
                     channel,
+                    events_tx,
+                    state.my_mb_id,
                     &from,
                     RejectCode::InvalidMove,
                     "cannot skip while legal moves exist",
@@ -594,8 +621,10 @@ fn handle_intent(
         PeerMessage::UpdateNickname { nickname } => {
             let trimmed = nickname.trim();
             if trimmed.is_empty() {
-                send_error(
+                reject(
                     channel,
+                    events_tx,
+                    state.my_mb_id,
                     &from,
                     RejectCode::InvalidMove,
                     "nickname cannot be empty",
@@ -726,8 +755,10 @@ fn handle_kick(
     channel: &mut WebRtcChannel,
 ) {
     if from != state.my_mb_id {
-        send_error(
+        reject(
             channel,
+            events_tx,
+            state.my_mb_id,
             &from,
             RejectCode::InvalidMove,
             "only the host can kick",
@@ -791,19 +822,45 @@ fn handle_kick(
     broadcast_roster_change(state, channel, events_tx);
 }
 
-fn ensure_turn(state: &HostState, from: &MatchboxPeerId, channel: &mut WebRtcChannel) -> bool {
+fn ensure_turn(
+    state: &HostState,
+    from: &MatchboxPeerId,
+    channel: &mut WebRtcChannel,
+    events_tx: &UnboundedSender<SessionEvent>,
+) -> bool {
     let Some(game) = state.game.as_ref() else {
-        send_error(channel, from, RejectCode::InvalidMove, "game not started");
+        reject(
+            channel,
+            events_tx,
+            state.my_mb_id,
+            from,
+            RejectCode::InvalidMove,
+            "game not started",
+        );
         return false;
     };
     let current = game.currently_playing();
     let Some(seat_token) = state.seats[current].as_ref() else {
-        send_error(channel, from, RejectCode::InvalidMove, "seat is empty");
+        reject(
+            channel,
+            events_tx,
+            state.my_mb_id,
+            from,
+            RejectCode::InvalidMove,
+            "seat is empty",
+        );
         return false;
     };
     let from_token = state.token_for_peer(from);
     if from_token != Some(seat_token) {
-        send_error(channel, from, RejectCode::NotYourTurn, "not your turn");
+        reject(
+            channel,
+            events_tx,
+            state.my_mb_id,
+            from,
+            RejectCode::NotYourTurn,
+            "not your turn",
+        );
         return false;
     }
     true
@@ -976,7 +1033,28 @@ fn send_welcome(
     );
 }
 
-fn send_error(channel: &mut WebRtcChannel, peer: &MatchboxPeerId, code: RejectCode, message: &str) {
+/// Reject an intent from `peer`.
+///
+/// The host also feeds its own UI commands through `handle_intent`, so `peer`
+/// can be the host itself. There is no data channel to oneself: matchbox
+/// panics (`couldn't find data channel for peer`) on a send to an unknown
+/// peer, which would take the whole session down. Errors for the host go
+/// straight to its own event stream instead.
+fn reject(
+    channel: &mut WebRtcChannel,
+    events_tx: &UnboundedSender<SessionEvent>,
+    me: MatchboxPeerId,
+    peer: &MatchboxPeerId,
+    code: RejectCode,
+    message: &str,
+) {
+    if *peer == me {
+        let _ = events_tx.unbounded_send(SessionEvent::Error {
+            code: Some(code),
+            message: message.into(),
+        });
+        return;
+    }
     send_to(
         channel,
         peer,

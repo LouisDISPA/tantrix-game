@@ -1,6 +1,7 @@
 //! Session lifecycle + reasons a session can end.
 
 use tantrix_game::Move;
+use tantrix_net::ConnectStage;
 use tantrix_proto::{EndReason, GameSnapshot, LobbyState, RejectCode};
 
 /// Top-level lifecycle of the online session.
@@ -33,6 +34,8 @@ pub enum FailureReason {
     Rejected(RejectCode),
     /// Transport-level failure (socket closed, signaling error, etc.).
     Transport(String),
+    /// Connecting stalled in the given stage; retrying usually works.
+    Timeout(ConnectStage),
 }
 
 impl FailureReason {
@@ -40,6 +43,29 @@ impl FailureReason {
         match self {
             FailureReason::Rejected(code) => reject_message(code).to_string(),
             FailureReason::Transport(msg) => msg.clone(),
+            FailureReason::Timeout(stage) => timeout_message(*stage).to_string(),
+        }
+    }
+
+    /// Whether trying again could plausibly help. A host rejection (kicked,
+    /// version mismatch, game already running) will just repeat itself.
+    pub fn is_retryable(&self) -> bool {
+        !matches!(self, FailureReason::Rejected(_))
+    }
+}
+
+/// User-facing explanation for each stage a connection attempt can stall in.
+pub fn timeout_message(stage: ConnectStage) -> &'static str {
+    match stage {
+        ConnectStage::Signaling => {
+            "Couldn't reach the game server. Check your connection and try again."
+        }
+        ConnectStage::PeerLink => {
+            "Couldn't open a direct connection to the host. This is usually a temporary \
+             network hiccup, so trying again often works."
+        }
+        ConnectStage::Welcome => {
+            "The host didn't respond. Make sure the room is still open, then try again."
         }
     }
 }

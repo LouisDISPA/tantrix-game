@@ -11,6 +11,21 @@ pub enum SessionRole {
     Client,
 }
 
+/// The stage of connecting to a room that ran out of time.
+///
+/// Joining goes through three separate waits that can each stall on their own:
+/// the signaling server, the WebRTC link to the host (SDP exchange + ICE), and
+/// the host's answer to our `Hello`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectStage {
+    /// The signaling server never assigned us an id.
+    Signaling,
+    /// Signaling worked, but no WebRTC data channel to another peer opened.
+    PeerLink,
+    /// The data channel is open, but the host never answered our `Hello`.
+    Welcome,
+}
+
 /// Commands the UI sends into the session.
 #[derive(Debug, Clone)]
 pub enum SessionCommand {
@@ -60,6 +75,9 @@ pub enum SessionEvent {
         code: Option<RejectCode>,
         message: String,
     },
+    /// Connecting did not finish in time. The session task has exited; the UI
+    /// should offer a retry.
+    ConnectTimeout { stage: ConnectStage },
     /// Fatal transport error. The session task has exited.
     Disconnected { reason: String },
 }

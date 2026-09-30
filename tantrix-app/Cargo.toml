@@ -16,7 +16,7 @@ getrandom = { version = "0.4.3", features = ["wasm_js"] }
 futures = "0.3.34"
 futures-channel = "0.3.34"
 log = "0.4.34"
-web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage"] }
+web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
 wasm-bindgen-futures = "0.4.79"
 
 # Server-only: Axum + embedded matchbox signaling server. Pulled in by the

@@ -5,14 +5,14 @@ use std::future::Future;
 use futures::future::FutureExt;
 use futures::{select, StreamExt};
 use futures_channel::mpsc::{UnboundedReceiver, UnboundedSender};
-use log::warn;
+use log::{debug, info, warn};
 use matchbox_socket::{PeerId as MatchboxPeerId, PeerState};
 use tantrix_proto::{
     decode, encode, HostMessage, PeerId, PeerMessage, RejectCode, SessionToken, PROTO_VERSION,
 };
 
-use crate::session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
-use crate::socket::{open as open_socket, wait_for_peer_id};
+use crate::session::{ConnectStage, SessionCommand, SessionEvent, SessionHandle, SessionRole};
+use crate::socket::{open as open_socket, wait_for_peer_id, PEER_LINK_TIMEOUT, WELCOME_TIMEOUT};
 
 pub fn open_client_session(
     room_url: String,
@@ -53,8 +53,12 @@ async fn run_client(
         return;
     };
 
-    // Wait for the first peer connection — that's the host.
-    let host_mb_id = loop {
+    // Wait for the first WebRTC link to open. In a two-player room that is the
+    // host; with more guests it may be another guest (every guest offers a
+    // link to each newcomer), so `Hello` goes to every link until one of them
+    // answers with a `Welcome` — that peer is the host.
+    let mut link_deadline = futures_timer::Delay::new(PEER_LINK_TIMEOUT).fuse();
+    let first_peer = loop {
         select! {
             res = &mut loop_fut => {
                 let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
@@ -74,18 +78,31 @@ async fn run_client(
                 Some(SessionCommand::Leave) | None => return,
                 Some(_) => {} // discard pre-connect intents
             },
+            _ = &mut link_deadline => {
+                warn!(
+                    "client: no WebRTC link opened within {PEER_LINK_TIMEOUT:?} \
+                     (signaling ok, ICE/SDP exchange stalled or nobody is hosting)"
+                );
+                let _ = events_tx.unbounded_send(SessionEvent::ConnectTimeout {
+                    stage: ConnectStage::PeerLink,
+                });
+                return;
+            }
         }
     };
+    info!("client: first WebRTC link open (peer {first_peer}), sending Hello");
 
-    // Send Hello and wait for messages from the host.
     let hello = encode(&PeerMessage::Hello {
         nickname,
         proto_version: PROTO_VERSION,
         session_token: session_token.clone(),
     });
-    let _ = channel.try_send(hello.into_boxed_slice(), host_mb_id);
+    let _ = channel.try_send(hello.clone().into_boxed_slice(), first_peer);
 
+    let mut welcome_deadline = futures_timer::Delay::new(WELCOME_TIMEOUT).fuse();
     let mut welcomed = false;
+    // The peer that answered our `Hello` with a `Welcome`; only it is trusted.
+    let mut host_mb_id: Option<MatchboxPeerId> = None;
     // The wire PeerId the host assigned to us — populated on Welcome and
     // used to recognise `Kicked { target: self }` broadcasts.
     let mut my_wire_id: Option<PeerId> = None;
@@ -95,28 +112,38 @@ async fn run_client(
             cmd = commands_rx.next() => match cmd {
                 Some(SessionCommand::Leave) | None => break,
                 Some(other) => {
-                    let wire = encode(&intent_from_command(other));
-                    let _ = channel.try_send(wire.into_boxed_slice(), host_mb_id);
+                    if let Some(host) = host_mb_id {
+                        let wire = encode(&intent_from_command(other));
+                        let _ = channel.try_send(wire.into_boxed_slice(), host);
+                    }
                 }
             },
             packet = channel.next().fuse() => match packet {
                 Some((peer, bytes)) => {
-                    if peer != host_mb_id {
+                    if host_mb_id.is_some_and(|host| host != peer) {
                         continue;
                     }
                     let msg: HostMessage = match decode(&bytes) {
                         Ok(m) => m,
                         Err(e) => {
-                            warn!("client: bad host message: {e}");
+                            // Other guests' `Hello`s are not `HostMessage`s.
+                            debug!("client: ignoring undecodable message from {peer}: {e}");
                             continue;
                         }
                     };
+                    if host_mb_id.is_none() {
+                        if !matches!(msg, HostMessage::Welcome { .. }) {
+                            continue;
+                        }
+                        info!("client: Welcome from host {peer}");
+                        host_mb_id = Some(peer);
+                    }
                     if handle_host_message(
                         msg,
                         &events_tx,
                         &mut welcomed,
                         &my_mb_id,
-                        &host_mb_id,
+                        &peer,
                         &mut my_wire_id,
                     ) {
                         channel.close();
@@ -126,7 +153,33 @@ async fn run_client(
                 }
                 None => break,
             },
-            _ = socket.next().fuse() => {} // ignore extra peer updates (only host matters)
+            update = socket.next().fuse() => match update {
+                Some((peer, PeerState::Connected)) if host_mb_id.is_none() => {
+                    info!("client: another WebRTC link open (peer {peer}), sending Hello");
+                    let _ = channel.try_send(hello.clone().into_boxed_slice(), peer);
+                }
+                Some((peer, PeerState::Disconnected)) if host_mb_id == Some(peer) => {
+                    warn!("client: the host disconnected");
+                    let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
+                        reason: "The host left the room.".into(),
+                    });
+                    break;
+                }
+                Some(_) => {}
+                None => break,
+            },
+            _ = &mut welcome_deadline => {
+                if !welcomed {
+                    warn!(
+                        "client: WebRTC link is open but the host sent no Welcome within \
+                         {WELCOME_TIMEOUT:?}"
+                    );
+                    let _ = events_tx.unbounded_send(SessionEvent::ConnectTimeout {
+                        stage: ConnectStage::Welcome,
+                    });
+                    break;
+                }
+            },
             res = &mut loop_fut => {
                 let _ = events_tx.unbounded_send(SessionEvent::Disconnected {
                     reason: match res {

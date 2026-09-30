@@ -27,6 +27,7 @@ fn main() {
 
 #[cfg(not(feature = "server"))]
 fn main() {
+    util::init_logging();
     dioxus::launch(app);
 }
 

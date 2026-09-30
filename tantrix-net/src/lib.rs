@@ -20,7 +20,7 @@ mod socket;
 pub use client::open_client_session;
 pub use host::open_host_session;
 pub use roomcode::{generate_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
-pub use session::{SessionCommand, SessionEvent, SessionHandle, SessionRole};
+pub use session::{ConnectStage, SessionCommand, SessionEvent, SessionHandle, SessionRole};
 
 pub use matchbox_socket::PeerId as MatchboxPeerId;
 pub use tantrix_proto;

@@ -115,7 +115,20 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent, room_code: &str) 
                 log::warn!("online: Error event without code: {message}");
             }
         }
+        SessionEvent::ConnectTimeout { stage } => {
+            log::warn!("online: connecting timed out at {stage:?}");
+            store.phase().set(OnlinePhase::Failed {
+                reason: FailureReason::Timeout(stage),
+            });
+        }
         SessionEvent::Disconnected { reason } => {
+            // The results screen is final: the host keeps its socket open after
+            // the game ends, and its later teardown must not replace the
+            // scores with a "Disconnected" screen.
+            if matches!(&*store.phase().read(), OnlinePhase::Ended { .. }) {
+                log::info!("online: ignoring disconnect after the game ended ({reason})");
+                return;
+            }
             // Prefer a structured host-reject over the generic transport
             // reason. Consume last_error (take) so a later reconnect isn't
             // seeded with a stale value.

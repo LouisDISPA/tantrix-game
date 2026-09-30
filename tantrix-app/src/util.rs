@@ -1,3 +1,9 @@
+mod logger;
+
+// The server binary never runs the client, so it never calls this.
+#[cfg_attr(feature = "server", allow(unused_imports))]
+pub use logger::init_logging;
+
 use std::time::Duration;
 
 #[cfg(feature = "web")]
