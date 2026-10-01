@@ -26,10 +26,6 @@ html, body {
     --clip-btn: polygon(4% 0%, 96% 0%, 100% 30%, 100% 70%, 96% 100%, 4% 100%, 0% 70%, 0% 30%);
     /* Tighter primary-button clip-path used by the results panel */
     --clip-btn-tight: polygon(6% 0%, 94% 0%, 100% 30%, 100% 70%, 94% 100%, 6% 100%, 0% 70%, 0% 30%);
-    /* Count-selector clip-path */
-    --clip-count-btn: polygon(15% 0%, 85% 0%, 100% 30%, 100% 70%, 85% 100%, 15% 100%, 0% 70%, 0% 30%);
-    /* Turn-banner clip-path */
-    --clip-banner: polygon(0 50%, 1.5% 0, 98.5% 0, 100% 50%, 98.5% 100%, 1.5% 100%);
 
     /* Opacity for the animated hex-gradient frame behind cards / titles */
     --hex-frame-opacity: 0.10;

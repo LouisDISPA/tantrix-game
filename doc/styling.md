@@ -26,8 +26,6 @@ signal which flips the `data-theme` attribute on the root.
 --clip-hex          /* pointy-top hex for frames & swatches   */
 --clip-btn          /* wide hex-cut primary button            */
 --clip-btn-tight    /* same, narrower cut (results panel)     */
---clip-count-btn    /* count-selector button                  */
---clip-banner       /* turn-banner ribbon                     */
 ```
 
 Every `clip-path` reads from these — no literal `polygon(…)` values in
