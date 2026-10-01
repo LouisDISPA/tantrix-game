@@ -102,8 +102,12 @@ impl GameState {
     }
 
     /// Pass the turn over players who cannot move; `true` when nobody can
-    /// (see [`Game::skip_stuck_players`]).
+    /// (see [`Game::skip_stuck_players`]). When the current player can move,
+    /// nothing changes and `hand_info` is kept as it is.
     pub fn skip_stuck_players(&mut self) -> bool {
+        if !self.game.is_stuck() {
+            return false;
+        }
         let stalled = self.game.skip_stuck_players();
         self.refresh_hand_info();
         stalled
@@ -207,6 +211,18 @@ mod tests {
             game.play_move(step.placement()).unwrap();
             assert_eq!(game.hand_info(), game.moves_by_tile());
         }
+    }
+
+    #[test]
+    fn a_player_who_can_move_is_not_skipped() {
+        let mut game = seeded(7);
+        let (player, hand_info) = (game.current_player(), game.hand_info().to_vec());
+        assert!(!game.is_stuck());
+
+        assert!(!game.skip_stuck_players());
+        assert_eq!(game.current_player(), player);
+        assert_eq!(game.hand_info(), hand_info);
+        assert!(game.history().is_empty());
     }
 
     #[test]

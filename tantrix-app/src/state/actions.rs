@@ -56,12 +56,17 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
     }
 
     let result = game_state.write().play_move(placement);
-    if let Err(e) = result {
-        ui_state.message().set(format!("Error: {}", e));
-        return;
-    }
+    let played = match result {
+        Ok(played) => played,
+        Err(e) => {
+            ui_state.message().set(format!("Error: {}", e));
+            return;
+        }
+    };
 
-    ui_state.write().after_move(player_color, tile_idx, pos);
+    ui_state
+        .write()
+        .after_move(player_color, played.hand_index, pos);
     advance_turn(ctx);
 }
 
@@ -147,7 +152,12 @@ pub fn settle_turn(ctx: GameCtx) {
     let mut game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
 
-    game_state.write().skip_stuck_players();
+    // Only a stuck player changes the game: otherwise leave the signal
+    // (and everything that reads it) alone.
+    let stuck = game_state.read().is_stuck();
+    if stuck {
+        game_state.write().skip_stuck_players();
+    }
 
     let (is_over, has_forced, has_moves) = {
         let gs = game_state.read();

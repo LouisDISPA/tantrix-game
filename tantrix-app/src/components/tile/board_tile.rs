@@ -1,8 +1,7 @@
 use dioxus::prelude::*;
-use tantrix_game::Placement;
+use tantrix_game::{Color, Placement};
 
 use crate::components::tile::hex_svg::HexSvg;
-use crate::hooks::{use_highlight_map, use_is_game_over};
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::geometry::{hex_position_style, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
@@ -19,19 +18,18 @@ pub enum BoardTileVariant {
 
 /// A tile rendered at its board position. Absolutely positioned via
 /// [`hex_position_style`] using the tile's axial coordinates.
+///
+/// `highlight_colors`: the scoring paths through the tile, and `dimmed` once
+/// the game is over; the tiles layer works both out once for every tile.
 #[component]
-pub fn BoardTile(placement: Placement, hex_size: f64, variant: BoardTileVariant) -> Element {
+pub fn BoardTile(
+    placement: Placement,
+    hex_size: f64,
+    variant: BoardTileVariant,
+    #[props(default)] highlight_colors: Vec<Color>,
+    #[props(default)] dimmed: bool,
+) -> Element {
     let ctx = use_context::<GameCtx>();
-    let highlight_map = use_highlight_map();
-
-    let highlight_colors = use_memo(move || {
-        highlight_map
-            .read()
-            .get(&placement.position)
-            .cloned()
-            .unwrap_or_default()
-    });
-    let is_game_over = use_is_game_over();
     let just_placed =
         use_memo(move || ctx.ui_state.last_placed_position()() == Some(placement.position));
 
@@ -43,7 +41,7 @@ pub fn BoardTile(placement: Placement, hex_size: f64, variant: BoardTileVariant)
             class: "board-tile hex-tile",
             class: if is_preview { "tile-preview" },
             class: if just_placed() { "just-placed" },
-            class: if is_game_over() { "dimmed-tile" },
+            class: if dimmed { "dimmed-tile" },
             style: "{style}",
             "data-position": "{placement.position.x()},{placement.position.y()}",
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
@@ -54,7 +52,7 @@ pub fn BoardTile(placement: Placement, hex_size: f64, variant: BoardTileVariant)
                     cy: TILE_CY,
                     hex_size: TILE_HEX,
                     base_class: "tile-base".to_string(),
-                    highlight_colors: highlight_colors(),
+                    highlight_colors,
                 }
             }
         }

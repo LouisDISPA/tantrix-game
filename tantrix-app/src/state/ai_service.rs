@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use dioxus::prelude::*;
-use tantrix_game::{Move, Player};
+use tantrix_game::Player;
 
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
@@ -39,13 +39,16 @@ pub async fn run_ai_loop(ctx: GameCtx) {
             continue;
         }
 
-        let (chosen, ai_color) = {
+        let (chosen, ai_color, tile_idx) = {
             let gs = game_state.read();
-            (gs.ai_choose(), gs.current_player())
+            let ai_color = gs.current_player();
+            let chosen = gs.ai_choose();
+            // Where the chosen tile is in the hand, to show it picked.
+            let tile_idx = chosen.and_then(|m| gs.hand(ai_color).iter().position(|&t| t == m.tile));
+            (chosen, ai_color, tile_idx)
         };
         let Some(chosen) = chosen else { break };
 
-        let tile_idx = find_tile_index(&ctx, chosen);
         if let Some(idx) = tile_idx {
             ui_state.selected_tile().set(Some(idx));
             ui_state.phase().set(TurnPhase::WaitingForAi);
@@ -62,13 +65,17 @@ pub async fn run_ai_loop(ctx: GameCtx) {
             break;
         }
 
-        if let Err(err) = game_state.write().play_move(chosen.placement()) {
-            ui_state.message().set(format!("AI move failed: {err}"));
-            break;
-        }
+        let result = game_state.write().play_move(chosen.placement());
+        let played = match result {
+            Ok(played) => played,
+            Err(err) => {
+                ui_state.message().set(format!("AI move failed: {err}"));
+                break;
+            }
+        };
         {
             let mut ui = ui_state.write();
-            ui.new_tile = tile_idx.map(|idx| (ai_color, idx));
+            ui.new_tile = Some((ai_color, played.hand_index));
             ui.last_placed_position = Some(chosen.position);
             ui.selected_tile = None;
             ui.selected_position = None;
@@ -92,11 +99,4 @@ fn ai_can_continue(ctx: GameCtx, expected_color: tantrix_game::Color) -> bool {
     !gs.is_game_over()
         && gs.current_player() == expected_color
         && matches!(gs.player(expected_color), Player::Ai(_))
-}
-
-fn find_tile_index(ctx: &GameCtx, chosen: Move) -> Option<usize> {
-    let gs = ctx.game_state.read();
-    gs.hand(gs.current_player())
-        .iter()
-        .position(|t| t == &chosen.tile)
 }

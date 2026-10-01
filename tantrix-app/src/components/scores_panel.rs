@@ -5,16 +5,15 @@ use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::paths::color_name as color_slug;
 
-/// A single row in the scores list. Takes only the player color — the score,
-/// winner flag, active (click-locked) flag, and click/hover dispatch are all
-/// derived from `GameCtx`.
+/// A single row in the scores list: the player color with its score and
+/// winner flag, which [`ScoresPanel`] works out once for every row. The
+/// active (click-locked) flag and click/hover dispatch are derived from
+/// `GameCtx`.
 #[component]
-fn ScoreRow(color: Color) -> Element {
+fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
-    let score = use_memo(move || ctx.game_state.read().scores()[color].score);
-    let is_winner = use_memo(move || ctx.game_state.read().winners().contains(&color));
     let is_active = use_memo(move || ui_state.highlighted_color()() == Some(color));
 
     let color_class = format!("color-{}", color_slug(color));
@@ -22,7 +21,7 @@ fn ScoreRow(color: Color) -> Element {
     rsx! {
         div {
             class: "results-row {color_class}",
-            class: if is_winner() { "results-row-winner" },
+            class: if is_winner { "results-row-winner" },
             class: if is_active() { "results-row-active" },
             role: "button",
             tabindex: "0",
@@ -55,7 +54,7 @@ fn ScoreRow(color: Color) -> Element {
             }
             span {
                 class: "results-points",
-                class: if is_winner() { "winner" },
+                class: if is_winner { "winner" },
                 "{score}"
             }
         }
@@ -68,10 +67,20 @@ fn ScoreRow(color: Color) -> Element {
 pub fn ScoresPanel(children: Element) -> Element {
     let ctx = use_context::<GameCtx>();
 
-    let (active_players, winners) = {
+    // Score the board once for the whole card: each row's points, and the
+    // winners among them.
+    let standings = use_memo(move || {
         let gs = ctx.game_state.read();
-        (gs.playing_colors().to_vec(), gs.winners())
-    };
+        let scores = gs.scores();
+        let rows: Vec<(Color, usize)> = gs
+            .playing_colors()
+            .iter()
+            .map(|&color| (color, scores[color].score))
+            .collect();
+        (rows, gs.winners_from(&scores))
+    });
+    let standings = standings.read();
+    let (rows, winners) = &*standings;
     let is_tie = winners.len() > 1;
 
     rsx! {
@@ -119,8 +128,13 @@ pub fn ScoresPanel(children: Element) -> Element {
                 div { class: "results-divider" }
 
                 div { class: "results-stats",
-                    for &c in active_players.iter() {
-                        ScoreRow { key: "{c:?}", color: c }
+                    for &(c , score) in rows.iter() {
+                        ScoreRow {
+                            key: "{c:?}",
+                            color: c,
+                            score,
+                            is_winner: winners.contains(&c),
+                        }
                     }
                 }
 

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
-use tantrix_game::Position;
+use tantrix_game::{Move, Position};
 
-use crate::hooks::{use_board_camera, use_placed_moves};
+use crate::hooks::use_board_camera;
 use crate::state::game_state::GameCtx;
 use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 
@@ -9,19 +9,19 @@ use crate::svg::geometry::{board_bounding_box, HEX_SIZE};
 ///
 /// Owns the CSS transform, drag/wheel/right-click handlers, and the inner
 /// recentering translation so the bounding box of placed tiles stays centered.
-/// Layers (`BoardTilesLayer`, `BoardEmptyLayer`) are passed as children.
+/// Layers (`BoardTilesLayer`, `BoardEmptyLayer`) are passed as children;
+/// `placed_moves` is the same list the tiles layer draws.
 #[component]
-pub fn BoardViewport(children: Element) -> Element {
+pub fn BoardViewport(placed_moves: ReadSignal<Vec<Move>>, children: Element) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut ui_state = ctx.ui_state;
 
     let (camera, cam_handlers) = use_board_camera();
-    let placed_moves = use_placed_moves();
 
     // Recenter the tiles layer on the bounding box of placed moves so new
     // tiles push outward from the middle rather than off-screen.
     let (center_x, center_y) = use_memo(move || {
-        let positions: Vec<Position> = placed_moves().iter().map(|m| m.position).collect();
+        let positions: Vec<Position> = placed_moves.read().iter().map(|m| m.position).collect();
         if let Some((min_x, min_y, max_x, max_y)) = board_bounding_box(&positions, HEX_SIZE) {
             ((min_x + max_x) / 2.0, (min_y + max_y) / 2.0)
         } else {

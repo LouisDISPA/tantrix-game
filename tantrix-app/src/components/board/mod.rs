@@ -23,7 +23,7 @@ mod viewport;
 use dioxus::prelude::*;
 
 use crate::components::status_bar::StatusBar;
-use crate::hooks::use_is_game_over;
+use crate::hooks::{use_is_game_over, use_placed_moves};
 
 pub use controls::{EndGameButton, ZoomControls};
 pub use empty_layer::BoardEmptyLayer;
@@ -34,6 +34,9 @@ pub use viewport::BoardViewport;
 #[component]
 pub fn Board() -> Element {
     let is_game_over = use_is_game_over()();
+    // One copy of the placed tiles, for the viewport's centering and the
+    // tiles layer.
+    let placed_moves = use_placed_moves();
 
     rsx! {
         div { class: "board-container",
@@ -42,8 +45,8 @@ pub fn Board() -> Element {
             div { class: "board-stage",
                 StatusBar {}
 
-                BoardViewport {
-                    BoardTilesLayer {}
+                BoardViewport { placed_moves,
+                    BoardTilesLayer { placed_moves, dimmed: is_game_over }
                     BoardEmptyLayer {}
                 }
 

@@ -89,19 +89,19 @@ still an AI:
 ```
 read legal_moves (forced-filtered if any forced exist)
 if no moves → skip_stuck_players          stop if a whole round can't move
-ai_choose()                               pick best move
-find_tile_index in the AI's hand
+ai_choose()                               pick best move (and its index in the hand)
 ui.selected_tile = idx
 sleep 500ms                               show tile pick
 ui.selected_position = chosen.position
 sleep 400ms                               show destination
 game_state.write().play_move(chosen.placement())   commit
-ui update (new_tile, last_placed_position, reset selection, reset pan)
+ui update (new_tile = PlayedMove::hand_index, last_placed_position, reset selection, reset pan)
 sleep 300ms                               hand-draw animation
 ```
 
 When the loop exits (next player is human or game over), `settle_turn`
-runs: skip stuck players, set message, reset selection.
+runs: skip stuck players (writing `game_state` only if the current player
+`Game::is_stuck`), set message, reset selection.
 
 ## Forced moves
 
@@ -148,11 +148,14 @@ everyone is stuck ends instead of spinning.
   loop is scored on a copy). The AIs score every candidate this way, from
   the board's scores worked out once per decision.
 - `Game::winners` returns every playing color tied for the top score
-  (the room's `EndReason`, the app's `ScoresPanel`); `winners_from(scores)`
-  does the same from scores already worked out.
+  (the room's `EndReason`); `winners_from(scores)` does the same from
+  scores already worked out (the app's `ScoresPanel`, which scores the
+  board once for every row).
 - Entering `TurnPhase::GameOver` switches the screen to `GameOver` (via
   `LocalGame`'s routing match), which shows `Board` (read-only, scoring
-  overlays on) beside `ScoresPanel`.
+  overlays on) beside `ScoresPanel`. `BoardTilesLayer` builds the scoring
+  overlay (`use_highlight_map`: the paths once per game over, filtered by
+  the hovered or locked color) and hands each `BoardTile` its colors.
 
 ## History, undo and replay
 
@@ -236,6 +239,7 @@ groups them per hand tile as `TileMoveInfo` (positions → valid rotations +
 `has_forced`; the TUI uses it too). The app's `GameState` wraps a `Game`
 (local deal via `Game::from_players_seeded` / `from_players`, online mirror
 via `Game::from_snapshot`) and caches `hand_info = moves_by_tile()`, refreshed
-inside `play_move` / `skip_stuck_players`. It derefs to `Game` for reads,
-so components use `gs.hand(color)`, `gs.current_player()`, `gs.board()`…
-and `gs.hand_info()` instead of regrouping moves each render.
+inside `play_move`, and inside `skip_stuck_players` when it skips someone.
+It derefs to `Game` for reads, so components use `gs.hand(color)`,
+`gs.current_player()`, `gs.board()`… and `gs.hand_info()` instead of
+regrouping moves each render.
