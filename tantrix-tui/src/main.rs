@@ -449,9 +449,10 @@ impl App {
     }
 
     fn after_move(&mut self) {
-        self.game.advance();
+        let stalled = self.game.advance();
 
-        if self.game.is_game_over() {
+        // A stalled game, with tiles left that fit nowhere, is over too.
+        if self.game.is_game_over() || stalled {
             self.phase = TurnPhase::GameOver;
             self.message = "Game Over!".to_string();
             return;
@@ -845,5 +846,62 @@ impl Widget for &App {
                 .block(Block::bordered())
                 .render(msg_area, buf);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Board, Color, EnumMap, Game, Player, TurnStep};
+
+    use super::{App, TurnPhase};
+
+    fn two_humans(seed: u64) -> Game {
+        Game::new_seeded(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            seed,
+        )
+        .unwrap()
+    }
+
+    /// Tiles are left in the bag but no one holds any, so nobody can move:
+    /// the game has stalled without being over. Real deals practically never
+    /// get here, since with the restrictions lifted almost any tile fits.
+    fn stalled_game() -> Game {
+        Game::from_snapshot(
+            Board::default(),
+            EnumMap::default(),
+            10,
+            Color::Red,
+            [Color::Red, Color::Blue],
+            TurnStep::BeforeFreeMove,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_move_hands_the_turn_on() {
+        let mut game = two_humans(0);
+        let first = game.current_player();
+        game.play_move(game.legal_moves()[0].placement()).unwrap();
+        let mut app = App::new(game);
+
+        app.after_move();
+
+        assert_eq!(app.phase, TurnPhase::SelectTile);
+        assert_ne!(app.game.current_player(), first);
+    }
+
+    #[test]
+    fn a_stalled_game_is_over() {
+        let mut app = App::new(stalled_game());
+
+        app.after_move();
+
+        assert!(!app.game.is_game_over(), "tiles are left");
+        assert_eq!(app.phase, TurnPhase::GameOver);
+        assert_eq!(app.message, "Game Over!");
     }
 }

@@ -452,15 +452,17 @@ impl Game {
     }
 
     /// Play all AI turns and skip players with no valid moves. Returns when
-    /// it is a human player's turn, the game is over, or no one can move.
-    pub fn advance(&mut self) {
+    /// it is a human player's turn, the game is over, or no one can move —
+    /// `true` in that last case, like [`Game::skip_stuck_players`].
+    pub fn advance(&mut self) -> bool {
         while !self.skip_stuck_players() {
             let Some(m) = self.ai_choose() else {
-                return; // Game over, or a human player with moves
+                return false; // Game over, or a human player with moves
             };
             self.play_move(m.placement())
                 .expect("AI chose invalid move");
         }
+        true
     }
 
     /// Remove `color` from the turn cycle mid-game. Used when a seated
@@ -982,11 +984,12 @@ mod tests {
                 &mut Xoshiro256PlusPlus::seed_from_u64(seed),
             )
             .unwrap();
-            game.advance();
-            assert!(
-                game.is_game_over() || game.skip_stuck_players(),
-                "seed {seed}"
-            );
+            // An all-AI game only stops once it is over or nobody can move.
+            let stalled = game.advance();
+            assert_eq!(stalled, !game.is_game_over(), "seed {seed}");
+            if stalled {
+                assert!(game.skip_stuck_players(), "seed {seed}");
+            }
         }
     }
 
