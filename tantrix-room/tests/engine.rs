@@ -353,6 +353,8 @@ fn bad_frames_are_answered_before_they_reach_the_room() {
     let oversize = format!("\"{}\"", "x".repeat(MAX_MESSAGE_BYTES));
     assert_eq!(only_error(room.text(1, &oversize)), "message too large");
     assert_eq!(only_error(room.text(1, "{not json")), "invalid message");
+    // A message the protocol doesn't have (any more) is invalid too.
+    assert_eq!(only_error(room.text(1, r#""SkipTurn""#)), "invalid message");
     assert_eq!(
         only_error(room.send(1, &PeerMessage::StartGame)),
         "say hello first"

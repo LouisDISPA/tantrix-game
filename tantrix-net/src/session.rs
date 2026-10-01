@@ -15,8 +15,6 @@ pub enum SessionCommand {
     StartGame,
     /// Place a tile for the current turn.
     PlayMove(Placement),
-    /// Pass because there are no legal moves.
-    SkipTurn,
     /// Finish the running game early.
     EndGame,
     /// Change the local player's display name.

@@ -151,9 +151,9 @@ again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
 players with no legal move (`Game::is_stuck`: no legal move, game not
 over). It checks each player at most once and returns `true` when nobody
 can move although tiles remain (a stall). `Game::advance` (TUI,
-tournament), the room's `PlayMove` / `SkipTurn` / `StartGame`, and the
-app's `advance_turn` all use it, so an all-AI game where everyone is
-stuck ends instead of spinning. `advance_turn` is the app's only caller, for
+tournament), the room's `PlayMove` and `StartGame`, and the app's
+`advance_turn` all use it, so an all-AI game where everyone is stuck ends
+instead of spinning. `advance_turn` is the app's only caller, for
 a human's move and after each AI turn alike, so a skip that lands on an AI
 seat always starts the AI loop.
 

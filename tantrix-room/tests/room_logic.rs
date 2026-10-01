@@ -356,17 +356,19 @@ fn a_watcher_can_replace_a_player_mid_game_and_inherit_the_turn() {
     assert!(matches!(change.message, HostMessage::StateUpdate { .. }));
     assert_eq!(room.color_of(&watcher), Some(current));
     assert_eq!(room.snapshot(&online).unwrap().hands[current], hand_before);
-    // The replaced player can no longer act for that seat.
-    assert!(room
-        .apply(&current_holder, PeerMessage::SkipTurn, &online)
-        .is_err());
-    assert_ne!(
-        room.apply(&watcher, PeerMessage::SkipTurn, &online)
+    // The replaced player can no longer act for that seat; the watcher can.
+    let game = Game::from_data(room.game.clone().unwrap());
+    let play = PeerMessage::PlayMove {
+        placement: game.legal_moves()[0].placement(),
+    };
+    assert_eq!(
+        room.apply(&current_holder, play.clone(), &online)
             .err()
             .unwrap()
             .0,
         RejectCode::NotYourTurn
     );
+    room.apply(&watcher, play, &online).unwrap();
     // Online replaced players stay to watch; offline ones leave.
     assert_eq!(
         room.player(&current_holder).is_some(),
@@ -521,11 +523,12 @@ fn more_than_four_members_share_four_seats_by_releasing_them() {
     let snapshot = room.snapshot(&connected).unwrap();
     assert_eq!(snapshot.participants.len(), 6);
     assert_eq!(snapshot.playing_colors.len(), 4);
+    let game = Game::from_data(room.game.clone().unwrap());
+    let play = PeerMessage::PlayMove {
+        placement: game.legal_moves()[0].placement(),
+    };
     assert_eq!(
-        room.apply(sixth, PeerMessage::SkipTurn, &connected)
-            .err()
-            .unwrap()
-            .0,
+        room.apply(sixth, play, &connected).err().unwrap().0,
         RejectCode::NotYourTurn
     );
 }

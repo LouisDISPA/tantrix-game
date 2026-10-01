@@ -266,16 +266,7 @@ impl RoomData {
                     .play_move(placement)
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
                 let stalled = game.skip_stuck_players();
-                self.finish_turn(game, Some(played.m), stalled, connected)
-            }
-            PeerMessage::SkipTurn => {
-                let mut game = self.turn_game(token)?;
-                if !game.legal_moves().is_empty() {
-                    return Err((RejectCode::InvalidMove, "legal moves remain".into()));
-                }
-                game.skip_turn();
-                let stalled = game.skip_stuck_players();
-                self.finish_turn(game, None, stalled, connected)
+                self.finish_turn(game, played.m, stalled, connected)
             }
             PeerMessage::EndGame => {
                 let Some(data) = &self.game else {
@@ -341,7 +332,7 @@ impl RoomData {
     fn finish_turn(
         &mut self,
         game: Game,
-        last_move: Option<Move>,
+        last_move: Move,
         stalled: bool,
         connected: &HashSet<SessionToken>,
     ) -> Result<Change, (RejectCode, String)> {
@@ -361,7 +352,7 @@ impl RoomData {
         } else {
             HostMessage::StateUpdate {
                 snapshot,
-                last_move,
+                last_move: Some(last_move),
             }
         };
         Ok(Change {

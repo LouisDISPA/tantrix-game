@@ -56,8 +56,8 @@ pub enum ParticipantRole {
     Unseated,
 }
 
-/// A single member of the room — seated, spectator, or host — with the
-/// information needed to render the participants panel.
+/// A single member of the room, seated or not, and whether they are
+/// connected.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Participant {
     pub peer_id: PeerId,
@@ -78,8 +78,8 @@ pub struct LobbyState {
     pub seats: EnumMap<Color, Option<Seat>>,
     /// Players connected but not yet seated.
     pub unseated: Vec<Seat>,
-    /// Authoritative roster (seated + unseated + spectators). Superset of
-    /// `seats` + `unseated`; drives the participants panel.
+    /// Authoritative roster (seated + unseated). Superset of `seats` +
+    /// `unseated`; says who is connected.
     pub participants: Vec<Participant>,
 }
 
@@ -150,8 +150,6 @@ pub enum PeerMessage {
     /// Place a tile for the current turn. The server checks it against the
     /// legal moves; whether it fills a forced space is the board's call.
     PlayMove { placement: Placement },
-    /// Current player has no legal moves and wants to pass.
-    SkipTurn,
     /// Finish the running game and score the board as it stands.
     EndGame,
     /// Pull the latest snapshot (e.g. after reconnect).
@@ -173,7 +171,7 @@ pub enum HostMessage {
     LobbyUpdate { lobby: LobbyState },
     /// Lobby → playing transition. Clients should render the game view.
     GameStarted { snapshot: GameSnapshot },
-    /// New authoritative state after a move / skip / roster change.
+    /// New authoritative state after a move or a roster change.
     /// `last_move` is the move as the server placed it.
     StateUpdate {
         snapshot: GameSnapshot,
