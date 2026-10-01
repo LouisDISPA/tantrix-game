@@ -24,7 +24,6 @@ axum = { version = "0.8.9", features = ["ws"], optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
 rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 serde_json = { version = "1.0.151", optional = true }
-uuid = { version = "1", features = ["v4"], optional = true }
 
 [dev-dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
@@ -42,7 +41,6 @@ server = [
     "dep:tantrix-room",
     "dep:rusqlite",
     "dep:serde_json",
-    "dep:uuid",
     "tokio/net",
     "tokio/sync",
     "dep:tracing-subscriber",

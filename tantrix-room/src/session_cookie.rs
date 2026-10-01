@@ -48,6 +48,20 @@ pub fn read(cookie_header: Option<&str>) -> Option<SessionToken> {
         .map(SessionToken::new)
 }
 
+/// Who a request comes from: the token in its `Cookie` header, or a fresh
+/// one with the `Set-Cookie` value that hands it to the browser. Pages call
+/// this on every visit, and room upgrades as a fallback.
+pub fn identify(cookie_header: Option<&str>, secure: bool) -> (SessionToken, Option<String>) {
+    match read(cookie_header) {
+        Some(token) => (token, None),
+        None => {
+            let token = SessionToken::generate();
+            let cookie = set_cookie(&token, secure);
+            (token, Some(cookie))
+        }
+    }
+}
+
 /// `Set-Cookie` value for `token`. `secure` must be true on HTTPS; plain
 /// HTTP (`wrangler dev`) would drop a `Secure` cookie.
 pub fn set_cookie(token: &SessionToken, secure: bool) -> String {

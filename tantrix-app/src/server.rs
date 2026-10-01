@@ -9,12 +9,13 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{ws::WebSocketUpgrade, Extension, Path, Query, State};
+use axum::extract::{ws::WebSocketUpgrade, Extension, Path, RawQuery, State};
 use axum::http::{header, HeaderMap, HeaderValue, Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use tantrix_room::handshake::{self, Refusal};
 use tantrix_room::session_cookie::{self, SessionToken};
 
 use crate::app;
@@ -99,18 +100,15 @@ async fn session_cookie_layer(
         .headers()
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok());
-    let existing = session_cookie::read(cookie);
-    let token = existing.clone().unwrap_or_else(SessionToken::generate);
-    request.extensions_mut().insert(token.clone());
+    let secure = state
+        .public_origin
+        .as_deref()
+        .is_some_and(|origin| origin.starts_with("https://"));
+    let (token, set_cookie) = session_cookie::identify(cookie, secure);
+    request.extensions_mut().insert(token);
     let mut response = next.run(request).await;
-    if existing.is_none() {
-        let secure = state
-            .public_origin
-            .as_deref()
-            .is_some_and(|origin| origin.starts_with("https://"));
-        if let Ok(value) = HeaderValue::from_str(&session_cookie::set_cookie(&token, secure)) {
-            response.headers_mut().append(header::SET_COOKIE, value);
-        }
+    if let Some(value) = set_cookie.and_then(|value| HeaderValue::from_str(&value).ok()) {
+        response.headers_mut().append(header::SET_COOKIE, value);
     }
     response
 }
@@ -118,46 +116,46 @@ async fn session_cookie_layer(
 async fn room_socket(
     State(state): State<Arc<ServerState>>,
     Path(code): Path<String>,
-    Query(query): Query<std::collections::HashMap<String, String>>,
+    RawQuery(query): RawQuery,
     Extension(token): Extension<SessionToken>,
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    if !room::valid_code(&code) {
-        return (StatusCode::BAD_REQUEST, "invalid room code").into_response();
-    }
     let expected_origin = state.public_origin.clone().or_else(|| {
         headers
             .get(header::HOST)
             .and_then(|value| value.to_str().ok())
             .map(|host| format!("http://{host}"))
     });
-    if headers.get(header::ORIGIN).is_some_and(|origin| {
-        expected_origin
-            .as_deref()
-            .is_none_or(|expected| origin.as_bytes() != expected.as_bytes())
-    }) {
-        return (StatusCode::FORBIDDEN, "cross-origin room connection").into_response();
+    // An Origin that isn't text matches no site.
+    let origin = headers
+        .get(header::ORIGIN)
+        .map(|origin| origin.to_str().unwrap_or_default());
+    if let Err(refusal) = handshake::check(&code, origin, expected_origin.as_deref()) {
+        return refuse(refusal);
     }
 
-    let create = query.get("create").is_some_and(|value| value == "1");
-    match state.rooms.open(&code, create).await {
+    match state
+        .rooms
+        .open(&code, handshake::wants_create(query.as_deref()))
+        .await
+    {
         Ok(room::OpenRoom::Ready(handle)) => {
             upgrade.on_upgrade(move |socket| room::socket_session(socket, handle, token))
         }
         Ok(room::OpenRoom::Missing) => upgrade.on_upgrade(room::missing_room),
-        Ok(room::OpenRoom::Collision) => {
-            (StatusCode::CONFLICT, "room code already exists").into_response()
-        }
+        Ok(room::OpenRoom::Collision) => refuse(Refusal::CodeTaken),
         Err(error) => {
             log::error!("failed to open room {code}: {error}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "room storage is unavailable",
-            )
-                .into_response()
+            refuse(Refusal::StorageUnavailable)
         }
     }
+}
+
+fn refuse(refusal: Refusal) -> Response {
+    let status =
+        StatusCode::from_u16(refusal.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (status, refusal.message()).into_response()
 }
 
 fn setup_logging() {

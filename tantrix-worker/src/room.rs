@@ -1,116 +1,173 @@
-//! Hibernatable, authoritative room Durable Object.
+//! Hibernatable, authoritative room Durable Object. A `RoomEngine`
+//! (`tantrix_room::engine`) decides what every socket event does; this
+//! object owns the sockets, their attachments, keepalive auto-responses and
+//! Durable Object storage.
 
-use std::collections::HashSet;
+use std::collections::BTreeMap;
+use std::future::Future;
 
 use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
-use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
+use tantrix_proto::{HostMessage, RejectCode};
+use tantrix_room::engine::{self, ConnId, Connection, Effect, RoomEngine, RoomHost};
+use tantrix_room::handshake::{self, Refusal};
+use tantrix_room::room_logic::RoomData;
+use tantrix_room::session_cookie;
 use worker::{
-    durable_object, DurableObject, Env, Request, Response, Result, State, Url, WebSocket,
-    WebSocketIncomingMessage, WebSocketPair,
+    console_error, durable_object, DurableObject, Env, Request, Response, Result, State, Storage,
+    WebSocket, WebSocketIncomingMessage, WebSocketPair,
 };
 
-use tantrix_room::room_logic::RoomData;
-use tantrix_room::session_cookie::{self, SessionToken};
-
 const STORAGE_KEY: &str = "room";
-const MAX_MESSAGE_BYTES: usize = 8 * 1024;
 
-/// Stored on each socket so it survives hibernation. `token` comes from the
-/// handshake cookie; `joined` flips once the room accepted the `Hello`.
+/// Stored on each socket so it survives hibernation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct SocketIdentity {
-    token: SessionToken,
-    joined: bool,
+struct Attachment {
+    conn: ConnId,
+    connection: Connection,
+    /// The room is done with this socket (either side closed it). It can
+    /// still be listed until its close completes.
     left: bool,
 }
 
-impl SocketIdentity {
-    fn active(&self) -> bool {
-        self.joined && !self.left
-    }
+fn attachment(ws: &WebSocket) -> Option<Attachment> {
+    ws.deserialize_attachment().ok().flatten()
+}
+
+/// Mark the socket as done, so a rebuilt engine leaves it out.
+fn retire(ws: &WebSocket, mut attachment: Attachment) {
+    attachment.left = true;
+    let _ = ws.serialize_attachment(&attachment);
+}
+
+fn json(message: &HostMessage) -> String {
+    serde_json::to_string(message).expect("host message serializes")
+}
+
+fn refuse(refusal: Refusal) -> Result<Response> {
+    Response::error(refusal.message(), refusal.status())
 }
 
 #[durable_object(websocket)]
 pub struct Room {
     state: State,
-    room: Mutex<Option<RoomData>>,
+    /// The room and its sockets while the object is awake. After
+    /// hibernation it is rebuilt from storage and the socket attachments.
+    engine: Mutex<Option<RoomEngine>>,
+}
+
+/// The object's I/O for the engine: storage, and the sockets the room
+/// still serves.
+struct Host {
+    storage: Storage,
+    sockets: BTreeMap<ConnId, (WebSocket, Attachment)>,
+}
+
+impl Host {
+    fn new(state: &State) -> Self {
+        let sockets = state
+            .get_websockets()
+            .into_iter()
+            .filter_map(|ws| {
+                let attachment = attachment(&ws).filter(|a| !a.left)?;
+                Some((attachment.conn, (ws, attachment)))
+            })
+            .collect();
+        Self {
+            storage: state.storage(),
+            sockets,
+        }
+    }
+
+    fn connections(&self) -> impl Iterator<Item = (ConnId, Connection)> + '_ {
+        self.sockets
+            .iter()
+            .map(|(conn, (_, attachment))| (*conn, attachment.connection.clone()))
+    }
+
+    /// Send `json` to `conn`, or report it: the runtime no longer lists
+    /// the socket, or refuses the send (it is closing).
+    fn send(&self, conn: ConnId, json: &str, unreachable: &mut Vec<ConnId>) {
+        let sent = self
+            .sockets
+            .get(&conn)
+            .is_some_and(|(ws, _)| ws.send_with_str(json).is_ok());
+        if !sent {
+            unreachable.push(conn);
+        }
+    }
+}
+
+impl RoomHost for Host {
+    type Error = worker::Error;
+
+    fn save(&mut self, room: &RoomData) -> impl Future<Output = Result<()>> {
+        self.storage.put(STORAGE_KEY, room)
+    }
+
+    fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
+        let mut unreachable = Vec::new();
+        for effect in effects {
+            match effect {
+                Effect::Send { to, message } => self.send(to, &json(&message), &mut unreachable),
+                Effect::Broadcast { to, message } => {
+                    let json = json(&message);
+                    for conn in to {
+                        self.send(conn, &json, &mut unreachable);
+                    }
+                }
+                Effect::Close { conn, reason } => {
+                    if let Some((ws, attachment)) = self.sockets.remove(&conn) {
+                        retire(&ws, attachment);
+                        let _ = ws.close(Some(1000), Some(reason));
+                    }
+                }
+            }
+        }
+        unreachable
+    }
 }
 
 impl Room {
-    async fn load<'a>(&self, cache: &'a mut Option<RoomData>) -> Result<&'a mut RoomData> {
+    /// The room's engine, loaded from storage if the object just woke up.
+    /// `Ok(None)`: no room has this code. On a storage error every socket
+    /// has been closed.
+    async fn engine<'a>(
+        &self,
+        cache: &'a mut Option<RoomEngine>,
+        host: &mut Host,
+    ) -> Result<Option<&'a mut RoomEngine>> {
         if cache.is_none() {
-            *cache = self.state.storage().get(STORAGE_KEY).await?;
+            let stored = match host.storage.get::<RoomData>(STORAGE_KEY).await {
+                Ok(stored) => stored,
+                Err(error) => {
+                    let sockets: Vec<_> = host.sockets.keys().copied().collect();
+                    host.deliver(engine::storage_unavailable(sockets));
+                    return Err(error);
+                }
+            };
+            let Some(room) = stored else {
+                return Ok(None);
+            };
+            let mut engine = RoomEngine::new(room, host.connections());
+            let loaded = engine.on_load();
+            engine.run(host, loaded).await?;
+            *cache = Some(engine);
         }
-        cache
-            .as_mut()
-            .ok_or_else(|| worker::Error::RustError("room does not exist".into()))
+        Ok(cache.as_mut())
     }
 
-    async fn save(&self, room: &RoomData) -> Result<()> {
-        self.state.storage().put(STORAGE_KEY, room).await
-    }
-
-    fn identity(ws: &WebSocket) -> Option<SocketIdentity> {
-        ws.deserialize_attachment().ok().flatten()
-    }
-
-    fn connected(&self) -> HashSet<SessionToken> {
-        self.state
+    /// A number no socket of this object has used: attachments of closing
+    /// sockets keep theirs.
+    fn next_conn(&self) -> ConnId {
+        let last = self
+            .state
             .get_websockets()
             .iter()
-            .filter_map(Self::identity)
-            .filter(SocketIdentity::active)
-            .map(|identity| identity.token)
-            .collect()
-    }
-
-    fn send(ws: &WebSocket, message: &HostMessage) {
-        if let Ok(json) = serde_json::to_string(message) {
-            let _ = ws.send_with_str(json);
-        }
-    }
-
-    fn broadcast(&self, message: &HostMessage, except: Option<&WebSocket>) {
-        for socket in self.state.get_websockets() {
-            if except.is_some_and(|excluded| &socket == excluded) {
-                continue;
-            }
-            if Self::identity(&socket).is_some_and(|identity| identity.active()) {
-                Self::send(&socket, message);
-            }
-        }
-    }
-
-    fn reject(ws: &WebSocket, code: RejectCode, message: &str) {
-        Self::send(
-            ws,
-            &HostMessage::Error {
-                code,
-                message: message.into(),
-            },
-        );
-    }
-
-    fn reject_welcome(ws: &WebSocket, code: RejectCode) {
-        Self::send(
-            ws,
-            &HostMessage::Welcome {
-                your_peer_id: PeerId::new(""),
-                lobby: RoomData::default().lobby(&HashSet::new()),
-                rejected: Some(code),
-            },
-        );
-        let _ = ws.close(Some(1000), Some(""));
-    }
-
-    /// Browsers always send `Origin`; refusing other sites stops a foreign
-    /// page from opening a socket that rides on our player's cookie.
-    fn same_origin(req: &Request, url: &Url) -> Result<bool> {
-        Ok(match req.headers().get("Origin")? {
-            Some(origin) => origin == url.origin().ascii_serialization(),
-            None => true,
-        })
+            .filter_map(attachment)
+            .map(|attachment| attachment.conn.0)
+            .max();
+        ConnId(last.map_or(1, |last| last + 1))
     }
 }
 
@@ -126,7 +183,7 @@ impl DurableObject for Room {
         }
         Self {
             state,
-            room: Mutex::new(None),
+            engine: Mutex::new(None),
         }
     }
 
@@ -134,47 +191,68 @@ impl DurableObject for Room {
         if req.headers().get("Upgrade")?.as_deref() != Some("websocket") {
             return Response::error("expected websocket", 426);
         }
-
         let url = req.url()?;
-        if !Self::same_origin(&req, &url)? {
-            return Response::error("cross-origin room connection", 403);
+        let code = url.path().strip_prefix("/room/").unwrap_or_default();
+        let origin = req.headers().get("Origin")?;
+        let expected_origin = url.origin().ascii_serialization();
+        if let Err(refusal) = handshake::check(code, origin.as_deref(), Some(&expected_origin)) {
+            return refuse(refusal);
         }
-        // Pages set the cookie on first visit; mint one here only if the
-        // browser arrived without it, and hand it back on the upgrade.
-        let cookie = session_cookie::read(req.headers().get("Cookie")?.as_deref());
-        let minted = cookie.is_none();
-        let token = cookie.unwrap_or_else(SessionToken::generate);
-        let create = url
-            .query_pairs()
-            .any(|(name, value)| name == "create" && value == "1");
-        let mut cache = self.room.lock().await;
-        if cache.is_none() {
-            *cache = self.state.storage().get(STORAGE_KEY).await?;
+        let cookie = req.headers().get("Cookie")?;
+        let (token, set_cookie) =
+            session_cookie::identify(cookie.as_deref(), url.scheme() == "https");
+        let create = handshake::wants_create(url.query());
+
+        let mut cache = self.engine.lock().await;
+        let mut host = Host::new(&self.state);
+        let exists = match self.engine(&mut cache, &mut host).await {
+            Ok(engine) => engine.is_some(),
+            Err(error) => {
+                console_error!("room storage error: {error}");
+                return refuse(Refusal::StorageUnavailable);
+            }
+        };
+        if create {
+            if exists {
+                return refuse(Refusal::CodeTaken);
+            }
+            let room = RoomData::default();
+            if let Err(error) = host.save(&room).await {
+                console_error!("room storage error: {error}");
+                return refuse(Refusal::StorageUnavailable);
+            }
+            *cache = Some(RoomEngine::new(room, host.connections()));
         }
-        let missing = cache.is_none();
-        if missing && create {
-            let fresh = RoomData::default();
-            self.save(&fresh).await?;
-            *cache = Some(fresh);
-        }
-        if !missing && create {
-            return Response::error("room code already exists", 409);
-        }
-        drop(cache);
 
         let pair = WebSocketPair::new()?;
         self.state.accept_web_socket(&pair.server);
-        pair.server.serialize_attachment(SocketIdentity {
-            token: token.clone(),
-            joined: false,
+        let conn = self.next_conn();
+        let attachment = Attachment {
+            conn,
+            connection: Connection {
+                token: token.clone(),
+                joined: false,
+            },
             left: false,
-        })?;
-        if missing && !create {
-            Self::reject_welcome(&pair.server, RejectCode::RoomNotFound);
+        };
+        match cache.as_mut() {
+            Some(engine) => {
+                pair.server.serialize_attachment(&attachment)?;
+                host.sockets.insert(conn, (pair.server.clone(), attachment));
+                let opened = engine.on_open(conn, token);
+                // Nothing to save: a new socket only joins the room's list.
+                let _ = engine.run(&mut host, opened).await;
+            }
+            None => {
+                retire(&pair.server, attachment);
+                let _ = pair
+                    .server
+                    .send_with_str(json(&engine::rejected_welcome(RejectCode::RoomNotFound)));
+                let _ = pair.server.close(Some(1000), Some(""));
+            }
         }
         let response = Response::from_websocket(pair.client)?;
-        if minted {
-            let cookie = session_cookie::set_cookie(&token, url.scheme() == "https");
+        if let Some(cookie) = set_cookie {
             response.headers().set("Set-Cookie", &cookie)?;
         }
         Ok(response)
@@ -185,105 +263,43 @@ impl DurableObject for Room {
         ws: WebSocket,
         message: WebSocketIncomingMessage,
     ) -> Result<()> {
-        let WebSocketIncomingMessage::String(text) = message else {
-            Self::reject(&ws, RejectCode::InvalidMove, "text messages only");
+        let Some(attachment) = attachment(&ws).filter(|a| !a.left) else {
             return Ok(());
         };
-        if text.len() > MAX_MESSAGE_BYTES {
-            Self::reject(&ws, RejectCode::InvalidMove, "message too large");
-            return Ok(());
-        }
-        let Ok(intent) = serde_json::from_str::<PeerMessage>(&text) else {
-            Self::reject(&ws, RejectCode::InvalidMove, "invalid message");
-            return Ok(());
-        };
-
-        let mut cache = self.room.lock().await;
-        let room = match self.load(&mut cache).await {
-            Ok(room) => room,
-            Err(_) => {
-                Self::reject_welcome(&ws, RejectCode::RoomNotFound);
+        let conn = attachment.conn;
+        let mut cache = self.engine.lock().await;
+        let mut host = Host::new(&self.state);
+        let engine = match self.engine(&mut cache, &mut host).await {
+            Ok(Some(engine)) => engine,
+            Ok(None) => {
+                retire(&ws, attachment);
+                let _ = ws.send_with_str(json(&engine::rejected_welcome(RejectCode::RoomNotFound)));
+                let _ = ws.close(Some(1000), Some(""));
+                return Ok(());
+            }
+            Err(error) => {
+                console_error!("room storage error: {error}");
                 return Ok(());
             }
         };
-
-        let Some(identity) = Self::identity(&ws) else {
-            Self::reject_welcome(&ws, RejectCode::InvalidMove);
-            return Ok(());
+        let step = match message {
+            WebSocketIncomingMessage::String(text) => engine.on_text(conn, &text),
+            WebSocketIncomingMessage::Binary(_) => engine.on_binary(conn),
         };
-        if identity.left {
+        if let Err(error) = engine.run(&mut host, step).await {
+            console_error!("room storage error: {error}");
+            *cache = None;
             return Ok(());
         }
-
-        if let PeerMessage::Hello { nickname } = intent {
-            if identity.joined {
-                Self::reject(&ws, RejectCode::InvalidMove, "already joined");
-                return Ok(());
+        // A socket that joined must still be joined after hibernation.
+        if let Some(connection) = engine.connection(conn) {
+            if *connection != attachment.connection {
+                ws.serialize_attachment(Attachment {
+                    conn,
+                    connection: connection.clone(),
+                    left: false,
+                })?;
             }
-            let session_token = identity.token;
-            let existed = room.player(&session_token).is_some();
-            let public_id = PeerId::new(uuid::Uuid::new_v4().to_string());
-            let peer_id = match room.hello(session_token.clone(), nickname, public_id) {
-                Ok(id) => id,
-                Err(code) => {
-                    Self::reject_welcome(&ws, code);
-                    return Ok(());
-                }
-            };
-            if !existed {
-                self.save(room).await?;
-            }
-            // Same cookie = same player: a reload, reconnect, or second tab
-            // takes over, and any older socket of that player is retired.
-            for old in self.state.get_websockets() {
-                if old != ws
-                    && Self::identity(&old)
-                        .is_some_and(|other| other.active() && other.token == session_token)
-                {
-                    let _ = old.serialize_attachment(SocketIdentity {
-                        token: session_token.clone(),
-                        joined: true,
-                        left: true,
-                    });
-                    let _ = old.close(Some(1000), Some("This room was opened in another tab."));
-                }
-            }
-            ws.serialize_attachment(SocketIdentity {
-                token: session_token,
-                joined: true,
-                left: false,
-            })?;
-            let connected = self.connected();
-            Self::send(
-                &ws,
-                &HostMessage::Welcome {
-                    your_peer_id: peer_id,
-                    lobby: room.lobby(&connected),
-                    rejected: None,
-                },
-            );
-            if room.snapshot(&connected).is_some() {
-                Self::send(&ws, &room.current_message(&connected));
-            }
-            self.broadcast(&room.roster_message(&connected), Some(&ws));
-            return Ok(());
-        }
-
-        if !identity.joined {
-            Self::reject(&ws, RejectCode::InvalidMove, "say hello first");
-            return Ok(());
-        }
-        let connected = self.connected();
-        match room.apply(&identity.token, intent, &connected) {
-            Ok(change) => {
-                if change.persist {
-                    self.save(room).await?;
-                    self.broadcast(&change.message, None);
-                } else {
-                    Self::send(&ws, &change.message);
-                }
-            }
-            Err((code, message)) => Self::reject(&ws, code, &message),
         }
         Ok(())
     }
@@ -291,30 +307,34 @@ impl DurableObject for Room {
     async fn websocket_close(
         &self,
         ws: WebSocket,
-        code: usize,
+        _code: usize,
         _reason: String,
         _was_clean: bool,
     ) -> Result<()> {
-        let Some(identity) = Self::identity(&ws) else {
+        // The runtime replies to Close frames for our compatibility date.
+        let Some(attachment) = attachment(&ws).filter(|a| !a.left) else {
             return Ok(());
         };
-        if !identity.active() {
-            return Ok(());
+        let conn = attachment.conn;
+        let mut cache = self.engine.lock().await;
+        let mut host = Host::new(&self.state);
+        // Load before retiring the socket, so a rebuilt engine still has it.
+        let loaded = self.engine(&mut cache, &mut host).await;
+        host.sockets.remove(&conn);
+        retire(&ws, attachment);
+        let engine = match loaded {
+            Ok(Some(engine)) => engine,
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                console_error!("room storage error: {error}");
+                return Ok(());
+            }
+        };
+        let step = engine.on_close(conn);
+        if let Err(error) = engine.run(&mut host, step).await {
+            console_error!("room storage error: {error}");
+            *cache = None;
         }
-        ws.serialize_attachment(SocketIdentity {
-            token: identity.token.clone(),
-            joined: true,
-            left: true,
-        })?;
-        let mut cache = self.room.lock().await;
-        let room = self.load(&mut cache).await?;
-        let changed = room.disconnect(&identity.token);
-        if changed {
-            self.save(room).await?;
-        }
-        let connected = self.connected();
-        self.broadcast(&room.roster_message(&connected), Some(&ws));
-        let _ = code; // The runtime replies to Close frames for our compatibility date.
         Ok(())
     }
 

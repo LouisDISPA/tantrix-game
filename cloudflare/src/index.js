@@ -12,6 +12,9 @@ export default {
     }
 
     if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+      // The alphabet of `tantrix_proto::ROOM_CODE_ALPHABET`. Only valid codes
+      // get an object; the Room object checks again with the same Rust
+      // function as the native server (`tantrix_room::handshake::check`).
       const match = url.pathname.match(/^\/room\/([ABCDEFGHJKLMNPRSTUVWXYZ]{6})$/);
       if (!match) {
         return new Response("invalid room code", { status: 400 });

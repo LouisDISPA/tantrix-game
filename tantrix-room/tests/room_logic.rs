@@ -575,6 +575,13 @@ fn session_cookie_is_parsed_strictly_and_set_http_only() {
         Some(generated)
     );
 
+    // A known browser keeps its token; a new one gets a fresh token to keep.
+    assert_eq!(
+        session_cookie::identify(Some(&header), true),
+        (SessionToken::new(token), None)
+    );
+    let (fresh, set) = session_cookie::identify(Some("theme=dark"), false);
+    assert_eq!(session_cookie::read(set.as_deref()), Some(fresh));
 }
 
 /// Times whole seeded games played through the room, as a server adapter

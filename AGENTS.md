@@ -58,6 +58,7 @@ tantrix-game/src/          # Core library — game rules, no UI
 tantrix-app/src/           # Dioxus frontend (lib + bin)
   lib.rs                   # `app()` root: stylesheet loading, Router
   main.rs                  # Binary entry: web client or native fullstack server
+  server.rs, server/       # Native Axum server: routes, room actor (room.rs: sockets), SQLite (store.rs)
   route.rs                 # Route enum: MainMenu (/), LocalGame (/game)
   state/                   # Source-of-truth state (no RSX)
     game_state.rs          # GameState (wraps Game + hand_info cache) + GameCtx
@@ -101,7 +102,9 @@ tantrix-ai/examples/       # seeded_games: times seeded AI games, prints a play 
 tantrix-tournament/src/    # AI round robin (ratatui): `tantrix-tournament [SEED]` replays the same tournament
 tantrix-tui/src/           # Terminal UI (ratatui)
 
-tantrix-worker/src/        # Cloudflare Worker (workers-rs): SSR + Room Durable Object (room.rs, room_logic.rs)
+tantrix-room/src/          # Room server code shared by both backends, no I/O: room_logic.rs (rules),
+                           #   engine.rs (RoomEngine), handshake.rs (code + Origin checks), session_cookie.rs
+tantrix-worker/src/        # Cloudflare Worker (workers-rs): SSR + Room Durable Object (room.rs: sockets, storage)
 cloudflare/                # Worker entry (index.js), wrangler.toml
 vendor/dioxus-server/      # dioxus-server 0.7.10 patched for wasm32 (PATCHES.md)
 
@@ -127,6 +130,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 | **Board** | `ArrayVec<Move, 56>` of placed tiles, sorted by position |
 | **TurnEvent** | One recorded change: a move (with the turn state before it, hand index, tiles drawn), a skipped turn, or a retirement — `Game::history`, `undo`, `replay` |
 | **Seed** | `Game::new` deals from a random seed and keeps it (`Game::seed`); `new_seeded` / `from_players_seeded` from a given one (local `/game?seed=N`, tests, the tournament). Online rooms deal with the thread RNG and keep no seed: `GameData`'s bag and history suffice, and undoing the history gives back the deal. A seed reveals the draw order, so none is ever sent to players |
+| **RoomEngine** | One room's orchestration without I/O (`tantrix-room/src/engine.rs`): socket events (`on_open`, `on_text`, `on_close`…) in, a `Step` out (the room to persist + `Effect`s: send, broadcast, close). Both servers run it the same way: save, then commit, then deliver |
 | **Forced space** | Empty hex with 3+ neighbors — must be filled if possible |
 | **Golden rule** | Touching edges must match in color |
 | **Restriction rules** | No same-color triples, no 4-sided spaces, no controlled-side plays (while bag has tiles) |

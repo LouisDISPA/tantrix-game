@@ -13,6 +13,10 @@ use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};
 use tantrix_game::{Board, Color, Hand, Move, Placement, TurnStep};
 
+pub mod room_code;
+
+pub use room_code::{is_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
+
 /// Raw keepalive frames. The room answers the ping with the pong through the
 /// runtime's auto-response, without waking the Durable Object.
 pub const KEEPALIVE_PING: &str = "ping";

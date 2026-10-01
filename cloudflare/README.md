@@ -25,12 +25,18 @@ two seated players are connected.
 
 ## Room state
 
-`tantrix-worker/src/room.rs` owns Durable Object sockets and storage;
-`tantrix-room/src/room_logic.rs` applies lobby and game rules. Each room
-stores its roster, seats, bag, hands, board, turn tracker, and terminal state.
-The game data is written to Durable Object storage before its new snapshot is
-broadcast. Socket attachments identify the connected player across Durable
-Object hibernation; only persistent state is needed after an instance restart.
+`tantrix-worker/src/room.rs` owns Durable Object sockets and storage; the
+shared `tantrix-room` engine (`engine.rs`) decides what each socket event
+does, exactly as on the native server, and `room_logic.rs` applies lobby and
+game rules (see [Room servers](../doc/MULTIPLAYER.md#room-servers)). Each
+room stores its roster, seats, bag, hands, board, turn tracker, move history,
+and terminal state. A changed room is written to Durable Object storage
+before it is committed and its new snapshot broadcast; if the write fails,
+every socket is closed with *Room storage is unavailable.* and the object
+reloads the room from storage on its next event. Each socket's attachment
+holds its number, session token and whether it joined, so the engine is
+rebuilt from storage and attachments after hibernation; only persistent
+state is needed after an instance restart.
 
 Players are identified by the `tantrix_session` cookie
 (`tantrix-room/src/session_cookie.rs`): `HttpOnly`, `SameSite=Lax`, one
@@ -38,7 +44,8 @@ year, `Secure` on HTTPS. Server-rendered pages set it when a browser has
 none; the room upgrade also sets it as a fallback. The room reads it from the
 WebSocket handshake and stores it on the socket attachment, so the token
 never appears in a message. Room sockets whose `Origin` is another site are
-refused with 403.
+refused with 403. The object checks the room code and `Origin` with the same
+function as the native server (`tantrix_room::handshake::check`).
 
 Clients send a `Hello` (just a nickname), then intents such as `PickColor`,
 `ReplaceSeat`, `StartGame`, and `PlayMove` (a tile placement: tile,

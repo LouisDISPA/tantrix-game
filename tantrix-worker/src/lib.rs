@@ -44,16 +44,11 @@ async fn fetch(request: HttpRequest, _env: Env, _ctx: Context) -> worker::Result
         .headers()
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok());
-    let needs_cookie = tantrix_room::session_cookie::read(cookie).is_none();
     let secure = request.uri().scheme_str() == Some("https");
+    let (_, set_cookie) = tantrix_room::session_cookie::identify(cookie, secure);
     let mut response = ROUTER.clone().call(request).await?;
-    if needs_cookie {
-        let token = tantrix_room::session_cookie::SessionToken::generate();
-        if let Ok(value) =
-            HeaderValue::from_str(&tantrix_room::session_cookie::set_cookie(&token, secure))
-        {
-            response.headers_mut().append(header::SET_COOKIE, value);
-        }
+    if let Some(value) = set_cookie.and_then(|value| HeaderValue::from_str(&value).ok()) {
+        response.headers_mut().append(header::SET_COOKIE, value);
     }
     Ok(response)
 }

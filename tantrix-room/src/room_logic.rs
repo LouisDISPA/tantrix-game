@@ -1,4 +1,4 @@
-//! Pure room rules. Each server adapter owns persistence and sockets; this
+//! Pure room rules. [`crate::engine`] runs them for each socket event; this
 //! module owns the roster and applies game intents without trusting clients.
 
 use std::collections::HashSet;

@@ -1,23 +1,27 @@
-//! Native room WebSockets. One task serializes all changes within each room.
+//! Native room WebSockets. One actor task per room feeds its sockets'
+//! events to a `RoomEngine` (one at a time) and carries out its effects;
+//! the room rules and orchestration live in `tantrix_room::engine`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 
 use axum::extract::ws::{close_code, CloseFrame, Message, WebSocket};
 use futures::{SinkExt, StreamExt};
-use tantrix_net::normalize_room_code;
-use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode, KEEPALIVE_PING, KEEPALIVE_PONG};
+use tantrix_proto::{RejectCode, KEEPALIVE_PING, KEEPALIVE_PONG};
+use tantrix_room::engine::{self, ConnId, Effect, RoomEngine, RoomHost};
 use tantrix_room::room_logic::RoomData;
 use tantrix_room::session_cookie::SessionToken;
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
-use super::store::{RoomStore, StoreResult};
+use super::store::{RoomStore, StoreError, StoreResult};
 
-const MAX_MESSAGE_BYTES: usize = 8 * 1024;
 const OUTGOING_CAPACITY: usize = 64;
 const COMMAND_CAPACITY: usize = 64;
 
-type ConnectionId = uuid::Uuid;
+/// Socket numbers, unique across the process and so within each room.
+static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
 
 pub struct RoomManager {
     rooms: Mutex<HashMap<String, Weak<RoomHandle>>>,
@@ -51,7 +55,7 @@ impl RoomManager {
             }
         }
 
-        let mut room = if create {
+        let room = if create {
             if !self.store.create(code).await? {
                 return Ok(OpenRoom::Collision);
             }
@@ -63,21 +67,21 @@ impl RoomManager {
             room
         };
 
-        // A process restart loses every socket. Retain seats for reconnects,
-        // and remove members who had no seat, as a normal disconnect would.
-        let tokens: Vec<_> = room.players.iter().map(|p| p.token.clone()).collect();
-        let mut changed = false;
-        for token in &tokens {
-            changed |= room.disconnect(token);
-        }
-        if changed {
-            self.store.save(code, &room).await?;
-        }
+        // A process restart lost every socket: no actor holds this room.
+        let mut engine = RoomEngine::new(room, []);
+        let mut sockets = HashMap::new();
+        let mut host = Host {
+            code,
+            store: &self.store,
+            sockets: &mut sockets,
+        };
+        let loaded = engine.on_load();
+        engine.run(&mut host, loaded).await?;
 
         let (tx, rx) = mpsc::channel(COMMAND_CAPACITY);
         let handle = Arc::new(RoomHandle { tx });
         rooms.insert(code.to_owned(), Arc::downgrade(&handle));
-        tokio::spawn(RoomActor::new(code.to_owned(), room, self.store.clone()).run(rx));
+        tokio::spawn(RoomActor::new(code.to_owned(), engine, self.store.clone()).run(rx));
         Ok(OpenRoom::Ready(handle))
     }
 }
@@ -92,233 +96,147 @@ impl RoomHandle {
     }
 }
 
+/// One socket event, in the order its socket task saw it.
 enum RoomCommand {
-    Hello {
-        id: ConnectionId,
+    Open {
+        conn: ConnId,
         token: SessionToken,
-        nickname: String,
-        outgoing: mpsc::Sender<Message>,
-        close: watch::Sender<Option<String>>,
+        socket: Socket,
     },
-    Intent {
-        id: ConnectionId,
-        message: PeerMessage,
+    Text {
+        conn: ConnId,
+        text: String,
     },
-    Disconnect {
-        id: ConnectionId,
+    Binary {
+        conn: ConnId,
+    },
+    Close {
+        conn: ConnId,
         done: oneshot::Sender<()>,
     },
 }
 
-struct Connection {
-    token: SessionToken,
+/// How the actor reaches one socket task.
+struct Socket {
+    /// Frames to write, in order. Bounded: a full queue is a slow consumer.
     outgoing: mpsc::Sender<Message>,
+    /// Close now with this reason, when the queue can't take a close frame.
     close: watch::Sender<Option<String>>,
 }
 
 struct RoomActor {
     code: String,
-    data: RoomData,
-    connections: HashMap<ConnectionId, Connection>,
+    engine: RoomEngine,
+    sockets: HashMap<ConnId, Socket>,
     store: RoomStore,
 }
 
 impl RoomActor {
-    fn new(code: String, data: RoomData, store: RoomStore) -> Self {
+    fn new(code: String, engine: RoomEngine, store: RoomStore) -> Self {
         Self {
             code,
-            data,
-            connections: HashMap::new(),
+            engine,
+            sockets: HashMap::new(),
             store,
         }
     }
 
     async fn run(mut self, mut commands: mpsc::Receiver<RoomCommand>) {
         while let Some(command) = commands.recv().await {
-            let result = match command {
-                RoomCommand::Hello {
-                    id,
+            let mut done = None;
+            let step = match command {
+                RoomCommand::Open {
+                    conn,
                     token,
-                    nickname,
-                    outgoing,
-                    close,
-                } => self.hello(id, token, nickname, outgoing, close).await,
-                RoomCommand::Intent { id, message } => self.intent(id, message).await,
-                RoomCommand::Disconnect { id, done } => {
-                    let result = self.disconnect(id).await;
-                    let result = match result {
-                        Ok(()) => {
-                            self.broadcast(self.data.roster_message(&self.connected()), None)
-                                .await
-                        }
-                        Err(error) => Err(error),
-                    };
-                    let _ = done.send(());
-                    result
+                    socket,
+                } => {
+                    self.sockets.insert(conn, socket);
+                    self.engine.on_open(conn, token)
+                }
+                RoomCommand::Text { conn, text } => self.engine.on_text(conn, &text),
+                RoomCommand::Binary { conn } => self.engine.on_binary(conn),
+                RoomCommand::Close { conn, done: ack } => {
+                    self.sockets.remove(&conn);
+                    done = Some(ack);
+                    self.engine.on_close(conn)
                 }
             };
+            let mut host = Host {
+                code: &self.code,
+                store: &self.store,
+                sockets: &mut self.sockets,
+            };
+            let result = self.engine.run(&mut host, step).await;
+            if let Some(done) = done {
+                let _ = done.send(());
+            }
             if let Err(error) = result {
+                // The engine told every socket; the next visitor reloads
+                // the room from storage in a new actor.
                 log::error!("room {} stopped after storage error: {error}", self.code);
-                for connection in self.connections.values() {
-                    let _ = connection
-                        .close
-                        .send(Some("Room storage is unavailable.".into()));
-                }
                 break;
             }
         }
-    }
-
-    fn connected(&self) -> HashSet<SessionToken> {
-        self.connections
-            .values()
-            .map(|connection| connection.token.clone())
-            .collect()
-    }
-
-    async fn hello(
-        &mut self,
-        id: ConnectionId,
-        token: SessionToken,
-        nickname: String,
-        outgoing: mpsc::Sender<Message>,
-        close: watch::Sender<Option<String>>,
-    ) -> StoreResult<()> {
-        if self.connections.contains_key(&id) {
-            send(
-                &outgoing,
-                &HostMessage::Error {
-                    code: RejectCode::InvalidMove,
-                    message: "already joined".into(),
-                },
-            );
-            return Ok(());
-        }
-        let mut next = self.data.clone();
-        let existed = next.player(&token).is_some();
-        let peer_id = match next.hello(
-            token.clone(),
-            nickname,
-            PeerId::new(uuid::Uuid::new_v4().to_string()),
-        ) {
-            Ok(peer_id) => peer_id,
-            Err(code) => {
-                reject_welcome(&outgoing, code);
-                return Ok(());
-            }
-        };
-        if !existed {
-            self.store.save(&self.code, &next).await?;
-        }
-        self.data = next;
-
-        // The new connection supersedes every older tab with the same cookie.
-        let old_ids: Vec<_> = self
-            .connections
-            .iter()
-            .filter_map(|(old_id, connection)| (connection.token == token).then_some(*old_id))
-            .collect();
-        for old_id in old_ids {
-            if let Some(old) = self.connections.remove(&old_id) {
-                let _ = old
-                    .close
-                    .send(Some("This room was opened in another tab.".into()));
-            }
-        }
-        self.connections.insert(
-            id,
-            Connection {
-                token,
-                outgoing: outgoing.clone(),
-                close,
-            },
-        );
-        let connected = self.connected();
-        send(
-            &outgoing,
-            &HostMessage::Welcome {
-                your_peer_id: peer_id,
-                lobby: self.data.lobby(&connected),
-                rejected: None,
-            },
-        );
-        if self.data.game.is_some() {
-            send(&outgoing, &self.data.current_message(&connected));
-        }
-        self.broadcast(self.data.roster_message(&connected), Some(id))
-            .await
-    }
-
-    async fn intent(&mut self, id: ConnectionId, message: PeerMessage) -> StoreResult<()> {
-        let Some(connection) = self.connections.get(&id) else {
-            return Ok(());
-        };
-        let token = connection.token.clone();
-        let outgoing = connection.outgoing.clone();
-        let connected = self.connected();
-        let mut next = self.data.clone();
-        match next.apply(&token, message, &connected) {
-            Ok(change) if change.persist => {
-                self.store.save(&self.code, &next).await?;
-                self.data = next;
-                self.broadcast(change.message, None).await?;
-            }
-            Ok(change) => send(&outgoing, &change.message),
-            Err((code, message)) => send(&outgoing, &HostMessage::Error { code, message }),
-        }
-        Ok(())
-    }
-
-    async fn disconnect(&mut self, id: ConnectionId) -> StoreResult<()> {
-        let Some(connection) = self.connections.remove(&id) else {
-            return Ok(());
-        };
-        let mut next = self.data.clone();
-        if next.disconnect(&connection.token) {
-            self.store.save(&self.code, &next).await?;
-            self.data = next;
-        }
-        Ok(())
-    }
-
-    async fn broadcast(
-        &mut self,
-        message: HostMessage,
-        except: Option<ConnectionId>,
-    ) -> StoreResult<()> {
-        let mut pending = Some((message, except));
-        while let Some((message, except)) = pending.take() {
-            let wire = wire_message(&message);
-            let slow: Vec<_> = self
-                .connections
-                .iter()
-                .filter(|(id, _)| Some(**id) != except)
-                .filter_map(|(id, connection)| {
-                    connection
-                        .outgoing
-                        .try_send(wire.clone())
-                        .is_err()
-                        .then_some(*id)
-                })
-                .collect();
-            if slow.is_empty() {
-                break;
-            }
-            for id in slow {
-                if let Some(connection) = self.connections.get(&id) {
-                    let _ = connection
-                        .close
-                        .send(Some("Connection is too slow.".into()));
-                }
-                self.disconnect(id).await?;
-            }
-            pending = Some((self.data.roster_message(&self.connected()), None));
-        }
-        Ok(())
     }
 }
 
-fn wire_message(message: &HostMessage) -> Message {
+/// The actor's I/O for the engine: SQLite and the socket tasks' queues.
+struct Host<'a> {
+    code: &'a str,
+    store: &'a RoomStore,
+    sockets: &'a mut HashMap<ConnId, Socket>,
+}
+
+impl RoomHost for Host<'_> {
+    type Error = StoreError;
+
+    fn save(&mut self, room: &RoomData) -> impl Future<Output = StoreResult<()>> {
+        self.store.save(self.code, room)
+    }
+
+    fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
+        let mut unreachable = Vec::new();
+        for effect in effects {
+            match effect {
+                Effect::Send { to, message } => {
+                    self.queue(to, wire_message(&message), &mut unreachable);
+                }
+                Effect::Broadcast { to, message } => {
+                    let wire = wire_message(&message);
+                    for conn in to {
+                        self.queue(conn, wire.clone(), &mut unreachable);
+                    }
+                }
+                Effect::Close { conn, reason } => {
+                    // Queued, the close frame follows what was sent before
+                    // it; a full queue closes right away instead.
+                    if let Some(socket) = self.sockets.remove(&conn) {
+                        if socket.outgoing.try_send(close_frame(reason)).is_err() {
+                            let _ = socket.close.send(Some(reason.into()));
+                        }
+                    }
+                }
+            }
+        }
+        unreachable
+    }
+}
+
+impl Host<'_> {
+    /// Queue `message` for `conn`, or report it: its queue is full, or its
+    /// task is gone.
+    fn queue(&self, conn: ConnId, message: Message, unreachable: &mut Vec<ConnId>) {
+        let queued = self
+            .sockets
+            .get(&conn)
+            .is_some_and(|socket| socket.outgoing.try_send(message).is_ok());
+        if !queued {
+            unreachable.push(conn);
+        }
+    }
+}
+
+fn wire_message(message: &tantrix_proto::HostMessage) -> Message {
     Message::Text(
         serde_json::to_string(message)
             .expect("host message serializes")
@@ -326,138 +244,92 @@ fn wire_message(message: &HostMessage) -> Message {
     )
 }
 
-fn send(outgoing: &mpsc::Sender<Message>, message: &HostMessage) {
-    let _ = outgoing.try_send(wire_message(message));
-}
-
-fn reject_welcome(outgoing: &mpsc::Sender<Message>, code: RejectCode) {
-    send(
-        outgoing,
-        &HostMessage::Welcome {
-            your_peer_id: PeerId::new(""),
-            lobby: RoomData::default().lobby(&HashSet::new()),
-            rejected: Some(code),
-        },
-    );
-    let _ = outgoing.try_send(Message::Close(Some(CloseFrame {
+fn close_frame(reason: &str) -> Message {
+    Message::Close(Some(CloseFrame {
         code: close_code::NORMAL,
-        reason: "".into(),
-    })));
+        reason: reason.into(),
+    }))
 }
 
+/// Answer a socket for a code with no room, then close it.
 pub async fn missing_room(mut socket: WebSocket) {
-    let message = HostMessage::Welcome {
-        your_peer_id: PeerId::new(""),
-        lobby: RoomData::default().lobby(&HashSet::new()),
-        rejected: Some(RejectCode::RoomNotFound),
-    };
+    let message = engine::rejected_welcome(RejectCode::RoomNotFound);
     let _ = socket.send(wire_message(&message)).await;
-    let _ = socket.close().await;
+    let _ = socket.send(close_frame("")).await;
 }
 
 pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: SessionToken) {
-    let id = uuid::Uuid::new_v4();
+    let conn = ConnId(NEXT_CONN.fetch_add(1, Ordering::Relaxed));
     let (mut writer, mut reader) = socket.split();
     let (outgoing, mut incoming) = mpsc::channel(OUTGOING_CAPACITY);
     let (close, mut closed) = watch::channel::<Option<String>>(None);
-    let mut hello_sent = false;
+    let open = RoomCommand::Open {
+        conn,
+        token,
+        socket: Socket {
+            outgoing: outgoing.clone(),
+            close,
+        },
+    };
 
-    loop {
-        tokio::select! {
-            frame = reader.next() => {
-                let Some(Ok(frame)) = frame else { break; };
-                let text = match frame {
-                    Message::Text(text) => text,
-                    Message::Close(_) => break,
-                    Message::Binary(_) => {
-                        send(&outgoing, &HostMessage::Error {
-                            code: RejectCode::InvalidMove,
-                            message: "text messages only".into(),
-                        });
-                        continue;
+    if handle.send(open).await {
+        loop {
+            // Outgoing frames first, so a close reason or a rejection
+            // queued before the room stopped still reaches the browser.
+            tokio::select! {
+                biased;
+                message = incoming.recv() => {
+                    let Some(message) = message else { break; };
+                    let is_close = matches!(message, Message::Close(_));
+                    if writer.send(message).await.is_err() || is_close { break; }
+                }
+                changed = closed.changed() => {
+                    if changed.is_ok() {
+                        let reason = closed.borrow().clone().unwrap_or_default();
+                        let _ = writer.send(close_frame(&reason)).await;
                     }
-                    Message::Ping(_) | Message::Pong(_) => continue,
-                };
-                if text == KEEPALIVE_PING {
-                    let _ = outgoing.try_send(Message::Text(KEEPALIVE_PONG.into()));
-                    continue;
+                    break;
                 }
-                if text.len() > MAX_MESSAGE_BYTES {
-                    send(&outgoing, &HostMessage::Error {
-                        code: RejectCode::InvalidMove,
-                        message: "message too large".into(),
-                    });
-                    continue;
-                }
-                let Ok(intent) = serde_json::from_str::<PeerMessage>(&text) else {
-                    send(&outgoing, &HostMessage::Error {
-                        code: RejectCode::InvalidMove,
-                        message: "invalid message".into(),
-                    });
-                    continue;
-                };
-                let command = match intent {
-                    PeerMessage::Hello { nickname } => {
-                        if hello_sent {
-                            send(&outgoing, &HostMessage::Error {
-                                code: RejectCode::InvalidMove,
-                                message: "already joined".into(),
-                            });
+                frame = reader.next() => {
+                    let Some(Ok(frame)) = frame else { break; };
+                    let command = match frame {
+                        // Keepalives never reach the room.
+                        Message::Text(text) if text == KEEPALIVE_PING => {
+                            let _ = outgoing.try_send(Message::Text(KEEPALIVE_PONG.into()));
                             continue;
                         }
-                        hello_sent = true;
-                        RoomCommand::Hello {
-                            id,
-                            token: token.clone(),
-                            nickname,
-                            outgoing: outgoing.clone(),
-                            close: close.clone(),
-                        }
-                    }
-                    message if !hello_sent => {
-                        send(&outgoing, &HostMessage::Error {
-                            code: RejectCode::InvalidMove,
-                            message: "say hello first".into(),
-                        });
-                        let _ = message;
-                        continue;
-                    }
-                    message => RoomCommand::Intent { id, message },
-                };
-                if !handle.send(command).await { break; }
-            }
-            message = incoming.recv() => {
-                let Some(message) = message else { break; };
-                let is_close = matches!(message, Message::Close(_));
-                if writer.send(message).await.is_err() || is_close { break; }
-            }
-            changed = closed.changed() => {
-                if changed.is_ok() {
-                    let reason = closed.borrow().clone().unwrap_or_default();
-                    let _ = writer.send(Message::Close(Some(CloseFrame {
-                        code: close_code::NORMAL,
-                        reason: reason.into(),
-                    }))).await;
+                        Message::Text(text) => RoomCommand::Text { conn, text: text.to_string() },
+                        Message::Binary(_) => RoomCommand::Binary { conn },
+                        Message::Close(_) => break,
+                        Message::Ping(_) | Message::Pong(_) => continue,
+                    };
+                    if !handle.send(command).await { break; }
                 }
-                break;
+                _ = handle.tx.closed() => break,
             }
-            _ = handle.tx.closed() => break,
         }
     }
     let (done, acknowledged) = oneshot::channel();
-    if handle.send(RoomCommand::Disconnect { id, done }).await {
+    if handle.send(RoomCommand::Close { conn, done }).await {
         let _ = acknowledged.await;
     }
-}
-
-pub fn valid_code(code: &str) -> bool {
-    normalize_room_code(code).as_deref() == Some(code)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tantrix_game::Color;
+    use tantrix_proto::{HostMessage, PeerMessage};
+
+    fn text(message: &PeerMessage) -> String {
+        serde_json::to_string(message).unwrap()
+    }
+
+    fn test_socket() -> (Socket, mpsc::Receiver<Message>) {
+        let (outgoing, messages) = mpsc::channel(8);
+        let (close, _closed) = watch::channel(None);
+        (Socket { outgoing, close }, messages)
+    }
 
     #[tokio::test]
     async fn a_room_reloads_its_seat_after_the_actor_stops() {
@@ -467,34 +339,29 @@ mod tests {
             panic!("room should be created");
         };
         let token = SessionToken::new("returning-player-123456");
-        let id = uuid::Uuid::new_v4();
-        let (outgoing, mut messages) = mpsc::channel(8);
-        let (close, _closed) = watch::channel(None);
+        let conn = ConnId(1);
+        let (socket, mut messages) = test_socket();
         assert!(
             handle
-                .send(RoomCommand::Hello {
-                    id,
+                .send(RoomCommand::Open {
+                    conn,
                     token: token.clone(),
-                    nickname: "Player".into(),
-                    outgoing,
-                    close,
+                    socket,
                 })
                 .await
         );
+        let hello = text(&PeerMessage::Hello {
+            nickname: "Player".into(),
+        });
+        assert!(handle.send(RoomCommand::Text { conn, text: hello }).await);
         assert!(matches!(messages.recv().await, Some(Message::Text(_))));
-        assert!(
-            handle
-                .send(RoomCommand::Intent {
-                    id,
-                    message: PeerMessage::PickColor {
-                        color: Some(Color::Red)
-                    },
-                })
-                .await
-        );
+        let pick = text(&PeerMessage::PickColor {
+            color: Some(Color::Red),
+        });
+        assert!(handle.send(RoomCommand::Text { conn, text: pick }).await);
         assert!(matches!(messages.recv().await, Some(Message::Text(_))));
         let (done, acknowledged) = oneshot::channel();
-        assert!(handle.send(RoomCommand::Disconnect { id, done }).await);
+        assert!(handle.send(RoomCommand::Close { conn, done }).await);
         acknowledged.await.unwrap();
         drop(handle);
         drop(manager);
@@ -503,19 +370,21 @@ mod tests {
         let OpenRoom::Ready(handle) = restarted.open("ABCDEF", false).await.unwrap() else {
             panic!("room should be restored");
         };
-        let (outgoing, mut messages) = mpsc::channel(8);
-        let (close, _closed) = watch::channel(None);
+        let conn = ConnId(2);
+        let (socket, mut messages) = test_socket();
         assert!(
             handle
-                .send(RoomCommand::Hello {
-                    id: uuid::Uuid::new_v4(),
+                .send(RoomCommand::Open {
+                    conn,
                     token,
-                    nickname: "Ignored on reconnect".into(),
-                    outgoing,
-                    close,
+                    socket
                 })
                 .await
         );
+        let hello = text(&PeerMessage::Hello {
+            nickname: "Ignored on reconnect".into(),
+        });
+        assert!(handle.send(RoomCommand::Text { conn, text: hello }).await);
         let Some(Message::Text(message)) = messages.recv().await else {
             panic!("expected welcome");
         };

@@ -8411,7 +8411,6 @@ dependencies = [
  "tantrix-room",
  "tokio",
  "tracing-subscriber",
- "uuid",
  "wasm-bindgen-futures",
  "web-sys",
 ]
