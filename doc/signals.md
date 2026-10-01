@@ -54,14 +54,14 @@ derefs to it): `ctx.game_state.read().board().len()`,
 
 | Field | Who reads |
 |---|---|
-| `phase` | StatusBar, `use_phase_view`, `use_is_game_over`, routing |
+| `phase` | StatusBar (memo), the phase-view memos, `use_is_game_over`, LocalGame (memo), actions |
 | `message` | StatusBar |
-| `selected_tile`, `selected_position` | `use_phase_view`, HandTile, actions |
-| `hovered` (enum) | `use_phase_view`, `use_highlight_map`, RotationWheel |
-| `zoom`, `pan_x`, `pan_y`, `drag` | `use_board_camera` only |
-| `new_tile` | PlayerHand (just-drawn animation) |
-| `last_placed_position` | BoardTilesLayer (just-placed animation) |
-| `highlighted_color` | `use_highlight_map`, ScoresPanel |
+| `selected_tile`, `selected_position` | the phase-view memos, HandTile, actions |
+| `hovered` (enum) | `use_valid_positions` (SelectTile), `use_preview_placement`, `use_highlight_map` (game over) — never `use_rotation_wheel` |
+| `zoom`, `pan_x`, `pan_y`, `drag` | BoardViewport (transform + dragging memos), ZoomControls (zoom memo) |
+| `new_tile` | HandTile (just-drawn animation) |
+| `last_placed_position` | BoardTilesLayer (just-placed animation, one memo for all tiles) |
+| `highlighted_color` | `use_highlight_map`, ScoreRow |
 
 Accessed as `ctx.ui_state.phase()()`. Never `ctx.ui_state.read()` —
 that subscribes to every field.
@@ -92,38 +92,77 @@ no one maintains hand-synced signals.
 | `use_current_player` | `Memo<Color>` | `game_state.current_player()` |
 | `use_is_game_over` | `Memo<bool>` | `ui_state.phase` |
 | `use_has_forced_move` | `Memo<bool>` | `game_state.hand_info()` |
-| `use_board_camera` | `(BoardCamera, BoardCameraHandlers)` | camera fields |
-| `use_phase_view` | `Memo<PhaseView>` | phase, selection, hover, `game_state` |
+| `use_valid_positions` | `Memo<Vec<ValidPosition>>` | phase; hovered hand tile (SelectTile) or `selected_tile`; `hand_info` |
+| `use_preview_placement` | `Memo<Option<Placement>>` | phase, selection, hover, `game_state` |
+| `use_rotation_wheel` | `Memo<Option<WheelData>>` | phase, selection, `game_state` — not hover |
 | `use_highlight_map` | `Memo<BTreeMap<Position, Vec<Color>>>` | phase, board, highlight/hover color |
+| `use_has_snapshot` | `Memo<bool>` | the online `phase` (has the room sent a game?) |
+
+`use_board_camera` returns a `BoardCamera` — the zoom/pan controls, which
+write the camera fields — and reads nothing: BoardViewport and
+ZoomControls memo the camera fields they show themselves.
+
+The three phase-view memos used to be one `PhaseView` bundle that each
+board layer recomputed itself, so a hover woke the rotation wheel. `Board`
+now creates each once and passes it to the one layer that shows it as a
+`ReadSignal` prop (`BoardEmptyLayer { positions }`, `BoardPreview {
+placement }`, `RotationWheel { wheel }`): hovering a hex re-renders the
+preview ghost and nothing else.
 
 ## Reading rules
 
 - **Read narrowly.** Field-level where possible — `ui.phase()()`, not
   `ui.read().phase`.
+- **Read in a memo or inline, not at the top.** A component that reads a
+  signal while rendering re-renders on *every* write to it; reading a memo
+  re-renders it only when the memo's value changes. `StatusBar` shows
+  memos (`phase_text`, `bag_count`, the current player) so a hover, a drag
+  or an AI picking its tile leaves it alone; `PlayerHand` memos its tiles
+  and turn, so a move re-renders only the hands it changes.
 - **Derived state → `use_memo`.** Never a shadow `Signal` you hand-sync.
-- **Lift derived per-child state into the child**, not out to the parent's
-  render loop. Example: `BoardTile` reads `use_highlight_map` itself,
-  so only the affected tile re-renders when the highlight changes.
+- **One memo per derivation, at the common ancestor.** When several
+  children (or a whole list) need a derived value, compute it once above
+  them and pass it down: the tiles layer works out the scoring overlay and
+  the last placed position once and gives each `BoardTile` its plain
+  `highlight_colors` / `just_placed`, so a tile re-renders only when its
+  own props change.
+- **Key list items directly.** Put the keyed component itself in the `for`
+  body (`for m in … { BoardTile { key: …, … } }`); a `{ let …; rsx! { … } }`
+  block wraps each item in an unkeyed node, so the list is diffed by index
+  and inserting a tile remounts every tile after it.
 - **Don't hold `.read()` across `.await`.** Copy scalar out first.
 
 ## Writing rules
 
 - **Single field write:** `ui.phase().set(…)`, `ui.hovered().set(…)`.
-  Marks only that field dirty.
-- **Multi-field write:** `ui.write().reset_selection()`. Marks every
-  field dirty — correct here because all of them are changing.
-- **`after_move`** is the single "a move landed" hook in `UiState`: resets
-  pan, records `new_tile` + `last_placed_position` for animations. Called
-  from both the human (`execute_move`) and the AI (`run_ai_loop`) paths.
+  Marks only that field dirty. `set_if_changed(ui.pan_x(), 0.0)` skips the
+  write (and the wake-ups) when the field already holds the value.
+- **Multi-field write:** the `#[store]` methods on `Store<UiState>`
+  (`UiStateStoreImplExt`: `reset_selection`, `select_tile`, `go_back`,
+  `clear_selection`, `after_move`) write field by field, only the fields
+  that change. Never `ui.write()`: it marks *every* field dirty — the
+  camera, the animation hints, the scoring overlay — and wakes all their
+  readers. Only a full reset (`ui.set(UiState::default())` on Start Game
+  and Play Again) writes the whole store.
+- **Hot paths write the fewest fields.** A drag's mousemove writes
+  `pan_x`, `pan_y` and `drag` only; the AI loop leaves the phase alone (it
+  already is `WaitingForAi`); an online snapshot resets the selection and
+  `last_placed_position`, never the camera.
+- **`after_move`** is the single "a move landed" change: resets pan,
+  records `new_tile` + `last_placed_position` for animations. Called from
+  both the human (`execute_move`) and the AI (`run_ai_loop`) paths.
+- **No writes while rendering.** Turn hand-offs run from event handlers
+  (`start_game` from Start Game) or effects, never from a component body.
 
 ## Turn flow (where the writes happen)
 
 ```
+Start Game         → start_game → deal, reset UiState, advance_turn
 Click hand tile    → click_tile → select_tile (or auto-play via execute_move)
 Click position     → click_position → execute_move OR phase = SelectRotation
 Pick rotation      → pick_rotation → execute_move
 execute_move       → Local:  game_state.write().play_move
-                             ui_state.write().after_move
+                             ui_state.after_move
                              advance_turn
                      Online: RoomLink::play (PlayMove) + reset selection
 advance_turn       → (Local only) skip stuck players, then
@@ -135,7 +174,7 @@ advance_turn       → (Local only) skip stuck players, then
 run_ai_loop        → loops while an AI can move:
                      ai_choose → animate selection → play_move
 settle_turn        → set phase/message (GameOver if nobody can move),
-                     reset selection
+                     reset selection (per field)
 End Game           → end_game → Local: phase = GameOver
                                 Online: RoomLink::end_game (EndGame)
 ```

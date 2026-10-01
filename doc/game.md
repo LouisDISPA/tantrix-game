@@ -61,7 +61,11 @@ non-human turn  ────────────▶  WaitingForAi
 ```
 
 `TurnPhase` lives in `state/ui_state.rs`. Routing between `PlayerSetup`,
-`GamePlay`, and `GameOver` matches on `(Screen, TurnPhase)` in `LocalGame`;
+`GamePlay`, and `GameOver` matches on the `Screen` and whether the phase is
+`GameOver` (a memo) in `LocalGame`. Start Game calls `actions::start_game`:
+it deals the configured game and hands the first turn on (to the AI loop
+when an AI seat starts), so `GamePlay` itself writes nothing while it
+renders;
 `OnlineGameView` shows `GamePlay` until the room's game has ended, then
 `GameOver`. Both screens live in `pages/game/` and read the page's
 `GameCtx`, whose `GameDriver` says who plays: `Local` (every seat on this
@@ -76,7 +80,7 @@ click hand tile  → click_tile        select, or auto-play if only 1 move
 click position   → click_position    execute_move, or → SelectRotation
 pick rotation    → pick_rotation     execute_move
 execute_move     → Local:  game_state.write().play_move(Placement { tile, position, rotation })
-                           ui_state.write().after_move    (new_tile + pan reset)
+                           ui_state.after_move    (new_tile + pan reset, per field)
                            advance_turn
                    Online: RoomLink::play → SessionCommand::PlayMove (own seat only);
                            the room's next snapshot redraws the board
@@ -106,7 +110,9 @@ sleep 500ms                               show tile pick
 ui.selected_position = chosen.position
 sleep 400ms                               show destination
 game_state.write().play_move(chosen.placement())   commit
-ui update (new_tile = PlayedMove::hand_index, last_placed_position, reset selection, reset pan)
+ui_state.after_move (new_tile = PlayedMove::hand_index, last_placed_position, reset pan),
+  clear selected tile + position          per-field writes: the camera and the
+                                          other fields' readers stay asleep
 sleep 300ms                               hand-draw animation
 ```
 

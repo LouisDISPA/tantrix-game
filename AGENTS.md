@@ -63,17 +63,17 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
   state/                   # Source-of-truth state (no RSX)
     game_state.rs          # GameState (wraps Game + hand_info cache) + GameCtx (game_state, ui_state, driver)
     game_driver.rs         # GameDriver: Local (every seat played here) | Online(RoomLink: moves go to the room)
-    ui_state.rs            # UiState, TurnPhase, Hovered enum, HandTileState enum
-    actions.rs             # Turn actions: execute_move, click_position, pick_rotation, end_game, advance_turn
+    ui_state.rs            # UiState, TurnPhase, Hovered enum, HandTileState enum; per-field #[store] methods (reset_selection, after_move…), set_if_changed
+    actions.rs             # Turn actions: start_game, execute_move, click_position, pick_rotation, end_game, advance_turn
     ai_service.rs          # Async AI turn loop
     config.rs              # GameConfig (player count/colors)
     theme.rs               # Global light/dark theme signal
   hooks/                   # Reactive derived values
-    camera.rs              # use_board_camera (+ BoardCameraHandlers)
+    camera.rs              # use_board_camera → BoardCamera (zoom/pan controls; writes camera fields one by one)
     derived.rs             # use_placed_moves, use_current_player, use_is_game_over, use_has_forced_move
     game_ctx.rs            # use_game_ctx: builds + provides a game page's GameCtx, runs its AI seats
-    online_game.rs         # use_online_game_ctx: the online GameCtx, fed by room snapshots
-    phase_view.rs          # use_phase_view → PhaseView, ValidPosition, WheelData
+    online_game.rs         # use_online_game_ctx: the online GameCtx, fed by room snapshots; use_has_snapshot
+    phase_view.rs          # use_valid_positions, use_preview_placement, use_rotation_wheel (one memo per board layer)
     scoring.rs             # use_highlight_map (scoring overlay)
   pages/                   # Route-level pages
     main_menu.rs           # Title screen
@@ -145,6 +145,8 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 - **State props**: plain `T` by default, `ReadSignal<T>` for granular subscriptions, `EventHandler<T>` for callbacks; mutable `Signal<T>` props are banned (see [rules/patterns.md](rules/patterns.md))
 - **Reads**: inline in RSX or inside a `use_memo` — never `state.read()` at the top of a component
 - **Store vs Signal**: `#[derive(Store)]` when fields change independently (`UiState`, `OnlineState`); plain `Signal<T>` when the struct is atomic (`GameState`)
+- **Store writes**: per field (`ui.phase().set(..)`, `set_if_changed`, or the `#[store]` methods in `ui_state.rs`) — never `ui_state.write()`, which wakes every field's readers; no state writes while rendering
+- **Re-render tests**: `util::render_count` (test-only) counts a component's renders; `pages/game/rerender_tests.rs` pins what a hover, drag, zoom, move or room snapshot re-renders
 - **Turn flow**: `TurnPhase` enum drives UI transitions (SelectTile → SelectPosition → SelectRotation)
 - **GameDriver**: `GameCtx::driver` says who plays — `Local` (this device plays every seat; the AI loop runs here) or `Online(RoomLink)` (moves and End Game go to the room, whose snapshots drive the board). Components ask it (`controls`, `can_end_game`, `my_color`, `player_name`) and the turn actions dispatch on it; nothing under `components/` touches the session
 - **GameState**: Wraps core `Game` (the single source of truth; reads via its accessors) with a `hand_info` cache of `Game::moves_by_tile()` (per hand tile: positions → valid rotations)
@@ -155,7 +157,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 
 ## Performance Rules
 
-- **Key dynamic lists** — always add `key: "{id}"` to `for` loop items in RSX
+- **Key dynamic lists** — always add `key: "{id}"` to `for` loop items in RSX, on the loop's direct child: a `{ let …; rsx! { … } }` body leaves the list unkeyed (diffed by index)
 - **Split large components** — break into smaller pieces so only changed parts re-render
 - **Use `use_memo` for expensive derivations** — avoid recomputing on every render
 - **Read signals narrowly** — read inside the smallest scope needed, not at component top

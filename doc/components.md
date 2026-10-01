@@ -25,13 +25,14 @@ App (lib.rs)
             └── GameOver             Online Menu / Main Menu, OnlineHudBadge as child
 
 GamePlay                             grid: Board + PlayerHand × N
-├── Board
+├── Board                            memos the phase view once, one per layer
 │   ├── StatusBar                    phase banner + counters
 │   ├── EndGameButton                (hidden on game over, and from watchers)
 │   ├── ZoomControls                 +/- zoom buttons
 │   ├── BoardViewport                pan/zoom host (children slot)
 │   │   ├── BoardTilesLayer          placed moves
-│   │   └── BoardEmptyLayer          click targets + preview
+│   │   ├── BoardEmptyLayer          click targets
+│   │   └── BoardPreview             ghost of the placement considered
 │   └── RotationWheel                only renders in SelectRotation phase
 └── PlayerHand × N                   one per active color
     └── HandTile × hand_size
@@ -60,7 +61,7 @@ components/
     mod.rs             Board composer (5 children, no logic)
     viewport.rs        zoom/pan host
     tiles_layer.rs     placed tiles
-    empty_layer.rs     empty hex slots + preview ghost
+    empty_layer.rs     empty hex slots (BoardEmptyLayer) + preview ghost (BoardPreview)
     controls.rs        zoom buttons, end-game button
     rotation_wheel.rs  conditional rotation picker
   tile/                Shared tile primitives
@@ -82,12 +83,13 @@ a memo.
 | Component | Props |
 |---|---|
 | `Board` | — |
-| `BoardViewport` | `children: Element` |
-| `BoardTilesLayer` | — |
-| `BoardEmptyLayer` | — |
+| `BoardViewport` | `placed_moves: ReadSignal<Vec<Move>>`, `children: Element` |
+| `BoardTilesLayer` | `placed_moves: ReadSignal<Vec<Move>>`, `dimmed: bool` |
+| `BoardEmptyLayer` | `positions: ReadSignal<Vec<ValidPosition>>` |
+| `BoardPreview` | `placement: ReadSignal<Option<Placement>>` |
 | `ZoomControls`, `EndGameButton` | — |
-| `RotationWheel` | — (reads `use_phase_view` itself) |
-| `BoardTile` | `placement: Placement`, `hex_size: f64`, `variant: BoardTileVariant` |
+| `RotationWheel` | `wheel: ReadSignal<Option<WheelData>>` |
+| `BoardTile` | `placement: Placement`, `hex_size: f64`, `variant: BoardTileVariant`, `highlight_colors: Vec<Color>`, `just_placed: bool`, `dimmed: bool` |
 | `EmptyHex` | `position: Position`, `hex_size: f64`, `forced: bool`, `faint: bool` |
 | `HandTile` | `color: Color`, `index: usize` |
 | `HexSvg` | `tile: Tile`, `rotation: Rotation`, `cx: f64`, `cy: f64`, `hex_size: f64`, `base_class`, `highlight_colors` |
@@ -95,27 +97,33 @@ a memo.
 | `ScoresPanel` | `children: Element` (action buttons) |
 | `GameOver` | `again_label: String`, `on_again: EventHandler<()>`, `children: Element` (page overlays) |
 | `PlayerSetup` | `seed: Option<u64>`, `on_start: EventHandler<GameConfig>` |
-| `ScoreRow` | `color: Color` |
+| `ScoreRow` | `color: Color`, `score: usize`, `is_winner: bool` |
 | `StatusBar` | — |
 
-Plain `T` throughout; no `ReadSignal<T>` props.
+Plain `T` by default. `ReadSignal<T>` where a parent derives a value once
+for a child that should re-render on its own when it changes: `Board`
+hands each layer its memo (Pattern 3 of the `dioxus-hoisting` skill), and
+`HandTile`'s `index` follows its tile as the hand shrinks.
 
 ## Context-readers
 
 | Component | Reads | Via |
 |---|---|---|
-| `StatusBar` | phase, message, bag/board counts, has_forced | direct + `use_current_player`, `use_has_forced_move` |
-| `BoardViewport` | camera fields, placed moves | `use_board_camera`, `use_placed_moves` |
-| `BoardTilesLayer` | placed moves, highlights, is-game-over, last placed | `use_placed_moves`, `use_highlight_map`, `use_is_game_over` |
-| `BoardEmptyLayer` | phase_view (positions + preview) | `use_phase_view` |
-| `BoardTile` | highlight_map, is-game-over, last placed | memos per-tile |
+| `Board` | is-game-over; creates the placed-moves and phase-view memos for its layers | `use_is_game_over`, `use_placed_moves`, `use_valid_positions`, `use_preview_placement`, `use_rotation_wheel` |
+| `StatusBar` | phase text, message, bag count, current player | memos (`use_current_player`, `use_has_forced_move`) + `message` inline |
+| `BoardViewport` | camera transform, dragging, center of the placed moves | memos; `use_board_camera` for the handlers |
+| `ZoomControls` | zoom level | memo; `use_board_camera` for the handlers |
+| `BoardTilesLayer` | highlights, last placed | `use_highlight_map` + one `last_placed` memo for every tile |
+| `BoardEmptyLayer`, `BoardPreview`, `RotationWheel` | their `ReadSignal` prop (+ `hovered` write for the wheel) | props from `Board` |
+| `BoardTile`, `HexSvg` | nothing | props only |
 | `EmptyHex` | hovered (write), dispatches `click_position` | direct |
-| `RotationWheel` | phase_view.wheel, hovered (write) | `use_phase_view` |
 | `HandTile` | hand, hand_info, selected_tile, new_tile, phase, `driver.controls` | memos from `GameCtx` |
-| `PlayerHand` | is_current, hand, `driver.my_color` / `player_name` | `game_state.read()`, `ctx.driver` |
+| `PlayerHand` | is_current, hand, `driver.my_color` / `player_name` | one memo each |
 | `EndGameButton` | `driver.can_end_game`, dispatches `end_game` | memo |
-| `ScoresPanel` | active players, scores, winners | `game_state.read()` |
-| `ScoreRow` | score, winner flag, highlighted_color | memos + `ui_state.highlighted_color` |
+| `ScoresPanel` | scores, rows, winners | memos (the board is scored once) |
+| `ScoreRow` | highlighted_color | memo |
+| `GamePlay` | where each hand sits | memo |
+| `LocalGame`, `OnlineGameView`, `OnlineRoomSession` | which screen to show | memos over the phase (game over? started? which room screen?) |
 
 ## Event dispatch
 
@@ -128,6 +136,22 @@ parents.
 onclick: move |_| click_position(ctx, position),
 onmouseenter: move |_| hovered.set(Hovered::BoardPosition(position)),
 ```
+
+## Re-renders, pinned by tests
+
+A component re-renders when a signal it read while rendering is written,
+or when its parent passes it different props. So components read memos
+(which only notify on a changed value) or narrow store fields, and every
+multi-field `UiState` change writes field by field (see `signals.md`).
+What that buys is pinned in `pages/game/rerender_tests.rs` and
+`pages/online/game.rs`'s tests: they mount the real game screen in a
+`VirtualDom`, make one change, and count renders with
+`util::render_count` — a test-only counter components call behind
+`#[cfg(test)]`. A hover re-renders only `BoardPreview`; a drag only
+`BoardViewport`; a zoom only it and `ZoomControls`; a move only the hands
+and tiles it changes; a room snapshot never re-renders `OnlineGameView`.
+To pin a new component, add the `record` call to its body and assert on
+its count.
 
 ## HexSvg — the one primitive
 
