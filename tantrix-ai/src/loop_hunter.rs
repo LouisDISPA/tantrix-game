@@ -21,12 +21,11 @@ impl TantrixAi for LoopHunterAi {
         _active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
+        let before = board.scores();
         *possible_moves
             .iter()
             .max_by_key(|m| {
-                let mut test = board.clone();
-                test.insert_move(**m).unwrap();
-                let scores = test.scores()[current_player];
+                let scores = board.scores_after(&before, m)[current_player];
                 scores.longest_loop * 3 + scores.longest_line
             })
             .unwrap()

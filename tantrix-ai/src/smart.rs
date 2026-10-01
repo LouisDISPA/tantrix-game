@@ -1,5 +1,5 @@
 use enum_map::EnumMap;
-use tantrix_game::{Board, Color, Hand, Move, Position, TantrixAi};
+use tantrix_game::{Board, Color, Hand, Move, PlayerScore, Position, ScoringPath, TantrixAi};
 
 #[derive(Clone)]
 pub struct SmartAi;
@@ -8,14 +8,18 @@ pub struct SmartAi;
 ///   1. Own score gain (weight 1000) — primary objective
 ///   2. Opponent score delta (weight 100) — avoid feeding active opponents
 ///   3. Avoid extending opponent's path (weight -50) — don't help them
-fn evaluate(board: &Board, m: &Move, player: Color, opponent: Color) -> i64 {
-    let scores_before = board.scores();
-    let paths_before = board.scoring_paths();
-
-    let mut test = board.clone();
-    test.insert_move(*m).unwrap();
-
-    let scores_after = test.scores();
+///
+/// `scores_before` and `paths_before` are the board's own, worked out once
+/// for every candidate.
+fn evaluate(
+    board: &Board,
+    scores_before: &EnumMap<Color, PlayerScore>,
+    paths_before: &EnumMap<Color, ScoringPath>,
+    m: &Move,
+    player: Color,
+    opponent: Color,
+) -> i64 {
+    let scores_after = board.scores_after(scores_before, m);
 
     let own_gain = scores_after[player].score as i64 - scores_before[player].score as i64;
     let opp_loss = scores_before[opponent].score as i64 - scores_after[opponent].score as i64;
@@ -33,7 +37,7 @@ fn evaluate(board: &Board, m: &Move, player: Color, opponent: Color) -> i64 {
 
 /// Check if a position is adjacent to an endpoint of the opponent's best path,
 /// meaning placing there could help them extend.
-fn extends_opponent_path(pos: Position, opp_path: &tantrix_game::ScoringPath) -> bool {
+fn extends_opponent_path(pos: Position, opp_path: &ScoringPath) -> bool {
     if opp_path.positions.is_empty() || opp_path.is_loop {
         return false;
     }
@@ -64,6 +68,7 @@ impl TantrixAi for SmartAi {
         possible_moves: &[Move],
     ) -> Move {
         let scores = board.scores();
+        let paths = board.scoring_paths();
         let opponent = active_players
             .iter()
             .copied()
@@ -73,7 +78,7 @@ impl TantrixAi for SmartAi {
 
         *possible_moves
             .iter()
-            .max_by_key(|m| evaluate(board, m, current_player, opponent))
+            .max_by_key(|m| evaluate(board, &scores, &paths, m, current_player, opponent))
             .unwrap()
     }
 }

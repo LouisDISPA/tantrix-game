@@ -21,12 +21,11 @@ impl TantrixAi for DefensiveAi {
         active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
+        let before = board.scores();
         *possible_moves
             .iter()
             .max_by_key(|m| {
-                let mut test = board.clone();
-                test.insert_move(**m).unwrap();
-                let scores = test.scores();
+                let scores = board.scores_after(&before, m);
                 let own = scores[current_player].score as i64;
                 let best_opponent = active_players
                     .iter()

@@ -4,6 +4,8 @@
 //! every change as a [`TurnEvent`], so it can undo them, and a game dealt
 //! from a seed can be replayed from its seed and events.
 
+use std::sync::OnceLock;
+
 use enum_map::{enum_map, EnumMap};
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::{Rng, SeedableRng};
@@ -26,9 +28,10 @@ pub struct Game {
     players: EnumMap<Color, Player>,
     turn_tracker: TurnTracker,
     hands: EnumMap<Color, Hand>,
-    /// The current player's legal moves at their step of the turn,
-    /// recomputed after every change so reads never compute them.
-    legal_moves: Vec<Move>,
+    /// The current player's legal moves at their step of the turn. Every
+    /// change clears them, and the first read after it works them out once,
+    /// so a game rebuilt only to be read or saved never computes them.
+    legal_moves: OnceLock<Vec<Move>>,
     /// The seed the game was dealt from, when it is known.
     seed: Option<u64>,
     /// Every change since the deal, in order.
@@ -230,18 +233,16 @@ impl Game {
         turn_tracker: TurnTracker,
         hands: EnumMap<Color, Hand>,
     ) -> Self {
-        let mut game = Self {
+        Self {
             board,
             bag,
             players,
             turn_tracker,
             hands,
-            legal_moves: Vec::new(),
+            legal_moves: OnceLock::new(),
             seed: None,
             history: Vec::new(),
-        };
-        game.refresh_legal_moves();
-        game
+        }
     }
 
     // --- Reads ---
@@ -304,15 +305,28 @@ impl Game {
     /// The current player's legal moves at their step of the turn: only
     /// forced moves while one is possible, and after the free move.
     pub fn legal_moves(&self) -> &[Move] {
-        &self.legal_moves
+        self.legal_moves.get_or_init(|| {
+            self.board.possible_moves(
+                &self.hands[self.current_player()],
+                self.bag.is_empty(),
+                self.turn_step(),
+            )
+        })
+    }
+
+    /// Whether the current player has no legal move although the game is
+    /// not over: [`Self::skip_stuck_players`] would pass their turn.
+    pub fn is_stuck(&self) -> bool {
+        !self.is_game_over() && self.legal_moves().is_empty()
     }
 
     /// [`Self::legal_moves`] grouped per tile of the current player's hand,
     /// in hand order.
     pub fn moves_by_tile(&self) -> Vec<TileMoveInfo> {
+        let moves = self.legal_moves();
         self.hand(self.current_player())
             .iter()
-            .map(|&tile| TileMoveInfo::of(tile, &self.legal_moves))
+            .map(|&tile| TileMoveInfo::of(tile, moves))
             .collect()
     }
 
@@ -327,7 +341,12 @@ impl Game {
     /// The playing colors tied for the top score on the board as it stands:
     /// the winners once the game is over, or when it is ended early.
     pub fn winners(&self) -> Vec<Color> {
-        let scores = self.scores();
+        self.winners_from(&self.scores())
+    }
+
+    /// [`Self::winners`] from the board's [`Self::scores`], for a caller
+    /// that has them already.
+    pub fn winners_from(&self, scores: &EnumMap<Color, PlayerScore>) -> Vec<Color> {
         let colors = self.playing_colors();
         let top = colors.iter().map(|&c| scores[c].score).max().unwrap_or(0);
         colors
@@ -340,7 +359,7 @@ impl Game {
     /// If the current player is AI, compute and return its chosen move without playing it.
     /// Returns None if the current player is human, has no moves, or the game is over.
     pub fn ai_choose(&self) -> Option<Move> {
-        if self.is_game_over() || self.legal_moves.is_empty() {
+        if self.is_game_over() || self.legal_moves().is_empty() {
             return None;
         }
         let current = self.current_player();
@@ -352,7 +371,7 @@ impl Game {
             &self.hands,
             current,
             self.playing_colors(),
-            &self.legal_moves,
+            self.legal_moves(),
         ))
     }
 
@@ -372,11 +391,11 @@ impl Game {
         if !self.hands[current].contains(&placement.tile) {
             return Err(MoveError::TileNotInHand);
         }
-        if self.legal_moves.is_empty() {
+        if self.legal_moves().is_empty() {
             return Err(MoveError::NoLegalMoves);
         }
         let Some(&canonical) = self
-            .legal_moves
+            .legal_moves()
             .iter()
             .find(|legal| legal.placement() == placement)
         else {
@@ -399,12 +418,12 @@ impl Game {
         if !canonical.forced {
             self.turn_tracker.free_move_played();
         }
-        self.refresh_legal_moves();
+        self.clear_legal_moves();
         // The turn is over once the free move is played and the player can
         // fill no more forced spaces.
-        if self.turn_step() == TurnStep::AfterFreeMove && self.legal_moves.is_empty() {
+        if self.turn_step() == TurnStep::AfterFreeMove && self.legal_moves().is_empty() {
             self.turn_tracker.next();
-            self.refresh_legal_moves();
+            self.clear_legal_moves();
         }
 
         Ok(PlayedMove {
@@ -419,7 +438,7 @@ impl Game {
             step: self.turn_step(),
         });
         self.turn_tracker.next();
-        self.refresh_legal_moves();
+        self.clear_legal_moves();
     }
 
     /// Pass the turn over players who have no legal move, checking each
@@ -428,7 +447,7 @@ impl Game {
     /// A game that is over is left as it is.
     pub fn skip_stuck_players(&mut self) -> bool {
         for _ in 0..self.playing_colors().len() {
-            if self.is_game_over() || !self.legal_moves.is_empty() {
+            if !self.is_stuck() {
                 return false;
             }
             self.skip_turn();
@@ -459,7 +478,7 @@ impl Game {
         self.players[color] = Player::None;
         self.hands[color] = Hand::default();
         self.history.push(TurnEvent::Retired { color });
-        self.refresh_legal_moves();
+        self.clear_legal_moves();
         Ok(())
     }
 
@@ -489,7 +508,7 @@ impl Game {
             TurnEvent::Skipped { player, step } => self.turn_tracker.restore(*player, *step),
             TurnEvent::Retired { .. } => unreachable!("retirements are not undone"),
         }
-        self.refresh_legal_moves();
+        self.clear_legal_moves();
         Some(event)
     }
 
@@ -526,12 +545,10 @@ impl Game {
         }
     }
 
-    fn refresh_legal_moves(&mut self) {
-        self.legal_moves = self.board.possible_moves(
-            &self.hands[self.current_player()],
-            self.bag.is_empty(),
-            self.turn_step(),
-        );
+    /// Forget the legal moves after a change: the next read works them out
+    /// for the new state.
+    fn clear_legal_moves(&mut self) {
+        self.legal_moves = OnceLock::new();
     }
 }
 
@@ -541,10 +558,37 @@ mod tests {
     use rand::rngs::Xoshiro256PlusPlus;
     use rand::SeedableRng;
 
+    use crate::test_games::for_each_seeded_state;
     use crate::{
         Bag, Board, Color, Direction, EventError, Game, Hand, Move, MoveError, Placement, Player,
         Position, ReplayError, Rotation, SetupError, TantrixAi, Tile, TurnEvent, TurnStep,
     };
+
+    /// The legal moves of `game` worked out from scratch.
+    fn fresh_legal_moves(game: &Game) -> Vec<Move> {
+        game.board().possible_moves(
+            game.hand(game.current_player()),
+            game.bag_is_empty(),
+            game.turn_step(),
+        )
+    }
+
+    #[test]
+    fn legal_moves_follow_every_change() {
+        // Each state is reached by a move or a skip after its legal moves
+        // were read, and undone or retired from after they were read again.
+        for_each_seeded_state(6, |game| {
+            assert_eq!(game.legal_moves(), fresh_legal_moves(game));
+            let mut undone = game.clone();
+            if undone.undo().is_some() {
+                assert_eq!(undone.legal_moves(), fresh_legal_moves(&undone));
+            }
+            let mut retired = game.clone();
+            if retired.retire_color(retired.current_player()).is_ok() {
+                assert_eq!(retired.legal_moves(), fresh_legal_moves(&retired));
+            }
+        });
+    }
 
     #[test]
     fn persisted_game_keeps_bag_and_turn() {

@@ -52,10 +52,12 @@ impl Board {
     }
 
     pub(crate) fn get_move(&self, pos: &Position) -> Option<Move> {
-        match self.moves.binary_search_by(|m| m.position.cmp(pos)) {
-            Ok(index) => Some(self.moves[index]),
-            Err(_) => None,
-        }
+        self.index_of(pos).map(|index| self.moves[index])
+    }
+
+    /// Where the tile at `pos` is in board order, if there is one.
+    pub(crate) fn index_of(&self, pos: &Position) -> Option<usize> {
+        self.moves.binary_search_by(|m| m.position.cmp(pos)).ok()
     }
 
     pub fn contour_positions(&self) -> BTreeSet<Position> {

@@ -110,7 +110,12 @@ again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
 `AfterFreeMove`); online snapshots carry it as `turn_step`.
 
 - `Board::possible_moves` retains only `forced` moves if any exist, and
-  only forced moves at all once the free move is played.
+  only forced moves at all once the free move is played. It works out each
+  contour position's neighbor colors, forced flag, controlled side and
+  same-color-triple colors once per call, and tries forced spaces first;
+  the move-by-move rules (`get_possible_move`, `controlled_positions`,
+  `creates_same_color_triple`) stay as the reference its tests compare
+  against, move order included.
 - Both the human (`execute_move`) and the AI are given only forced moves
   in that state — can't accidentally play a non-forced one.
 - `Game::play_move` is the one place a move is played (the app's
@@ -124,19 +129,27 @@ again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
 ## Stuck players
 
 `Game::skip_stuck_players` is the one routine that passes the turn over
-players with no legal move. It checks each player at most once and returns
-`true` when nobody can move although tiles remain (a stall). `Game::advance`
-(TUI, tournament), the room's `PlayMove` / `SkipTurn` / `StartGame`, and
-the app's `settle_turn` and AI loop all use it, so an all-AI game where
+players with no legal move (`Game::is_stuck`: no legal move, game not
+over). It checks each player at most once and returns `true` when nobody
+can move although tiles remain (a stall). `Game::advance` (TUI,
+tournament), the room's `PlayMove` / `SkipTurn` / `StartGame`, and the
+app's `settle_turn` and AI loop all use it, so an all-AI game where
 everyone is stuck ends instead of spinning.
 
 ## Scoring & game over
 
 - Game ends when `bag` is empty AND every hand is empty.
 - Each color's score = longest line or loop of that color — see
-  `Board::scoring_paths` / `Board::scores`.
+  `Board::scoring_paths` / `Board::scores`, one walk over every path
+  (`for_each_path`).
+- `Board::scores_after(scores, m)` gives the scores once a legal move `m`
+  is placed without copying the board: paths only grow, so each color's
+  line through `m` is compared with its old best (a move that closes a
+  loop is scored on a copy). The AIs score every candidate this way, from
+  the board's scores worked out once per decision.
 - `Game::winners` returns every playing color tied for the top score
-  (the room's `EndReason`, the app's `ScoresPanel`).
+  (the room's `EndReason`, the app's `ScoresPanel`); `winners_from(scores)`
+  does the same from scores already worked out.
 - Entering `TurnPhase::GameOver` switches the screen to `GameOver` (via
   `LocalGame`'s routing match), which shows `Board` (read-only, scoring
   overlays on) beside `ScoresPanel`.
@@ -208,10 +221,17 @@ game's seed is drawn in order from the tournament seed before any game
 runs, and deals the game and seeds both AIs (`with_seed`), so a tournament
 gives the same results however rayon schedules its games.
 
+`cargo run --release -p tantrix-ai --example seeded_games [GAMES_PER_PAIR]`
+times seeded games between every pairing (then the rules and the scoring
+alone) and prints a checksum of their histories and scores: a change that
+must not alter play leaves it unchanged.
+
 ## Frontend cache
 
-`Game` is the single source of truth: it keeps the current player's
-`legal_moves` up to date after every change, and `Game::moves_by_tile`
+`Game` is the single source of truth: every change clears the current
+player's `legal_moves`, and the first read after it works them out once
+(a `Game` rebuilt from `GameData` only to be read or saved, as the room
+does for every snapshot, never computes them). `Game::moves_by_tile`
 groups them per hand tile as `TileMoveInfo` (positions → valid rotations +
 `has_forced`; the TUI uses it too). The app's `GameState` wraps a `Game`
 (local deal via `Game::from_players_seeded` / `from_players`, online mirror

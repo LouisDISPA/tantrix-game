@@ -554,3 +554,49 @@ fn session_cookie_is_parsed_strictly_and_set_http_only() {
         Some(generated)
     );
 }
+
+/// Times whole seeded games played through the room, as a server adapter
+/// drives it (each intent, then the message it broadcasts):
+/// `cargo test --release -p tantrix-room --test room_logic time_seeded_games -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn time_seeded_games_through_the_room() {
+    let start = std::time::Instant::now();
+    let mut moves = 0;
+    for seed in 0..200 {
+        let (mut room, red, blue, connected) = setup();
+        let game = Game::new_seeded(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            seed,
+        )
+        .unwrap();
+        room.game = Some(game.to_data());
+        while !room.ended {
+            let snapshot = room.snapshot(&connected).unwrap();
+            let token = if snapshot.current_player == Color::Red {
+                &red
+            } else {
+                &blue
+            };
+            // The first legal move, as a client would pick it from the snapshot.
+            let game = Game::from_snapshot(
+                snapshot.board,
+                snapshot.hands,
+                snapshot.bag_count,
+                snapshot.current_player,
+                snapshot.playing_colors,
+                snapshot.turn_step,
+            )
+            .unwrap();
+            let placement = game.legal_moves()[0].placement();
+            room.apply(token, PeerMessage::PlayMove { placement }, &connected)
+                .unwrap();
+            room.current_message(&connected);
+            moves += 1;
+        }
+    }
+    println!("{moves} moves in {:?}", start.elapsed());
+}

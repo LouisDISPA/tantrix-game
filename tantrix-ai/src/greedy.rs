@@ -21,13 +21,10 @@ impl TantrixAi for GreedyAi {
         _active_players: &[Color],
         possible_moves: &[Move],
     ) -> Move {
+        let scores = board.scores();
         *possible_moves
             .iter()
-            .max_by_key(|m| {
-                let mut test = board.clone();
-                test.insert_move(**m).unwrap();
-                test.scores()[current_player].score
-            })
+            .max_by_key(|m| board.scores_after(&scores, m)[current_player].score)
             .unwrap()
     }
 }

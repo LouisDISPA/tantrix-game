@@ -47,7 +47,7 @@ tantrix-game/src/          # Core library — game rules, no UI
   moves.rs                 # Placement (player input), Move, PlayedMove, TileMoveInfo (legal moves per hand tile)
   board.rs                 # Board storage, lookups, contour, neighbor counts
   rules.rs                 # Legal moves: golden rule, forced spaces, restriction rules
-  scoring.rs               # Longest line/loop per color: scores, scoring_paths
+  scoring.rs               # Longest line/loop per color: scores, scoring_paths, scores_after (incremental, for AIs)
   bag.rs, hand.rs          # Bag (draw pile), Hand (6 tiles)
   turn.rs                  # TurnTracker, TurnStep
   player.rs                # Player, TantrixAi trait
@@ -97,6 +97,7 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     paths.rs               # Color curves (arc/bezier/line), hex polygon
 
 tantrix-ai/src/            # AI players behind TantrixAi (RandomAi::seeded for reproducible games)
+tantrix-ai/examples/       # seeded_games: times seeded AI games, prints a play checksum
 tantrix-tournament/src/    # AI round robin (ratatui): `tantrix-tournament [SEED]` replays the same tournament
 tantrix-tui/src/           # Terminal UI (ratatui)
 

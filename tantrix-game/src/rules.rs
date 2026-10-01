@@ -88,33 +88,73 @@ impl Board {
     /// `bag_is_empty` controls whether restriction rules (controlled sides, same-color triples) apply.
     /// Forced spaces must be filled first, and once the free move is played only
     /// forced spaces remain.
+    ///
+    /// Moves come tile by tile in hand order, then by position, then by
+    /// rotation. The result is the same as checking every tile, contour
+    /// position and rotation with [`Self::get_possible_move`],
+    /// [`Self::controlled_positions`] and [`Self::creates_same_color_triple`]
+    /// (the tests compare them), but what those look up about a position is
+    /// worked out once per position, and forced spaces are tried first: other
+    /// moves are only generated when no forced move is possible.
     pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool, step: TurnStep) -> Vec<Move> {
-        let mut contour_positions = self.contour_positions();
+        let restricted = !bag_is_empty;
+        let spaces = self.spaces(restricted);
 
-        if !bag_is_empty {
-            let controlled = self.controlled_positions(&contour_positions);
-            contour_positions = contour_positions.difference(&controlled).cloned().collect();
+        let forced = moves_into(hand, &spaces, |space| space.forced);
+        if !forced.is_empty() || step == TurnStep::AfterFreeMove {
+            return forced;
         }
+        // Forced spaces have no move left to offer, and controlled sides
+        // take no tile while the restriction rules apply.
+        moves_into(hand, &spaces, |space| !space.forced && !space.controlled)
+    }
 
-        let mut moves: Vec<Move> = hand
-            .iter()
-            .copied()
-            .flat_map(|tile| {
-                contour_positions
-                    .iter()
-                    .flat_map(move |pos| self.get_possible_move(tile, *pos))
+    /// The empty positions on the contour, sorted like
+    /// [`Self::contour_positions`], with what the rules need to know about
+    /// each. `restricted`: the restriction rules apply, so controlled sides and
+    /// same-color triples are worked out too.
+    fn spaces(&self, restricted: bool) -> Vec<Space> {
+        let mut positions: Vec<Position> = if self.is_empty() {
+            vec![Position::CENTER]
+        } else {
+            self.iter()
+                .flat_map(|m| m.position.around())
+                .map(|(pos, _)| pos)
+                .filter(|pos| self.is_available(pos))
+                .collect()
+        };
+        positions.sort_unstable();
+        positions.dedup();
+
+        let mut spaces: Vec<Space> = positions
+            .into_iter()
+            .map(|position| {
+                let mut edges = [None; 6];
+                for (neighbor, dir) in position.around() {
+                    if let Some(m) = self.get_move(&neighbor) {
+                        edges[dir.index()] = Some(m.color(dir.opposite()));
+                    }
+                }
+                let neighbors = edges.iter().flatten().count();
+                Space {
+                    position,
+                    edges,
+                    forced: neighbors >= 3,
+                    controlled: false,
+                    triples: [None; 6],
+                }
             })
             .collect();
 
-        if !bag_is_empty {
-            moves.retain(|m| !self.creates_same_color_triple(m));
+        if restricted {
+            let triples: Vec<_> = spaces.iter().map(|s| s.triples(&spaces)).collect();
+            let controlled = controlled_spaces(&spaces);
+            for ((space, triples), controlled) in spaces.iter_mut().zip(triples).zip(controlled) {
+                space.triples = triples;
+                space.controlled = controlled;
+            }
         }
-
-        if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
-            moves.retain(|m| m.forced);
-        }
-
-        moves
+        spaces
     }
 
     pub fn get_possible_move(
@@ -150,9 +190,178 @@ impl Board {
     }
 }
 
+/// One empty position on the contour, as [`Board::possible_moves`] sees it.
+struct Space {
+    position: Position,
+    /// The color each neighboring tile shows this space, by direction.
+    edges: [Option<Color>; 6],
+    /// Three or more neighbors: a forced space.
+    forced: bool,
+    /// On a controlled side of a forced space ([`Board::controlled_positions`]).
+    /// Only worked out while the restriction rules apply.
+    controlled: bool,
+    /// By direction, the color a tile placed here must not show that way: the
+    /// neighboring space has two or more neighbors already, all showing it
+    /// that color, so a third would make a same-color triple
+    /// ([`Board::creates_same_color_triple`]). Only worked out while the
+    /// restriction rules apply.
+    triples: [Option<Color>; 6],
+}
+
+impl Space {
+    /// The color every neighbor shows this space, when it has two or more.
+    fn uniform_color(&self) -> Option<Color> {
+        let mut colors = self.edges.iter().flatten();
+        let first = *colors.next()?;
+        let mut count = 1;
+        for &color in colors {
+            if color != first {
+                return None;
+            }
+            count += 1;
+        }
+        (count >= 2).then_some(first)
+    }
+
+    /// [`Self::triples`], given every space on the contour. An empty
+    /// neighbor with a neighbor of its own is on the contour too.
+    fn triples(&self, spaces: &[Space]) -> [Option<Color>; 6] {
+        let mut triples = [None; 6];
+        for (neighbor, dir) in self.position.around() {
+            if let Some(space) = find_space(spaces, neighbor) {
+                triples[dir.index()] = spaces[space].uniform_color();
+            }
+        }
+        triples
+    }
+
+    /// Whether `tile` turned by `rotation` may be placed here: every edge
+    /// matches its neighbor's color (the golden rule) and completes no
+    /// same-color triple.
+    fn fits(&self, tile: Tile, rotation: Rotation) -> bool {
+        enum_iterator::all::<Direction>().all(|dir| {
+            let color = tile.color(dir - rotation);
+            let d = dir.index();
+            self.edges[d].is_none_or(|edge| edge == color) && self.triples[d] != Some(color)
+        })
+    }
+}
+
+fn find_space(spaces: &[Space], position: Position) -> Option<usize> {
+    spaces
+        .binary_search_by(|space| space.position.cmp(&position))
+        .ok()
+}
+
+/// Which `spaces` lie on a controlled side of a forced space, by the rays of
+/// [`Board::controlled_positions`].
+fn controlled_spaces(spaces: &[Space]) -> Vec<bool> {
+    let mut controlled = vec![false; spaces.len()];
+    for space in spaces.iter().filter(|space| space.forced) {
+        let occupied = space.edges.map(|edge| edge.is_some());
+        for d in 0..6 {
+            if !occupied[d] && (occupied[(d + 5) % 6] || occupied[(d + 1) % 6]) {
+                let dir = Direction::from(d as i8);
+                let mut p = space.position.neighbor(dir);
+                while let Some(i) = find_space(spaces, p).filter(|&i| !spaces[i].forced) {
+                    controlled[i] = true;
+                    p = p.neighbor(dir);
+                }
+            }
+        }
+    }
+    controlled
+}
+
+/// Every move of `hand` into the `spaces` that `include` keeps, tile by tile
+/// in hand order, then by position, then by rotation.
+fn moves_into(hand: &Hand, spaces: &[Space], include: impl Fn(&Space) -> bool) -> Vec<Move> {
+    let mut moves = Vec::new();
+    for &tile in hand.iter() {
+        for space in spaces.iter().filter(|space| include(space)) {
+            for rotation in enum_iterator::all::<Rotation>() {
+                if space.fits(tile, rotation) {
+                    moves.push(Move {
+                        tile,
+                        position: space.position,
+                        rotation,
+                        forced: space.forced,
+                    });
+                }
+            }
+        }
+    }
+    moves
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{Board, Direction, Move, Position, Rotation, Tile};
+    use crate::test_games::for_each_seeded_state;
+    use crate::{Board, Direction, Hand, Move, Position, Rotation, Tile, TurnStep};
+
+    /// [`Board::possible_moves`] move by move, straight from the rules:
+    /// every tile, contour position and rotation, then the restriction
+    /// rules, then the forced-move priority.
+    fn possible_moves_one_by_one(
+        board: &Board,
+        hand: &Hand,
+        bag_is_empty: bool,
+        step: TurnStep,
+    ) -> Vec<Move> {
+        let mut contour_positions = board.contour_positions();
+        if !bag_is_empty {
+            let controlled = board.controlled_positions(&contour_positions);
+            contour_positions = contour_positions.difference(&controlled).cloned().collect();
+        }
+        let mut moves: Vec<Move> = hand
+            .iter()
+            .copied()
+            .flat_map(|tile| {
+                contour_positions
+                    .iter()
+                    .flat_map(move |pos| board.get_possible_move(tile, *pos))
+            })
+            .collect();
+        if !bag_is_empty {
+            moves.retain(|m| !board.creates_same_color_triple(m));
+        }
+        if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
+            moves.retain(|m| m.forced);
+        }
+        moves
+    }
+
+    #[test]
+    fn possible_moves_match_the_rules_move_by_move() {
+        let mut checked = 0;
+        let mut forced = 0;
+        for_each_seeded_state(12, |game| {
+            // Every hand on every board, with and without the restriction
+            // rules, at both steps of a turn.
+            for &color in game.playing_colors() {
+                let hand = game.hand(color);
+                for bag_is_empty in [false, true] {
+                    for step in [TurnStep::BeforeFreeMove, TurnStep::AfterFreeMove] {
+                        let moves = game.board().possible_moves(hand, bag_is_empty, step);
+                        assert_eq!(
+                            moves,
+                            possible_moves_one_by_one(game.board(), hand, bag_is_empty, step),
+                            "{color:?}, bag empty: {bag_is_empty}, {step:?}, board {:?}",
+                            game.board()
+                        );
+                        checked += 1;
+                        forced += usize::from(moves.first().is_some_and(|m| m.forced));
+                    }
+                }
+            }
+        });
+        // The games reach forced spaces, not only free moves.
+        assert!(
+            checked > 5_000 && forced > 500,
+            "{checked} checked, {forced} forced"
+        );
+        println!("{checked} checked, {forced} forced");
+    }
 
     #[test]
     fn rule_no_same_color_triple() {

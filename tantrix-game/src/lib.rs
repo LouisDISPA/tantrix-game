@@ -27,6 +27,8 @@ mod moves;
 mod player;
 mod rules;
 mod scoring;
+#[cfg(test)]
+mod test_games;
 mod tiles;
 mod turn;
 
