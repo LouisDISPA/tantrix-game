@@ -37,7 +37,7 @@ pub use board::Board;
 pub use coordinate_system::*;
 pub use enum_map::EnumMap;
 pub use error::{EventError, MoveError, ReplayError, SetupError};
-pub use game::{is_game_over, Game, GameData};
+pub use game::{Game, GameData};
 pub use hand::{DrawnTiles, Hand, TILES_IN_HAND};
 pub use history::TurnEvent;
 pub use moves::{Move, Placement, PlayedMove, TileMoveInfo};

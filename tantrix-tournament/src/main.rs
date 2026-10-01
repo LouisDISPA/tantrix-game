@@ -259,8 +259,6 @@ fn ai_color(name: &str) -> Color {
         "Greedy" => Color::Green,
         "Defensive" => Color::Blue,
         "LoopHunter" => Color::Cyan,
-        "MonteCarlo" => Color::Yellow,
-        "AlphaBeta" => Color::Red,
         "Smart" => Color::LightGreen,
         _ => Color::White,
     }
@@ -659,7 +657,6 @@ fn main() -> std::io::Result<()> {
     };
     ratatui::run(|terminal| {
         let mut ctx = TournamentCtx::new(seed);
-        ctx.start_workers();
 
         loop {
             ctx.drain_results();
@@ -696,7 +693,6 @@ fn main() -> std::io::Result<()> {
                         (KeyCode::Char('n'), Phase::Stopped | Phase::Complete) => {
                             let next = ctx.state.seed.wrapping_add(1);
                             ctx = TournamentCtx::new(next);
-                            ctx.start_workers();
                         }
                         _ => {}
                     }
@@ -761,10 +757,6 @@ impl TournamentCtx {
             active_games,
             worker: Some(worker),
         }
-    }
-
-    fn start_workers(&mut self) {
-        // Already started in new()
     }
 
     fn drain_results(&mut self) {

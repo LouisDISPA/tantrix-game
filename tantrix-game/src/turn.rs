@@ -30,10 +30,6 @@ pub struct TurnTracker {
 }
 
 impl TurnTracker {
-    pub fn new(players: &EnumMap<Color, Player>) -> Result<Self, SetupError> {
-        Self::new_with_rng(players, &mut rand::rng())
-    }
-
     /// A turn order shuffled by `rng`; a seeded `rng` always gives the same order.
     pub fn new_with_rng<R: Rng + ?Sized>(
         players: &EnumMap<Color, Player>,

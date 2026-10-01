@@ -17,10 +17,6 @@ use crate::{
     TurnTracker, TILES_IN_HAND,
 };
 
-pub fn is_game_over(bag: &Bag, hands: &EnumMap<Color, Hand>) -> bool {
-    bag.is_empty() && hands.values().all(|h| h.is_empty())
-}
-
 #[derive(Debug, Clone)]
 pub struct Game {
     board: Board,
@@ -40,7 +36,7 @@ pub struct Game {
 
 /// Complete server-side game state, including the hidden draw order (the
 /// bag, and the seed that shuffled it). Never send this over the player
-/// protocol; [`tantrix_proto::GameSnapshot`] omits the bag, seed and history.
+/// protocol; `tantrix_proto::GameSnapshot` omits the bag, seed and history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameData {
     board: Board,
@@ -286,7 +282,7 @@ impl Game {
     }
 
     pub fn is_game_over(&self) -> bool {
-        is_game_over(&self.bag, &self.hands)
+        self.bag.is_empty() && self.hands.values().all(|h| h.is_empty())
     }
 
     /// The seed the game was dealt from ([`Self::new`],
