@@ -85,12 +85,12 @@ impl Board {
     }
 
     /// Compute all valid moves for tiles in the given hand at `step` of the turn.
-    /// `bag_is_empty` controls whether restriction rules (controlled sides, same-color triples) apply.
-    /// Forced spaces must be filled first, and once the free move is played only
-    /// forced spaces remain.
+    /// While the bag has tiles, restriction rules (controlled sides,
+    /// same-color triples) apply and forced spaces must be filled first.
+    /// Once the bag is empty, every fitting placement is a free move.
     ///
     /// Moves come tile by tile in hand order, then by position, then by
-    /// rotation. The result is the same as checking every tile, contour
+    /// rotation. The placements are the same as checking every tile, contour
     /// position and rotation with [`Self::get_possible_move`],
     /// [`Self::controlled_positions`] and [`Self::creates_same_color_triple`]
     /// (the tests compare them), but what those look up about a position is
@@ -99,6 +99,14 @@ impl Board {
     pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool, step: TurnStep) -> Vec<Move> {
         let restricted = !bag_is_empty;
         let spaces = self.spaces(restricted);
+
+        if bag_is_empty {
+            return if step == TurnStep::AfterFreeMove {
+                Vec::new()
+            } else {
+                moves_into(hand, &spaces, |_| true)
+            };
+        }
 
         let forced = moves_into(hand, &spaces, |space| space.forced);
         if !forced.is_empty() || step == TurnStep::AfterFreeMove {
@@ -139,7 +147,7 @@ impl Board {
                 Space {
                     position,
                     edges,
-                    forced: neighbors >= 3,
+                    forced: restricted && neighbors >= 3,
                     controlled: false,
                     triples: [None; 6],
                 }
@@ -195,7 +203,7 @@ struct Space {
     position: Position,
     /// The color each neighboring tile shows this space, by direction.
     edges: [Option<Color>; 6],
-    /// Three or more neighbors: a forced space.
+    /// Three or more neighbors while the bag has tiles: must be filled first.
     forced: bool,
     /// On a controlled side of a forced space ([`Board::controlled_positions`]).
     /// Only worked out while the restriction rules apply.
@@ -325,7 +333,14 @@ mod tests {
         if !bag_is_empty {
             moves.retain(|m| !board.creates_same_color_triple(m));
         }
-        if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
+        if bag_is_empty {
+            if step == TurnStep::AfterFreeMove {
+                return Vec::new();
+            }
+            for m in &mut moves {
+                m.forced = false;
+            }
+        } else if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
             moves.retain(|m| m.forced);
         }
         moves

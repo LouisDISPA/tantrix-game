@@ -111,6 +111,8 @@
 /* ===== Hand Tile ===== */
 
 .hand-tile {
+  --hand-tile-opacity: 1;
+  opacity: var(--hand-tile-opacity);
   flex: 1 1 0;
   min-height: 0;
   min-width: 0;
@@ -134,7 +136,7 @@
     transform: scale(0.5);
   }
   to {
-    opacity: 1;
+    opacity: var(--hand-tile-opacity);
     transform: scale(1);
   }
 }
@@ -174,7 +176,7 @@
 }
 
 .hand-tile.disabled {
-  opacity: 0.3;
+  --hand-tile-opacity: 0.3;
   cursor: not-allowed;
 }
 

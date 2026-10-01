@@ -274,40 +274,36 @@ mod tests {
 
     use dioxus::prelude::*;
     use futures_channel::mpsc::UnboundedReceiver;
-    use tantrix_game::{Color, Direction, EnumMap, Position, Rotation, Tile, TileMoveInfo};
+    use tantrix_game::{
+        Board, Color, Direction, EnumMap, Position, Rotation, Tile, TileMoveInfo, TurnStep,
+    };
     use tantrix_net::SessionCommand;
+    use tantrix_proto::GameSnapshot;
 
     use super::{
         advance_turn, auto_move, auto_rotation, click_position, click_tile, end_game, execute_move,
         pick_rotation,
     };
-    use crate::state::config::{GameConfig, PlayerKind};
+    use crate::state::config::GameConfig;
     use crate::state::game_state::GameState;
     use crate::state::test_games::{find_game, seeded, tile_with_one_move, tile_with_positions};
     use crate::state::ui_state::{TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
     use crate::util::test_page::GamePage;
 
-    /// A seeded local game, played with the first legal move each turn, to
-    /// the point where Red, to play, cannot move (the bag is empty and Red has
-    /// no tile that fits, typically none left) while Blue, seated as `blue`,
-    /// still can.
-    fn red_stuck_before(blue: PlayerKind) -> GameState {
-        (0..100)
-            .find_map(|seed| {
-                let mut config = GameConfig::new(Some(seed));
-                if blue == PlayerKind::Ai {
-                    // Human → AI, as the setup screen's toggle does.
-                    config.cycle_player(Color::Blue);
-                }
-                let mut game = GameState::new(&config);
-                while !game.is_stuck() {
-                    let m = *game.legal_moves().first()?;
-                    game.play_move(m.placement()).ok()?;
-                }
-                let blue_can_move = !game.clone().skip_stuck_players();
-                (game.current_player() == Color::Red && blue_can_move).then_some(game)
-            })
-            .expect("a seed leaves Red stuck while Blue can move")
+    /// Red has no tiles, while Blue can still make a move.
+    fn red_stuck_before_blue() -> GameState {
+        let mut hands = EnumMap::default();
+        hands[Color::Blue] = seeded(0).hand(Color::Blue).clone();
+        GameState::from_snapshot(&GameSnapshot {
+            board: Board::default(),
+            hands,
+            bag_count: 10,
+            current_player: Color::Red,
+            turn_step: TurnStep::BeforeFreeMove,
+            playing_colors: vec![Color::Red, Color::Blue],
+            seats: EnumMap::default(),
+            participants: Vec::new(),
+        })
     }
 
     /// Advance the turn on a local game page showing `game`; returns the
@@ -323,17 +319,22 @@ mod tests {
     }
 
     #[test]
-    fn a_skipped_human_hands_the_turn_to_the_ai() {
-        let (phase, current) = advance_on_local_page(red_stuck_before(PlayerKind::Ai));
-        // The AI loop takes Blue's turn, rather than leaving its tiles for
-        // the human to click.
+    fn an_ai_seat_starts_thinking_when_its_turn_begins() {
+        let mut config = GameConfig::new(Some(0));
+        config.cycle_player(Color::Blue);
+        let mut game = GameState::new(&config);
+        if game.current_player() == Color::Red {
+            let opening = game.legal_moves()[0];
+            game.play_move(opening.placement()).unwrap();
+        }
+        let (phase, current) = advance_on_local_page(game);
         assert_eq!(current, Color::Blue);
         assert_eq!(phase, TurnPhase::WaitingForAi);
     }
 
     #[test]
     fn a_skipped_human_hands_the_turn_to_the_next_human() {
-        let (phase, current) = advance_on_local_page(red_stuck_before(PlayerKind::Human));
+        let (phase, current) = advance_on_local_page(red_stuck_before_blue());
         assert_eq!(current, Color::Blue);
         assert_eq!(phase, TurnPhase::SelectTile);
     }

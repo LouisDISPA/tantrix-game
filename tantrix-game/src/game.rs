@@ -299,7 +299,7 @@ impl Game {
     }
 
     /// The current player's legal moves at their step of the turn: only
-    /// forced moves while one is possible, and after the free move.
+    /// forced moves while one is possible and the bag still has tiles.
     pub fn legal_moves(&self) -> &[Move] {
         self.legal_moves.get_or_init(|| {
             self.board.possible_moves(
@@ -378,9 +378,8 @@ impl Game {
     /// [`Self::legal_moves`]; the returned [`PlayedMove`] holds that move as
     /// placed, with the board's `forced` flag.
     ///
-    /// A turn has three steps: fill forced spaces, make one free move, then fill
-    /// forced spaces again. The player keeps the turn until the free move is
-    /// played and no forced space is left that they can fill.
+    /// While the bag has tiles, fill forced spaces, make one free move, then
+    /// fill forced spaces again. With an empty bag, the free move ends the turn.
     pub fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
         let current = self.current_player();
         let step = self.turn_step();
@@ -1095,6 +1094,91 @@ mod tests {
             assert!(fill.forced);
             game.play_move(fill.placement()).unwrap();
         }
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn empty_bag_removes_forced_moves_and_ends_turn_after_one_placement() {
+        let source = seeded_game_where(|g| {
+            g.turn_step() == TurnStep::BeforeFreeMove
+                && g.legal_moves().first().is_some_and(|m| m.forced)
+        });
+        let geometric_forced = source.legal_moves()[0];
+        let player = source.current_player();
+        let mut game = Game::from_snapshot(
+            source.board().clone(),
+            source.hands().clone(),
+            0,
+            player,
+            source.playing_colors().iter().copied(),
+            TurnStep::BeforeFreeMove,
+        )
+        .unwrap();
+
+        assert!(game.legal_moves().iter().all(|m| !m.forced));
+        assert!(game
+            .legal_moves()
+            .iter()
+            .any(|m| m.placement() == geometric_forced.placement()));
+
+        let played = game.play_move(geometric_forced.placement()).unwrap();
+        assert!(!played.m.forced);
+        assert_ne!(game.current_player(), player);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+    }
+
+    #[test]
+    fn drawing_the_last_tile_removes_forced_moves() {
+        let source = seeded_game_where(|g| {
+            g.turn_step() == TurnStep::BeforeFreeMove
+                && g.legal_moves().first().is_some_and(|m| m.forced)
+        });
+        let player = source.current_player();
+        let mut game = Game::from_snapshot(
+            source.board().clone(),
+            source.hands().clone(),
+            1,
+            player,
+            source.playing_colors().iter().copied(),
+            TurnStep::BeforeFreeMove,
+        )
+        .unwrap();
+
+        let fill = game.legal_moves()[0];
+        assert!(game.play_move(fill.placement()).unwrap().m.forced);
+        assert!(game.bag_is_empty());
+        assert_eq!(game.current_player(), player);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+        assert!(game.legal_moves().iter().all(|m| !m.forced));
+
+        let free = game.legal_moves()[0];
+        game.play_move(free.placement()).unwrap();
+        assert_ne!(game.current_player(), player);
+    }
+
+    #[test]
+    fn a_free_move_that_empties_the_bag_passes_the_turn() {
+        let mut source = seeded_game_where(after_free_move);
+        assert!(source.legal_moves()[0].forced);
+        let TurnEvent::Played { m: free, .. } = source.undo().unwrap() else {
+            panic!("the last event is a free move");
+        };
+        assert!(!free.forced);
+        let player = source.current_player();
+        let mut game = Game::from_snapshot(
+            source.board().clone(),
+            source.hands().clone(),
+            1,
+            player,
+            source.playing_colors().iter().copied(),
+            TurnStep::BeforeFreeMove,
+        )
+        .unwrap();
+
+        game.play_move(free.placement()).unwrap();
+
+        assert!(game.bag_is_empty());
+        assert_ne!(game.current_player(), player);
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
     }
 

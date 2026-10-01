@@ -66,7 +66,7 @@ test('a free move that creates a forced space keeps the turn until it is filled'
   const currentPlayer = page.locator('.hud-chip-name');
   const activeHand = page.locator('.player-hand.active');
 
-  for (const m of fixture.moves) {
+  for (const [i, m] of fixture.moves.entries()) {
     const kind = m.forced ? 'fills a forced space' : 'makes a free move';
     await test.step(`${m.player} ${kind} at ${m.position.x},${m.position.y}`, async () => {
       await expect(currentPlayer).toHaveText(m.player);
@@ -79,6 +79,13 @@ test('a free move that creates a forced space keeps the turn until it is filled'
 
       await expect(currentPlayer).toHaveText(m.next);
       await expect(activeHand).toHaveClass(new RegExp(`color-${m.next.toLowerCase()}`));
+      if (!m.forced && m.next === m.player && fixture.moves[i + 1]?.forced) {
+        const replacement = activeHand.locator('.hand-tile.new-tile.disabled');
+        await expect(replacement).toHaveCount(1);
+        await expect.poll(async () =>
+          replacement.evaluate((tile) => Number(getComputedStyle(tile).opacity)),
+        ).toBeLessThan(0.5);
+      }
     });
   }
 

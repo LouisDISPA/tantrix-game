@@ -41,8 +41,9 @@ tantrix-ai   ──┤
   mutation path, which takes a `Placement` and places the legal `Move`
   that matches it. `Board::insert_move` is a low-level occupancy-only
   insertion helper.
-- **Forced space.** Empty hex with 3+ filled neighbors. If any forced
-  move is possible, the player *must* play one.
+- **Forced space.** Empty hex with 3+ filled neighbors. While the bag has
+  tiles, the player must fill one if possible. Once the bag is empty,
+  every fitting placement is a free move.
 - **Restrictions** (while `bag` is non-empty):
   - No same-color triples (would create an unfillable forced space).
   - No controlled-side plays.
@@ -133,11 +134,13 @@ message and resets the selection for a human (or ends the game).
 ## Forced moves
 
 A turn is: fill forced spaces, make one free move, fill forced spaces
-again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
+again while the bag has tiles. With an empty bag, each turn is one free
+move. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
 `AfterFreeMove`); online snapshots carry it as `turn_step`.
 
-- `Board::possible_moves` retains only `forced` moves if any exist, and
-  only forced moves at all once the free move is played. It works out each
+- While the bag has tiles, `Board::possible_moves` retains only `forced`
+  moves if any exist, and only forced moves once the free move is played.
+  With an empty bag, every fitting placement is free. It works out each
   contour position's neighbor colors, forced flag, controlled side and
   same-color-triple colors once per call, and tries forced spaces first;
   the move-by-move rules (`get_possible_move`, `controlled_positions`,
@@ -150,8 +153,9 @@ again. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
   position, rotation — and never a `forced` flag: the legal `Move` that
   matches it says whether it fills a forced space. An illegal placement is
   `MoveError::InvalidMove`, a tile the player doesn't hold `TileNotInHand`.
-  It passes the turn only after the free move, once no forced space is left
-  that the player can fill, and returns the `PlayedMove` as placed.
+  It passes the turn after the free move once no forced space is left
+  that the player can fill, or immediately if the bag is empty, and returns
+  the `PlayedMove` as placed.
 
 ## Stuck players
 
