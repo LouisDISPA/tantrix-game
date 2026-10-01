@@ -43,3 +43,39 @@ pub fn my_color_of(state: Store<OnlineState>) -> Option<Color> {
     let me = me.read();
     my_color(&phase, me.as_ref())
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{Blue, Red};
+    use tantrix_proto::{EndReason, PeerId};
+
+    use super::my_color;
+    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use crate::state::online_state::OnlinePhase;
+
+    #[test]
+    fn this_peer_plays_the_seat_it_sits_at() {
+        let seated = [(Red, "Ann", true), (Blue, "Bob", true)];
+        let ann = PeerId::new("Ann");
+        let bob = PeerId::new("Bob");
+        let lobby = OnlinePhase::Lobby {
+            lobby: lobby(&seated, &["Cy"]),
+        };
+        let playing = OnlinePhase::Playing {
+            snapshot: snapshot(&seated, &["Cy"]),
+            last_move: None,
+        };
+        let ended = OnlinePhase::Ended {
+            reason: EndReason::Completed { winners: vec![Red] },
+            snapshot: snapshot(&seated, &["Cy"]),
+        };
+        for phase in [lobby, playing, ended] {
+            assert_eq!(my_color(&phase, Some(&ann)), Some(Red), "{phase:?}");
+            assert_eq!(my_color(&phase, Some(&bob)), Some(Blue), "{phase:?}");
+            // Cy waits or watches; before the welcome, nobody is anybody.
+            assert_eq!(my_color(&phase, Some(&PeerId::new("Cy"))), None);
+            assert_eq!(my_color(&phase, None), None);
+        }
+        assert_eq!(my_color(&OnlinePhase::Connecting, Some(&ann)), None);
+    }
+}

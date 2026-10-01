@@ -107,3 +107,84 @@ pub fn board_bounding_box(positions: &[Position], hex_size: f64) -> Option<(f64,
 
     Some((min_x, min_y, max_x, max_y))
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Direction, Position};
+
+    use super::{
+        axial_to_pixel, board_bounding_box, direction_edge, edge_separation, HEX_SIZE, SQRT3,
+    };
+
+    const DIRECTIONS: [Direction; 6] = [
+        Direction::Left,
+        Direction::TopLeft,
+        Direction::TopRight,
+        Direction::Right,
+        Direction::BottomRight,
+        Direction::BottomLeft,
+    ];
+
+    fn close(a: (f64, f64), b: (f64, f64)) -> bool {
+        (a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6
+    }
+
+    #[test]
+    fn the_centre_hex_sits_at_the_origin_and_up_is_up() {
+        let size = HEX_SIZE;
+        assert_eq!(axial_to_pixel(Position::CENTER, size), (0.0, 0.0));
+        let right = Position::CENTER.neighbor(Direction::Right);
+        assert!(close(axial_to_pixel(right, size), (SQRT3 * size, 0.0)));
+        // The game's y axis points up, SVG's down.
+        let top_right = Position::CENTER.neighbor(Direction::TopRight);
+        let (x, y) = axial_to_pixel(top_right, size);
+        assert!(x > 0.0 && y < 0.0, "({x}, {y})");
+        // Every neighbor is one hex width away.
+        for dir in DIRECTIONS {
+            let (x, y) = axial_to_pixel(Position::CENTER.neighbor(dir), size);
+            assert!(
+                ((x * x + y * y).sqrt() - SQRT3 * size).abs() < 1e-6,
+                "{dir:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_direction_is_its_own_edge_of_the_hex() {
+        let mut edges: Vec<_> = DIRECTIONS.iter().map(|&d| direction_edge(d)).collect();
+        for &(a, b) in &edges {
+            assert_eq!(b, (a + 1) % 6);
+        }
+        edges.sort_unstable();
+        edges.dedup();
+        assert_eq!(edges.len(), 6);
+    }
+
+    #[test]
+    fn edges_are_one_two_or_three_apart() {
+        assert_eq!(edge_separation(Direction::Left, Direction::TopLeft), 1);
+        assert_eq!(edge_separation(Direction::Left, Direction::BottomLeft), 1);
+        assert_eq!(edge_separation(Direction::Left, Direction::TopRight), 2);
+        assert_eq!(edge_separation(Direction::Left, Direction::Right), 3);
+        for a in DIRECTIONS {
+            for b in DIRECTIONS {
+                assert_eq!(edge_separation(a, b), edge_separation(b, a));
+            }
+        }
+    }
+
+    #[test]
+    fn the_bounding_box_hugs_the_tiles() {
+        assert_eq!(board_bounding_box(&[], HEX_SIZE), None);
+        let half_w = SQRT3 * HEX_SIZE / 2.0;
+        let (min_x, min_y, max_x, max_y) =
+            board_bounding_box(&[Position::CENTER], HEX_SIZE).unwrap();
+        assert!(close((min_x, min_y), (-half_w, -HEX_SIZE)));
+        assert!(close((max_x, max_y), (half_w, HEX_SIZE)));
+
+        let right = Position::CENTER.neighbor(Direction::Right);
+        let (min_x, _, max_x, _) =
+            board_bounding_box(&[right, Position::CENTER], HEX_SIZE).unwrap();
+        assert!(close((min_x, max_x), (-half_w, SQRT3 * HEX_SIZE + half_w)));
+    }
+}

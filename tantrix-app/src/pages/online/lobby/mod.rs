@@ -155,3 +155,56 @@ fn connected_seats_filled(phase: &OnlinePhase) -> usize {
         _ => 0,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{Blue, Green, Red};
+
+    use super::{connected_seats_filled, seats_filled, waiting_names};
+    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use crate::state::online_state::{FailureReason, OnlinePhase};
+
+    #[test]
+    fn the_lobby_counts_its_seats_and_who_holds_them_live() {
+        let phase = OnlinePhase::Lobby {
+            lobby: lobby(
+                &[
+                    (Red, "Ann", true),
+                    (Blue, "Bob", false),
+                    (Green, "Cy", true),
+                ],
+                &["Dee", "Eve"],
+            ),
+        };
+        assert_eq!(seats_filled(&phase), 3);
+        // Bob dropped: the game waits for him to reconnect.
+        assert_eq!(connected_seats_filled(&phase), 2);
+        assert_eq!(waiting_names(&phase), "Dee, Eve");
+    }
+
+    #[test]
+    fn an_empty_lobby_has_no_one_to_count_or_name() {
+        let phase = OnlinePhase::Lobby {
+            lobby: lobby(&[], &[]),
+        };
+        assert_eq!(seats_filled(&phase), 0);
+        assert_eq!(connected_seats_filled(&phase), 0);
+        assert_eq!(waiting_names(&phase), "");
+    }
+
+    #[test]
+    fn only_the_lobby_is_counted() {
+        let playing = OnlinePhase::Playing {
+            snapshot: snapshot(&[(Red, "Ann", true), (Blue, "Bob", true)], &["Cy"]),
+            last_move: None,
+        };
+        let failed = OnlinePhase::Failed {
+            reason: FailureReason::Timeout,
+        };
+        for phase in [OnlinePhase::Connecting, playing, failed] {
+            assert_eq!(seats_filled(&phase), 0, "{phase:?}");
+            assert_eq!(connected_seats_filled(&phase), 0, "{phase:?}");
+            assert_eq!(waiting_names(&phase), "", "{phase:?}");
+        }
+    }
+}

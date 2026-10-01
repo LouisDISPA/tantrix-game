@@ -108,3 +108,46 @@ fn seat_for(phase: &OnlinePhase, color: Color) -> Option<Seat> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{Blue, Green, Red};
+
+    use super::{replace_message, seat_for, seat_holder_online};
+    use crate::state::online_state::test_rooms::{lobby, seat, snapshot};
+    use crate::state::online_state::OnlinePhase;
+
+    #[test]
+    fn each_seat_knows_its_holder_and_whether_they_are_online() {
+        let seated = [(Red, "Ann", true), (Blue, "Bob", false)];
+        let phase = OnlinePhase::Lobby {
+            lobby: lobby(&seated, &[]),
+        };
+        assert_eq!(seat_for(&phase, Red), Some(seat("Ann")));
+        assert!(seat_holder_online(&phase, Red));
+        assert_eq!(seat_for(&phase, Blue), Some(seat("Bob")));
+        assert!(!seat_holder_online(&phase, Blue));
+        assert_eq!(seat_for(&phase, Green), None);
+        assert!(!seat_holder_online(&phase, Green));
+
+        // The lobby's seats only: a running game has its own panel.
+        let playing = OnlinePhase::Playing {
+            snapshot: snapshot(&seated, &[]),
+            last_move: None,
+        };
+        assert_eq!(seat_for(&playing, Red), None);
+        assert!(!seat_holder_online(&playing, Red));
+    }
+
+    #[test]
+    fn taking_a_seat_says_what_happens_to_its_holder() {
+        assert_eq!(
+            replace_message(Some("Ann"), true),
+            "Ann is sitting here. They'll lose the seat and can pick another one."
+        );
+        assert_eq!(
+            replace_message(None, false),
+            "Another player is offline. They'll lose the seat and leave the room."
+        );
+    }
+}

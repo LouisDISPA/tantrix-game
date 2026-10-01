@@ -259,3 +259,186 @@ where
         field.set(value);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use dioxus::prelude::*;
+    use tantrix_game::{Color, Position, Rotation};
+
+    use super::{Hovered, TurnPhase, UiState, UiStateStoreExt, UiStateStoreImplExt};
+    use crate::state::test_games::seeded;
+    use crate::util::test_page::GamePage;
+
+    #[test]
+    fn the_status_bar_says_what_to_do_next() {
+        let text = |phase: TurnPhase, forced| phase.status_text(Color::Blue, forced);
+        assert_eq!(
+            text(TurnPhase::SelectTile, false),
+            "Select a tile from your hand"
+        );
+        assert_eq!(
+            text(TurnPhase::SelectTile, true),
+            "Select a tile — forced move!"
+        );
+        assert_eq!(
+            text(TurnPhase::SelectPosition, true),
+            "Click a position on the board"
+        );
+        assert_eq!(text(TurnPhase::SelectRotation, false), "Choose a rotation");
+        assert_eq!(text(TurnPhase::WaitingForAi, false), "Blue is thinking...");
+        assert_eq!(text(TurnPhase::GameOver, true), "Game Over!");
+    }
+
+    #[test]
+    fn hovering_names_one_thing_at_a_time() {
+        let at = Position::CENTER;
+        assert_eq!(Hovered::HandTile(2).hand_tile(), Some(2));
+        assert_eq!(Hovered::HandTile(2).board_position(), None);
+        assert_eq!(Hovered::BoardPosition(at).board_position(), Some(at));
+        assert_eq!(
+            Hovered::Rotation(Rotation::R60).rotation(),
+            Some(Rotation::R60)
+        );
+        assert_eq!(
+            Hovered::ScoringColor(Color::Red).scoring_color(),
+            Some(Color::Red)
+        );
+        assert_eq!(Hovered::None.rotation(), None);
+    }
+
+    /// The turn-flow fields of the page's UI state.
+    fn turn(page: &GamePage) -> (TurnPhase, Option<usize>, Option<Position>, Hovered, String) {
+        page.with(|ctx| {
+            let ui = ctx.ui_state;
+            (
+                *ui.phase().peek(),
+                *ui.selected_tile().peek(),
+                *ui.selected_position().peek(),
+                *ui.hovered().peek(),
+                ui.message().peek().clone(),
+            )
+        })
+    }
+
+    #[test]
+    fn going_back_steps_back_through_the_turn() {
+        let at = Position::CENTER;
+        let mut page = GamePage::local(seeded(3));
+        page.act(|mut ctx| {
+            ctx.ui_state.select_tile(1);
+            ctx.ui_state.selected_position().set(Some(at));
+            ctx.ui_state.phase().set(TurnPhase::SelectRotation);
+            ctx.ui_state
+                .hovered()
+                .set(Hovered::Rotation(Rotation::R120));
+        });
+
+        // From the wheel back to the board: the tile stays picked.
+        page.act(|mut ctx| ctx.ui_state.go_back());
+        assert_eq!(
+            turn(&page),
+            (
+                TurnPhase::SelectPosition,
+                Some(1),
+                None,
+                Hovered::None,
+                String::new()
+            )
+        );
+        // From the board back to the hand.
+        page.act(|mut ctx| ctx.ui_state.go_back());
+        assert_eq!(
+            turn(&page),
+            (
+                TurnPhase::SelectTile,
+                None,
+                None,
+                Hovered::None,
+                String::new()
+            )
+        );
+        // Nowhere further back.
+        page.act(|mut ctx| ctx.ui_state.go_back());
+        assert_eq!(turn(&page).0, TurnPhase::SelectTile);
+    }
+
+    #[test]
+    fn going_back_leaves_the_ai_and_the_results_alone() {
+        let page = GamePage::local(seeded(3));
+        for phase in [TurnPhase::WaitingForAi, TurnPhase::GameOver] {
+            let after = page.with(|mut ctx| {
+                ctx.ui_state.selected_tile().set(Some(0));
+                ctx.ui_state.phase().set(phase);
+                ctx.ui_state.go_back();
+                (
+                    *ctx.ui_state.phase().peek(),
+                    *ctx.ui_state.selected_tile().peek(),
+                )
+            });
+            assert_eq!(after, (phase, Some(0)));
+        }
+    }
+
+    #[test]
+    fn selecting_a_tile_starts_the_placement_afresh() {
+        let mut page = GamePage::local(seeded(3));
+        page.act(|ctx| {
+            ctx.ui_state.message().set("Forced move!".to_string());
+            ctx.ui_state.selected_position().set(Some(Position::CENTER));
+            ctx.ui_state.hovered().set(Hovered::HandTile(4));
+        });
+        page.act(|mut ctx| ctx.ui_state.select_tile(4));
+        assert_eq!(
+            turn(&page),
+            (
+                TurnPhase::SelectPosition,
+                Some(4),
+                None,
+                Hovered::None,
+                String::new()
+            )
+        );
+    }
+
+    #[test]
+    fn a_reset_returns_to_the_hand_with_its_message() {
+        let mut page = GamePage::local(seeded(3));
+        page.act(|mut ctx| ctx.ui_state.select_tile(2));
+        page.act(|mut ctx| ctx.ui_state.reset_selection_with_message("Forced move!"));
+        assert_eq!(
+            turn(&page),
+            (
+                TurnPhase::SelectTile,
+                None,
+                None,
+                Hovered::None,
+                "Forced move!".to_string()
+            )
+        );
+        page.act(|mut ctx| ctx.ui_state.reset_selection());
+        assert_eq!(turn(&page).4, "");
+    }
+
+    #[test]
+    fn a_move_recentres_the_board_and_marks_what_changed() {
+        let mut page = GamePage::local(seeded(3));
+        let at = Position::CENTER;
+        page.act(|ctx| {
+            ctx.ui_state.pan_x().set(12.0);
+            ctx.ui_state.pan_y().set(-4.0);
+            ctx.ui_state.zoom().set(2.0);
+        });
+        page.act(|mut ctx| ctx.ui_state.after_move(Color::Red, 3, at));
+        let ui = page.with(|ctx| ctx.ui_state.cloned());
+        assert_eq!(
+            ui,
+            UiState {
+                // The zoom is the player's: a move keeps it.
+                zoom: 2.0,
+                new_tile: Some((Color::Red, 3)),
+                last_placed_position: Some(at),
+                ..UiState::default()
+            }
+        );
+    }
+}

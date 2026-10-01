@@ -7,7 +7,6 @@
 //! (`util::render_count`). A count is deterministic: nothing here waits on
 //! time.
 
-use dioxus::core::NoOpMutations;
 use dioxus::prelude::*;
 use tantrix_game::{Color, Move, Position};
 
@@ -20,6 +19,7 @@ use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::util::render_count;
+use crate::util::test_page::settle;
 
 /// Recorded by a memo of the test page each time it recomputes: it reads
 /// every `UiState` field but the camera's (`zoom`, `pan_x`, `pan_y`,
@@ -38,15 +38,6 @@ const BOARD_AND_HANDS: [&str; 9] = [
     "ZoomControls",
     "PlayerHand",
 ];
-
-/// Let the page catch up with a change: run the memo tasks and effects it
-/// queued, and re-render the components it marked dirty. Each round drains
-/// what the previous one queued; a handful is more than any change needs.
-pub(crate) fn settle(dom: &mut VirtualDom) {
-    for _ in 0..10 {
-        dom.render_immediate(&mut NoOpMutations);
-    }
-}
 
 /// A local game page showing `game` on the game screen.
 struct Page {

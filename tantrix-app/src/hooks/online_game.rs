@@ -104,3 +104,54 @@ fn player_names_of(state: Store<OnlineState>) -> EnumMap<Color, Option<String>> 
 fn names_from_seats(seats: &EnumMap<Color, Option<Seat>>) -> EnumMap<Color, Option<String>> {
     EnumMap::from_fn(|c| seats[c].as_ref().map(|s| s.nickname.clone()))
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{self, Blue, Green, Red, Yellow};
+    use tantrix_proto::EndReason;
+
+    use super::{names_from_seats, snapshot_in};
+    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use crate::state::online_state::{FailureReason, OnlinePhase};
+
+    #[test]
+    fn the_game_comes_from_a_running_or_finished_room() {
+        let game = snapshot(&[(Red, "Ann", true), (Blue, "Bob", true)], &[]);
+        let playing = OnlinePhase::Playing {
+            snapshot: game.clone(),
+            last_move: None,
+        };
+        let ended = OnlinePhase::Ended {
+            reason: EndReason::EndedEarly {
+                by: Blue,
+                winners: vec![Red, Blue],
+            },
+            snapshot: game.clone(),
+        };
+        assert_eq!(snapshot_in(&playing), Some(&game));
+        assert_eq!(snapshot_in(&ended), Some(&game));
+
+        let lobby = OnlinePhase::Lobby {
+            lobby: lobby(&[(Red, "Ann", true)], &[]),
+        };
+        let failed = OnlinePhase::Failed {
+            reason: FailureReason::Timeout,
+        };
+        for phase in [OnlinePhase::Connecting, lobby, failed] {
+            assert_eq!(snapshot_in(&phase), None, "{phase:?}");
+        }
+    }
+
+    #[test]
+    fn each_seat_is_named_after_its_player() {
+        // Bob is offline but keeps his seat, and his name with it.
+        let game = snapshot(&[(Blue, "Bob", false), (Yellow, "Cy", true)], &["Dee"]);
+        let names = names_from_seats(&game.seats);
+        let name = |color: Color| names[color].as_deref();
+        assert_eq!(name(Blue), Some("Bob"));
+        assert_eq!(name(Yellow), Some("Cy"));
+        // Nobody sits at the others; watchers have no color.
+        assert_eq!(name(Red), None);
+        assert_eq!(name(Green), None);
+    }
+}

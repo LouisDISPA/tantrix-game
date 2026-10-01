@@ -24,6 +24,9 @@ just fmt-check
 just lint
 just test
 
+# App tests alone (no feature needed; add --features server for the server's)
+cargo test -p tantrix-app
+
 # Browser e2e (Worker / native server)
 just worker-e2e
 just native-e2e
@@ -64,10 +67,11 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     game_state.rs          # GameState (wraps Game + hand_info cache) + GameCtx (game_state, ui_state, driver)
     game_driver.rs         # GameDriver: Local (every seat played here) | Online(RoomLink: moves go to the room)
     ui_state.rs            # UiState, TurnPhase, Hovered enum, HandTileState enum; per-field #[store] methods (reset_selection, after_move…), set_if_changed
-    actions.rs             # Turn actions: start_game, execute_move, click_position, pick_rotation, end_game, advance_turn
+    actions.rs             # Turn actions: start_game, click_tile, click_position, pick_rotation, execute_move, end_game, advance_turn; auto_move (a tile played without a choice)
     ai_service.rs          # Async AI turn loop
     config.rs              # GameConfig (player count/colors)
     theme.rs               # Global light/dark theme signal
+    test_games.rs          # (tests) seeded games: the e2e fixture, find_game, tiles with one move / several positions
   hooks/                   # Reactive derived values
     camera.rs              # use_board_camera → BoardCamera (zoom/pan controls; writes camera fields one by one)
     derived.rs             # use_placed_moves, use_current_player, use_is_game_over, use_has_forced_move
@@ -146,6 +150,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 - **Reads**: inline in RSX or inside a `use_memo` — never `state.read()` at the top of a component
 - **Store vs Signal**: `#[derive(Store)]` when fields change independently (`UiState`, `OnlineState`); plain `Signal<T>` when the struct is atomic (`GameState`)
 - **Store writes**: per field (`ui.phase().set(..)`, `set_if_changed`, or the `#[store]` methods in `ui_state.rs`) — never `ui_state.write()`, which wakes every field's readers; no state writes while rendering
+- **App tests**: next to the code, deterministic (seeded games, fixed data, no timers). A decision tangled with signals is a plain function over plain data, tested directly (`compute_state(&GameState, …)` in `hand_tile.rs`, `auto_move`, `RoomScreen::of`, the lobby counts); turn actions, hooks and `GameDriver` run on `util::test_page::GamePage`, a `VirtualDom` page built with `use_game_ctx` — local, or online with the commands it sends the room — on games from `state::test_games`; online helpers use the lobbies and snapshots of `state::online_state::test_rooms`. `GamePage::act` lets the page catch up after a change; `with` doesn't, so a phase handed to the AI never starts its timers
 - **Re-render tests**: `util::render_count` (test-only) counts a component's renders; `pages/game/rerender_tests.rs` pins what a hover, drag, zoom, move or room snapshot re-renders
 - **Turn flow**: `TurnPhase` enum drives UI transitions (SelectTile → SelectPosition → SelectRotation)
 - **GameDriver**: `GameCtx::driver` says who plays — `Local` (this device plays every seat; the AI loop runs here) or `Online(RoomLink)` (moves and End Game go to the room, whose snapshots drive the board). Components ask it (`controls`, `can_end_game`, `my_color`, `player_name`) and the turn actions dispatch on it; nothing under `components/` touches the session

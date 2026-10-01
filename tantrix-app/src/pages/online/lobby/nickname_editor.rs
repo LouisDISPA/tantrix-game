@@ -37,7 +37,7 @@ pub fn LobbyNicknameEditor(
     rsx! {
         NicknameInput {
             authoritative,
-            max_len: 24,
+            max_len: nickname::MAX_CHARS,
             on_commit,
         }
     }
@@ -54,4 +54,36 @@ fn authoritative_nickname(phase: &OnlinePhase, me: Option<&PeerId>) -> Option<St
         .iter()
         .find(|p| &p.peer_id == me)
         .map(|p| p.nickname.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::Red;
+    use tantrix_proto::PeerId;
+
+    use super::authoritative_nickname;
+    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use crate::state::online_state::OnlinePhase;
+
+    #[test]
+    fn the_name_to_edit_is_the_one_the_room_knows() {
+        let seated = [(Red, "Ann", true)];
+        let phase = OnlinePhase::Lobby {
+            lobby: lobby(&seated, &["Bob"]),
+        };
+        let name = |peer: &str| authoritative_nickname(&phase, Some(&PeerId::new(peer)));
+        assert_eq!(name("Ann").as_deref(), Some("Ann"));
+        assert_eq!(name("Bob").as_deref(), Some("Bob"));
+        assert_eq!(name("Cy"), None);
+        // Before the welcome, and once the game is on, there is none.
+        assert_eq!(authoritative_nickname(&phase, None), None);
+        let playing = OnlinePhase::Playing {
+            snapshot: snapshot(&seated, &[]),
+            last_move: None,
+        };
+        assert_eq!(
+            authoritative_nickname(&playing, Some(&PeerId::new("Ann"))),
+            None
+        );
+    }
 }

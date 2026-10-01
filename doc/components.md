@@ -153,6 +153,13 @@ and tiles it changes; a room snapshot never re-renders `OnlineGameView`.
 To pin a new component, add the `record` call to its body and assert on
 its count.
 
+What components decide is tested without rendering them: `HandTile`'s
+state is `compute_state(&GameState, selected, color, index)`, a plain
+function its memo calls (reading the selection only for the player to
+move), and the board layers' memos are read on `util::test_page::GamePage`
+— a page with a `GameCtx` and no screens — after the same changes a hover
+or click makes.
+
 ## HexSvg — the one primitive
 
 All four tile-shaped components (`BoardTile`, `EmptyHex`'s polygon,

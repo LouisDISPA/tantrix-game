@@ -76,7 +76,7 @@ device) or `Online` (a room; this device only sends its seat's intents).
 All in `state/actions.rs`, each action takes `GameCtx`:
 
 ```
-click hand tile  → click_tile        select, or auto-play if only 1 move
+click hand tile  → click_tile        deselect it, auto-play if only 1 move, or select
 click position   → click_position    execute_move, or → SelectRotation
 pick rotation    → pick_rotation     execute_move
 execute_move     → Local:  game_state.write().play_move(Placement { tile, position, rotation })
@@ -88,7 +88,15 @@ execute_move     → Local:  game_state.write().play_move(Placement { tile, posi
 
 A hand tile is clickable only on its seat's turn and when
 `GameDriver::controls(color)`: any seat locally, only this device's own
-seat online.
+seat online. `HandTile` offers the click only then, and `click_tile`
+checks the seat again.
+
+A move needs no choice when `auto_move` finds one: the tile fits at a
+single position in a single rotation (`auto_rotation`) — or, on the empty
+board, where the opening tile fits every way round at the centre, in the
+first. `click_tile` plays it straight away, `click_position` plays the one
+rotation of a hex, and the hover preview shows a hand tile's only move
+(not the opening tile's: its rotation is the click's to pick).
 
 ## AI turn
 

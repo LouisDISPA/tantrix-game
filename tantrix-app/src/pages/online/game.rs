@@ -50,11 +50,11 @@ mod tests {
     use tantrix_proto::GameSnapshot;
 
     use super::OnlineGameView;
-    use crate::pages::game::rerender_tests::settle;
     use crate::state::config::GameConfig;
     use crate::state::game_state::GameState;
     use crate::state::online_state::{OnlinePhase, OnlineState, OnlineStateStoreExt};
     use crate::util::render_count;
+    use crate::util::test_page::settle;
 
     /// What a room would send for `game` (watched: no seats).
     fn snapshot_of(game: &GameState) -> GameSnapshot {

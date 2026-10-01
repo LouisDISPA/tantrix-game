@@ -111,48 +111,12 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use serde::{Deserialize, Serialize};
-    use tantrix_game::{Board, Color, EnumMap, Placement, Position, Rotation, Tile, TurnStep};
+    use tantrix_game::{Board, Color, EnumMap, TurnStep};
     use tantrix_proto::GameSnapshot;
 
     use super::GameState;
     use crate::state::config::GameConfig;
-
-    /// The seeded game that `e2e/tests/forced-after-free-move.spec.ts` plays
-    /// in the browser: a free move creates a forced space its player can fill,
-    /// so they keep the turn to fill it.
-    const FIXTURE: &str = include_str!("../../../e2e/fixtures/forced-after-free-move.json");
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct Fixture {
-        seed: u64,
-        moves: Vec<FixtureMove>,
-    }
-
-    #[derive(Debug, Serialize, Deserialize)]
-    struct FixtureMove {
-        player: Color,
-        tile: Tile,
-        position: Position,
-        rotation: Rotation,
-        forced: bool,
-        /// Whose turn it is after this move.
-        next: Color,
-    }
-
-    impl FixtureMove {
-        fn placement(&self) -> Placement {
-            Placement {
-                tile: self.tile,
-                position: self.position,
-                rotation: self.rotation,
-            }
-        }
-    }
-
-    fn seeded(seed: u64) -> GameState {
-        GameState::new(&GameConfig::new(Some(seed)))
-    }
+    use crate::state::test_games::{fixture, seeded, Fixture, FixtureMove};
 
     #[test]
     fn seeded_config_deals_the_same_game() {
@@ -166,7 +130,7 @@ mod tests {
 
     #[test]
     fn e2e_fixture_keeps_turn_to_fill_forced_space_after_free_move() {
-        let fixture: Fixture = serde_json::from_str(FIXTURE).unwrap();
+        let fixture = fixture();
         let mut game = seeded(fixture.seed);
 
         for (i, step) in fixture.moves.iter().enumerate() {
@@ -195,7 +159,7 @@ mod tests {
 
     #[test]
     fn hand_info_follows_every_change() {
-        let fixture: Fixture = serde_json::from_str(FIXTURE).unwrap();
+        let fixture = fixture();
         let mut game = seeded(fixture.seed);
         assert_eq!(game.hand_info(), game.moves_by_tile());
         for step in &fixture.moves {

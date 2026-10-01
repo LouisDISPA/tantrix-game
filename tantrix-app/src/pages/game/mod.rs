@@ -8,7 +8,7 @@
 mod game_over;
 mod game_play;
 #[cfg(test)]
-pub(crate) mod rerender_tests;
+mod rerender_tests;
 
 pub use game_over::GameOver;
 pub use game_play::GamePlay;

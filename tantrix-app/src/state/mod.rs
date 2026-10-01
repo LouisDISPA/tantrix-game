@@ -6,5 +6,7 @@ pub mod game_state;
 pub mod nickname;
 pub mod online_state;
 pub mod room_connection;
+#[cfg(test)]
+pub mod test_games;
 pub mod theme;
 pub mod ui_state;

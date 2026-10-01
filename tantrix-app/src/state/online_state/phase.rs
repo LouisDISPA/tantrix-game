@@ -65,3 +65,44 @@ pub fn reject_message(code: &RejectCode) -> &'static str {
         RejectCode::RoomFull => "This room is full.",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_proto::RejectCode;
+
+    use super::{reject_message, FailureReason};
+
+    const CODES: [RejectCode; 6] = [
+        RejectCode::ColorTaken,
+        RejectCode::NotYourTurn,
+        RejectCode::InvalidMove,
+        RejectCode::GameInProgress,
+        RejectCode::RoomNotFound,
+        RejectCode::RoomFull,
+    ];
+
+    #[test]
+    fn each_rejection_has_its_own_sentence() {
+        let mut messages: Vec<_> = CODES.iter().map(reject_message).collect();
+        assert!(messages.iter().all(|m| m.ends_with('.')));
+        messages.sort_unstable();
+        messages.dedup();
+        assert_eq!(messages.len(), CODES.len());
+    }
+
+    #[test]
+    fn a_failure_says_why_and_whether_to_retry() {
+        let full = FailureReason::Rejected(RejectCode::RoomFull);
+        assert_eq!(full.display(), "This room is full.");
+        assert!(!full.is_retryable());
+
+        let dropped = FailureReason::Transport("Connection closed.".to_string());
+        assert_eq!(dropped.display(), "Connection closed.");
+        assert!(dropped.is_retryable());
+
+        assert!(FailureReason::Timeout
+            .display()
+            .starts_with("Couldn't reach the game server."));
+        assert!(FailureReason::Timeout.is_retryable());
+    }
+}

@@ -77,7 +77,7 @@ fn OnlineRoomSession(code: String, create: bool, on_retry: EventHandler<()>) -> 
 
 /// Which screen a session shows: one per [`OnlinePhase`], without the
 /// lobby's or the game's contents (each screen reads those itself).
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum RoomScreen {
     Connecting,
     Lobby,
@@ -95,5 +95,83 @@ impl RoomScreen {
             OnlinePhase::Ended { .. } => Self::Ended,
             OnlinePhase::Failed { reason } => Self::Failed(reason.clone()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{Blue, Red};
+    use tantrix_proto::EndReason;
+
+    use super::RoomScreen;
+    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use crate::state::online_state::{FailureReason, OnlinePhase};
+
+    #[test]
+    fn each_phase_has_its_screen() {
+        let game = snapshot(&[(Red, "Ann", true), (Blue, "Bob", true)], &[]);
+        let ended = OnlinePhase::Ended {
+            reason: EndReason::Completed { winners: vec![Red] },
+            snapshot: game.clone(),
+        };
+        let failed = OnlinePhase::Failed {
+            reason: FailureReason::Timeout,
+        };
+        let cases = [
+            (OnlinePhase::Connecting, RoomScreen::Connecting),
+            (
+                OnlinePhase::Lobby {
+                    lobby: lobby(&[], &["Ann"]),
+                },
+                RoomScreen::Lobby,
+            ),
+            (
+                OnlinePhase::Playing {
+                    snapshot: game,
+                    last_move: None,
+                },
+                RoomScreen::Playing,
+            ),
+            (ended, RoomScreen::Ended),
+            (failed, RoomScreen::Failed(FailureReason::Timeout)),
+        ];
+        for (phase, screen) in cases {
+            assert_eq!(RoomScreen::of(&phase), screen);
+        }
+    }
+
+    #[test]
+    fn updates_within_a_phase_keep_the_screen() {
+        // What keeps the session from re-rendering on every lobby change
+        // or game snapshot: its screen memo holds the same value.
+        let before = OnlinePhase::Lobby {
+            lobby: lobby(&[], &["Ann"]),
+        };
+        let after = OnlinePhase::Lobby {
+            lobby: lobby(&[(Red, "Ann", true)], &["Bob"]),
+        };
+        assert_eq!(RoomScreen::of(&before), RoomScreen::of(&after));
+
+        let mut moved = snapshot(&[(Red, "Ann", true), (Blue, "Bob", true)], &[]);
+        let first = OnlinePhase::Playing {
+            snapshot: moved.clone(),
+            last_move: None,
+        };
+        moved.bag_count -= 1;
+        moved.current_player = Blue;
+        let next = OnlinePhase::Playing {
+            snapshot: moved,
+            last_move: None,
+        };
+        assert_eq!(RoomScreen::of(&first), RoomScreen::of(&next));
+
+        // A failure's reason is part of its screen.
+        let timeout = OnlinePhase::Failed {
+            reason: FailureReason::Timeout,
+        };
+        let dropped = OnlinePhase::Failed {
+            reason: FailureReason::Transport("Connection closed.".to_string()),
+        };
+        assert_ne!(RoomScreen::of(&timeout), RoomScreen::of(&dropped));
     }
 }

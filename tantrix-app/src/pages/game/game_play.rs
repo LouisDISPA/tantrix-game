@@ -61,3 +61,29 @@ pub fn GamePlay() -> Element {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{Blue, Green, Red, Yellow};
+
+    use super::assign_hand_positions;
+    use crate::components::player_hand::HandPosition::{Bottom, Left, Right, Top};
+
+    #[test]
+    fn the_hands_sit_around_the_board_by_player_count() {
+        assert_eq!(
+            assign_hand_positions(&[Blue, Red]),
+            [(Blue, Left), (Red, Right)]
+        );
+        assert_eq!(
+            assign_hand_positions(&[Red, Yellow, Green]),
+            [(Red, Left), (Yellow, Right), (Green, Bottom)]
+        );
+        assert_eq!(
+            assign_hand_positions(&[Red, Blue, Yellow, Green]),
+            [(Red, Top), (Blue, Right), (Yellow, Bottom), (Green, Left)]
+        );
+        // A game always has two to four players.
+        assert!(assign_hand_positions(&[Red]).is_empty());
+    }
+}

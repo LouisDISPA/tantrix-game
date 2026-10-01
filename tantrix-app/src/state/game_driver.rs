@@ -115,3 +115,91 @@ impl RoomLink {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Color, EnumMap, Placement, Position, Rotation, Tile};
+    use tantrix_net::SessionCommand;
+
+    use super::GameDriver;
+    use crate::state::test_games::seeded;
+    use crate::util::test_page::GamePage;
+
+    const COLORS: [Color; 4] = [Color::Red, Color::Blue, Color::Yellow, Color::Green];
+
+    fn names() -> EnumMap<Color, Option<String>> {
+        EnumMap::from_fn(|color| (color == Color::Blue).then(|| "Bob".to_string()))
+    }
+
+    fn placement() -> Placement {
+        Placement {
+            tile: Tile::BYYBRR,
+            position: Position::CENTER,
+            rotation: Rotation::None,
+        }
+    }
+
+    #[test]
+    fn a_local_game_plays_every_seat_here() {
+        let page = GamePage::local(seeded(3));
+        let driver = page.ctx().driver;
+        page.with(|_| {
+            assert!(driver.runs_turns());
+            assert!(COLORS.iter().all(|&color| driver.controls(color)));
+            assert!(driver.can_end_game());
+            assert_eq!(driver.my_color(), None);
+            assert_eq!(driver.player_name(Color::Red), None);
+        });
+    }
+
+    #[test]
+    fn an_online_seat_plays_only_itself() {
+        let (page, _commands) = GamePage::online(seeded(3), Some(Color::Blue), names());
+        let driver = page.ctx().driver;
+        page.with(|_| {
+            // The room plays the turns: this device only sends its own.
+            assert!(!driver.runs_turns());
+            for color in COLORS {
+                assert_eq!(driver.controls(color), color == Color::Blue, "{color}");
+            }
+            assert!(driver.can_end_game());
+            assert_eq!(driver.my_color(), Some(Color::Blue));
+            assert_eq!(driver.player_name(Color::Blue).as_deref(), Some("Bob"));
+            assert_eq!(driver.player_name(Color::Red), None);
+        });
+    }
+
+    #[test]
+    fn a_watcher_plays_nothing_and_cannot_end_the_game() {
+        let (page, _commands) = GamePage::online(seeded(3), None, names());
+        let driver = page.ctx().driver;
+        page.with(|_| {
+            assert!(COLORS.iter().all(|&color| !driver.controls(color)));
+            assert!(!driver.can_end_game());
+            assert_eq!(driver.my_color(), None);
+            // The seats' names show all the same.
+            assert_eq!(driver.player_name(Color::Blue).as_deref(), Some("Bob"));
+        });
+    }
+
+    #[test]
+    fn the_room_hears_only_this_seats_moves() {
+        let (page, mut commands) = GamePage::online(seeded(3), Some(Color::Blue), names());
+        let GameDriver::Online(room) = page.ctx().driver else {
+            panic!("an online page has an online driver");
+        };
+        page.with(|_| {
+            room.play(Color::Red, placement());
+            room.play(Color::Blue, placement());
+            room.end_game();
+        });
+        let sent: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok()).collect();
+        assert!(
+            matches!(
+                sent.as_slice(),
+                [SessionCommand::PlayMove(p), SessionCommand::EndGame] if *p == placement()
+            ),
+            "{sent:?}"
+        );
+    }
+}

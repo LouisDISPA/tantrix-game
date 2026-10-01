@@ -10,6 +10,10 @@
 
 use getrandom::fill;
 
+/// The longest nickname, in characters: the lobby's editor stops there, and
+/// the room refuses longer ones (`tantrix-room`).
+pub const MAX_CHARS: u32 = 24;
+
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const STORAGE_KEY: &str = "tantrix-nickname-v2";
 
@@ -136,4 +140,60 @@ fn clear_legacy() {
 #[cfg(target_arch = "wasm32")]
 fn local_storage() -> Option<web_sys::Storage> {
     web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{generate, load_or_generate, persist, pick_index, ADJECTIVES, MAX_CHARS, NOUNS};
+
+    /// `name` split into its adjective and noun, from the lists.
+    fn words(name: &str) -> Option<(&str, &str)> {
+        let (adjective, noun) = name.split_once(' ')?;
+        (ADJECTIVES.contains(&adjective) && NOUNS.contains(&noun)).then_some((adjective, noun))
+    }
+
+    #[test]
+    fn a_generated_name_is_an_adjective_and_a_noun() {
+        for _ in 0..50 {
+            let name = generate();
+            assert!(words(&name).is_some(), "{name}");
+        }
+    }
+
+    #[test]
+    fn every_generated_name_fits_the_lobby() {
+        let longest = |list: &[&str]| list.iter().map(|w| w.chars().count()).max().unwrap();
+        assert!(longest(ADJECTIVES) + 1 + longest(NOUNS) <= MAX_CHARS as usize);
+        // One capitalised word each, so a name splits back into its two.
+        for word in ADJECTIVES.iter().chain(NOUNS) {
+            assert!(word.chars().all(|c| c.is_ascii_alphabetic()), "{word}");
+            assert!(word.starts_with(|c: char| c.is_ascii_uppercase()), "{word}");
+        }
+    }
+
+    #[test]
+    fn the_word_lists_have_no_repeats() {
+        for list in [ADJECTIVES, NOUNS] {
+            let mut sorted = list.to_vec();
+            sorted.sort_unstable();
+            sorted.dedup();
+            assert_eq!(sorted.len(), list.len());
+        }
+    }
+
+    #[test]
+    fn picks_stay_in_range() {
+        for len in [1, 2, 40] {
+            assert!((0..200).all(|_| pick_index(len) < len), "{len}");
+        }
+        // An empty list never divides by zero.
+        assert_eq!(pick_index(0), 0);
+    }
+
+    #[test]
+    fn off_the_web_nothing_is_stored_so_a_fresh_name_is_drawn() {
+        persist("Louis");
+        let name = load_or_generate();
+        assert!(words(&name).is_some(), "{name}");
+    }
 }

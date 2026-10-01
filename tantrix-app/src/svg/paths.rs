@@ -107,3 +107,52 @@ pub fn color_css_class(color: Color) -> &'static str {
         Color::Green => "hex-curve-green",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Direction, Rotation};
+
+    use super::{color_link_path, find_color_pairs};
+    use crate::state::test_games::seeded;
+
+    const ROTATIONS: [Rotation; 6] = [
+        Rotation::None,
+        Rotation::R60,
+        Rotation::R120,
+        Rotation::R180,
+        Rotation::R240,
+        Rotation::R300,
+    ];
+
+    #[test]
+    fn a_tiles_three_curves_join_its_same_colored_edges() {
+        // Every tile dealt to a seeded game, every way round.
+        let game = seeded(3);
+        let tiles = game
+            .playing_colors()
+            .iter()
+            .flat_map(|&c| game.hand(c).to_vec());
+        for tile in tiles {
+            for rotation in ROTATIONS {
+                let pairs = find_color_pairs(tile, rotation);
+                let mut ends: Vec<i8> = Vec::new();
+                for (a, b, color) in pairs {
+                    assert_eq!(tile.color(a - rotation), color, "{tile:?} {rotation:?}");
+                    assert_eq!(tile.color(b - rotation), color, "{tile:?} {rotation:?}");
+                    ends.extend([i8::from(a), i8::from(b)]);
+                }
+                ends.sort_unstable();
+                assert_eq!(ends, [0, 1, 2, 3, 4, 5], "{tile:?} {rotation:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_curve_bends_by_how_far_apart_its_edges_are() {
+        let path = |a, b| color_link_path(0.0, 0.0, a, b, 30.0);
+        assert!(path(Direction::Left, Direction::TopLeft).contains(" A "));
+        assert!(path(Direction::Left, Direction::TopRight).contains(" Q "));
+        assert!(path(Direction::Left, Direction::Right).contains(" L "));
+        assert_eq!(path(Direction::Left, Direction::Left), "");
+    }
+}

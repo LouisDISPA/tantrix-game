@@ -98,3 +98,47 @@ fn playing_seats(phase: &OnlinePhase) -> Vec<PlayingSeat> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::Color::{Blue, Red, Yellow};
+    use tantrix_proto::EndReason;
+
+    use super::{playing_seats, PlayingSeat};
+    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use crate::state::online_state::OnlinePhase;
+
+    fn seat(color: tantrix_game::Color, nickname: &str, online: bool) -> PlayingSeat {
+        PlayingSeat {
+            color,
+            nickname: nickname.to_string(),
+            online,
+        }
+    }
+
+    #[test]
+    fn a_watcher_can_take_any_playing_seat() {
+        let mut game = snapshot(&[(Red, "Ann", true), (Blue, "Bob", false)], &["Cy"]);
+        // A playing color whose seat is empty has nobody to take over from.
+        game.playing_colors.push(Yellow);
+        let phase = OnlinePhase::Playing {
+            snapshot: game,
+            last_move: None,
+        };
+        assert!(playing_seats(&phase) == [seat(Red, "Ann", true), seat(Blue, "Bob", false)]);
+    }
+
+    #[test]
+    fn there_are_no_seats_to_take_outside_a_running_game() {
+        let seated = [(Red, "Ann", true), (Blue, "Bob", false)];
+        let ended = OnlinePhase::Ended {
+            reason: EndReason::Completed { winners: vec![Red] },
+            snapshot: snapshot(&seated, &["Cy"]),
+        };
+        let lobby = OnlinePhase::Lobby {
+            lobby: lobby(&seated, &["Cy"]),
+        };
+        assert!(playing_seats(&ended).is_empty());
+        assert!(playing_seats(&lobby).is_empty());
+    }
+}
