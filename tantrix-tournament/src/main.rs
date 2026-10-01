@@ -23,13 +23,6 @@ const SPARKLINE_WINDOW: usize = 60;
 
 // --- Data types ---
 
-struct Matchup {
-    ai_a: Box<dyn TantrixAi>,
-    ai_b: Box<dyn TantrixAi>,
-    /// Deals the game and seeds both AIs (see [`play_game`]).
-    seed: u64,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GameResult {
     name_a: String,
@@ -185,7 +178,11 @@ impl TournamentState {
         if self.recent.len() > MAX_RECENT {
             self.recent.pop_back();
         }
+    }
 
+    /// Order the leaderboard by win rate, once per frame rather than once
+    /// per result. The sort is stable: tied AIs keep their places.
+    fn rank(&mut self) {
         self.stats
             .sort_by(|a, b| b.win_rate().partial_cmp(&a.win_rate()).unwrap());
     }
@@ -227,24 +224,30 @@ fn result_of(ai_a: &dyn TantrixAi, ai_b: &dyn TantrixAi, game: &Game) -> GameRes
     }
 }
 
-/// Every game of the tournament played from `seed`. Each game's own seed is
+/// The seed of every game of the tournament between `ai_count` AIs played
+/// from `seed`, in game order (see [`pairing`]). Each game's own seed is
 /// drawn here, in order, before any game runs: results don't depend on how
-/// the games are scheduled.
-fn generate_matchups(ais: &[Box<dyn TantrixAi>], seed: u64) -> Vec<Matchup> {
+/// the games are scheduled. The games themselves are only set up as they
+/// are played.
+fn game_seeds(ai_count: usize, seed: u64) -> Vec<u64> {
     let mut seeds = Xoshiro256PlusPlus::seed_from_u64(seed);
-    let mut matchups = Vec::new();
-    for i in 0..ais.len() {
-        for j in (i + 1)..ais.len() {
-            for _ in 0..GAMES_PER_PAIR {
-                matchups.push(Matchup {
-                    ai_a: ais[i].clone_box(),
-                    ai_b: ais[j].clone_box(),
-                    seed: seeds.next_u64(),
-                });
-            }
+    let games = ai_count * ai_count.saturating_sub(1) / 2 * GAMES_PER_PAIR;
+    (0..games).map(|_| seeds.next_u64()).collect()
+}
+
+/// The AIs (indices among `ai_count`) that play game `game` of the
+/// tournament, the first as Red: every pairing plays `GAMES_PER_PAIR`
+/// games in a row, the first AI with each later one, then the second…
+fn pairing(ai_count: usize, game: usize) -> (usize, usize) {
+    let mut pair = game / GAMES_PER_PAIR;
+    for a in 0..ai_count {
+        let later = ai_count - a - 1;
+        if pair < later {
+            return (a, a + 1 + pair);
         }
+        pair -= later;
     }
-    matchups
+    panic!("the tournament has no game {game}")
 }
 
 // --- Color mapping ---
@@ -718,8 +721,8 @@ impl TournamentCtx {
     fn new(seed: u64) -> Self {
         let ais = all_ais();
         let ai_names: Vec<String> = ais.iter().map(|a| a.name().to_string()).collect();
-        let matchups = generate_matchups(&ais, seed);
-        let games_total = matchups.len() as u32;
+        let seeds = game_seeds(ais.len(), seed);
+        let games_total = seeds.len() as u32;
 
         let (tx, rx) = mpsc::channel::<GameResult>();
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -731,7 +734,7 @@ impl TournamentCtx {
         let active = active_games.clone();
 
         let worker = std::thread::spawn(move || {
-            matchups.par_iter().for_each(|matchup| {
+            seeds.par_iter().enumerate().for_each(|(game, &seed)| {
                 if cancel.load(Ordering::Relaxed) {
                     return;
                 }
@@ -743,7 +746,8 @@ impl TournamentCtx {
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 active.fetch_add(1, Ordering::Relaxed);
-                let result = run_game(matchup.ai_a.as_ref(), matchup.ai_b.as_ref(), matchup.seed);
+                let (a, b) = pairing(ais.len(), game);
+                let result = run_game(ais[a].as_ref(), ais[b].as_ref(), seed);
                 active.fetch_sub(1, Ordering::Relaxed);
                 let _ = tx.send(result);
             });
@@ -764,10 +768,16 @@ impl TournamentCtx {
     }
 
     fn drain_results(&mut self) {
-        if let Some(ref rx) = self.rx {
-            while let Ok(result) = rx.try_recv() {
-                self.state.record(result);
-            }
+        let Some(ref rx) = self.rx else {
+            return;
+        };
+        let mut recorded = false;
+        while let Ok(result) = rx.try_recv() {
+            self.state.record(result);
+            recorded = true;
+        }
+        if recorded {
+            self.state.rank();
         }
     }
 
@@ -816,9 +826,7 @@ mod tests {
     use tantrix_ai::{all_ais, FirstMoveAi, GreedyAi, RandomAi, SmartAi};
     use tantrix_game::Color;
 
-    use super::{
-        generate_matchups, play_game, result_of, run_game, GameResult, Matchup, GAMES_PER_PAIR,
-    };
+    use super::{game_seeds, pairing, play_game, result_of, run_game, GameResult, GAMES_PER_PAIR};
 
     #[test]
     fn a_seed_plays_the_same_game_again() {
@@ -853,20 +861,33 @@ mod tests {
     }
 
     #[test]
+    fn every_pairing_plays_its_games_in_a_row() {
+        let ai_count = all_ais().len();
+        let games = game_seeds(ai_count, 0).len();
+        let mut expected = Vec::new();
+        for a in 0..ai_count {
+            for b in (a + 1)..ai_count {
+                expected.extend(std::iter::repeat_n((a, b), GAMES_PER_PAIR));
+            }
+        }
+        assert_eq!(games, expected.len());
+        let pairings: Vec<_> = (0..games).map(|game| pairing(ai_count, game)).collect();
+        assert_eq!(pairings, expected);
+    }
+
+    #[test]
     fn a_tournament_does_not_depend_on_scheduling() {
-        let seeds = |seed| -> Vec<u64> {
-            generate_matchups(&all_ais(), seed)
-                .iter()
-                .map(|m| m.seed)
-                .collect()
-        };
-        assert_eq!(seeds(0), seeds(0));
-        assert_ne!(seeds(0), seeds(1));
+        let ais = all_ais();
+        let seeds = game_seeds(ais.len(), 0);
+        assert_eq!(seeds, game_seeds(ais.len(), 0));
+        assert_ne!(seeds, game_seeds(ais.len(), 1));
 
         // One game per pairing, played in order and in parallel.
-        let matchups = generate_matchups(&all_ais(), 0);
-        let sample: Vec<&Matchup> = matchups.iter().step_by(GAMES_PER_PAIR).collect();
-        let play = |m: &&Matchup| run_game(m.ai_a.as_ref(), m.ai_b.as_ref(), m.seed);
+        let sample: Vec<usize> = (0..seeds.len()).step_by(GAMES_PER_PAIR).collect();
+        let play = |&game: &usize| {
+            let (a, b) = pairing(ais.len(), game);
+            run_game(ais[a].as_ref(), ais[b].as_ref(), seeds[game])
+        };
         let in_order: Vec<GameResult> = sample.iter().map(play).collect();
         let in_parallel: Vec<GameResult> = sample.par_iter().map(play).collect();
         assert_eq!(in_order, in_parallel);

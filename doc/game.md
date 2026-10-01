@@ -222,7 +222,9 @@ copy carries on from the same state.
 AI as Red and the second as Blue, and scores each AI by its color. Each
 game's seed is drawn in order from the tournament seed before any game
 runs, and deals the game and seeds both AIs (`with_seed`), so a tournament
-gives the same results however rayon schedules its games.
+gives the same results however rayon schedules its games. Only those seeds
+are kept up front (`game_seeds`); each game's pairing comes from its index
+(`pairing`) as it is played, and the leaderboard is sorted once per frame.
 
 `cargo run --release -p tantrix-ai --example seeded_games [GAMES_PER_PAIR]`
 times seeded games between every pairing (then the rules and the scoring
