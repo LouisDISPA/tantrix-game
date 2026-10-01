@@ -67,21 +67,19 @@ fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
 pub fn ScoresPanel(children: Element) -> Element {
     let ctx = use_context::<GameCtx>();
 
-    // Score the board once for the whole card: each row's points, and the
-    // winners among them.
-    let standings = use_memo(move || {
-        let gs = ctx.game_state.read();
-        let scores = gs.scores();
-        let rows: Vec<(Color, usize)> = gs
+    // Score the board once for the whole card, then derive each row's
+    // points and the winners among them from those scores.
+    let scores = use_memo(move || ctx.game_state.read().scores());
+    let rows = use_memo(move || {
+        let scores = scores.read();
+        ctx.game_state
+            .read()
             .playing_colors()
             .iter()
             .map(|&color| (color, scores[color].score))
-            .collect();
-        (rows, gs.winners_from(&scores))
+            .collect::<Vec<(Color, usize)>>()
     });
-    let standings = standings.read();
-    let (rows, winners) = &*standings;
-    let is_tie = winners.len() > 1;
+    let winners = use_memo(move || ctx.game_state.read().winners_from(&scores.read()));
 
     rsx! {
         div { class: "board-results-overlay",
@@ -89,10 +87,10 @@ pub fn ScoresPanel(children: Element) -> Element {
                 div { class: "hex-frame results-hex-frame" }
 
                 div { class: "results-header",
-                    if is_tie {
+                    if winners.read().len() > 1 {
                         div { class: "results-winner-label", "Tie" }
                         div { class: "results-tie-names",
-                            for (i , & color) in winners.iter().enumerate() {
+                            for (i , color) in winners.read().iter().copied().enumerate() {
                                 {
                                     let color_class = format!("color-{}", color_slug(color));
                                     rsx! {
@@ -112,7 +110,7 @@ pub fn ScoresPanel(children: Element) -> Element {
                         }
                     } else {
                         {
-                            let winner_color = winners[0];
+                            let winner_color = winners.read()[0];
                             let winner_class = format!("color-{}", color_slug(winner_color));
                             rsx! {
                                 div { class: "results-winner-label", "Winner" }
@@ -128,12 +126,12 @@ pub fn ScoresPanel(children: Element) -> Element {
                 div { class: "results-divider" }
 
                 div { class: "results-stats",
-                    for &(c , score) in rows.iter() {
+                    for (c , score) in rows.read().iter().copied() {
                         ScoreRow {
                             key: "{c:?}",
                             color: c,
                             score,
-                            is_winner: winners.contains(&c),
+                            is_winner: winners.read().contains(&c),
                         }
                     }
                 }

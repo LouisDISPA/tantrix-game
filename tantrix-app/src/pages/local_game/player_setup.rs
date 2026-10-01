@@ -14,9 +14,7 @@ use crate::svg::paths::color_name as color_slug;
 pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Element {
     let mut config = use_signal(|| GameConfig::new(seed));
     let nav = navigator();
-
-    let cfg = config.read().clone();
-    let can_start = cfg.active_count() >= 2;
+    let can_start = use_memo(move || config.read().active_count() >= 2);
 
     rsx! {
         MenuScreen {
@@ -27,7 +25,7 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                             let _ = nav.push(Route::MainMenu {});
                         },
                     div { class: "player-slots",
-                        for & (color , kind) in cfg.players.iter() {
+                        for (color , kind) in config.read().players {
                             {
                                 let is_active = kind != PlayerKind::Off;
                                 let color_class = format!("color-{}", color_slug(color));
@@ -57,7 +55,7 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                     }
                     MenuButton {
                         full_width: true,
-                        disabled: !can_start,
+                        disabled: !can_start(),
                         on_click: move |_| on_start.call(config.read().clone()),
                         "Start Game"
                     }

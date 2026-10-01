@@ -177,48 +177,85 @@ impl Default for UiState {
     }
 }
 
-impl UiState {
+/// The turn flow's multi-field changes to the UI state.
+///
+/// Each writes field by field, and only the fields whose value changes: a
+/// write through the whole store (`ui_state.write()`) marks *every* field
+/// dirty — the camera, the animation hints, the scoring overlay — and wakes
+/// all of their readers for nothing.
+#[store(pub)]
+impl<Lens> Store<UiState, Lens> {
     /// Clear all selection/hover state and return to SelectTile phase.
-    pub fn reset_selection(&mut self) {
-        self.selected_tile = None;
-        self.selected_position = None;
-        self.hovered = Hovered::None;
-        self.phase = TurnPhase::SelectTile;
-        self.message.clear();
+    fn reset_selection(&mut self) {
+        self.reset_selection_with_message("");
+    }
+
+    /// [`reset_selection`](UiStateStoreImplExt::reset_selection), then show
+    /// `message` in the status bar (none when empty).
+    fn reset_selection_with_message(&mut self, message: &str) {
+        self.clear_selection();
+        set_if_changed(self.phase(), TurnPhase::SelectTile);
+        let stale = *self.message().peek() != message;
+        if stale {
+            self.message().set(message.to_string());
+        }
+    }
+
+    /// Forget the selected tile and position and what is hovered; the phase
+    /// and message stay as they are.
+    fn clear_selection(&mut self) {
+        set_if_changed(self.selected_tile(), None);
+        set_if_changed(self.selected_position(), None);
+        set_if_changed(self.hovered(), Hovered::None);
     }
 
     /// Navigate one step back in the turn flow.
-    pub fn go_back(&mut self) {
-        match self.phase {
+    fn go_back(&mut self) {
+        // Copy the phase out: a read guard held across the writes below
+        // would conflict with them.
+        let phase = *self.phase().peek();
+        match phase {
             TurnPhase::SelectRotation => {
-                self.selected_position = None;
-                self.hovered = Hovered::None;
-                self.phase = TurnPhase::SelectPosition;
+                set_if_changed(self.selected_position(), None);
+                set_if_changed(self.hovered(), Hovered::None);
+                self.phase().set(TurnPhase::SelectPosition);
             }
             TurnPhase::SelectPosition => {
-                self.selected_position = None;
-                self.selected_tile = None;
-                self.hovered = Hovered::None;
-                self.phase = TurnPhase::SelectTile;
+                self.clear_selection();
+                self.phase().set(TurnPhase::SelectTile);
             }
             _ => {}
         }
     }
 
     /// Select a tile and enter position-selection phase.
-    pub fn select_tile(&mut self, idx: usize) {
-        self.selected_tile = Some(idx);
-        self.selected_position = None;
-        self.hovered = Hovered::None;
-        self.phase = TurnPhase::SelectPosition;
-        self.message.clear();
+    fn select_tile(&mut self, idx: usize) {
+        set_if_changed(self.selected_tile(), Some(idx));
+        set_if_changed(self.selected_position(), None);
+        set_if_changed(self.hovered(), Hovered::None);
+        set_if_changed(self.phase(), TurnPhase::SelectPosition);
+        set_if_changed(self.message(), String::new());
     }
 
     /// Record that a move was just played: recenter camera and mark new tile.
-    pub fn after_move(&mut self, player_color: Color, tile_idx: usize, position: Position) {
-        self.pan_x = 0.0;
-        self.pan_y = 0.0;
-        self.new_tile = Some((player_color, tile_idx));
-        self.last_placed_position = Some(position);
+    fn after_move(&mut self, player_color: Color, tile_idx: usize, position: Position) {
+        set_if_changed(self.pan_x(), 0.0);
+        set_if_changed(self.pan_y(), 0.0);
+        set_if_changed(self.new_tile(), Some((player_color, tile_idx)));
+        set_if_changed(self.last_placed_position(), Some(position));
+    }
+}
+
+/// Write `value` into one reactive field unless it already holds it, so the
+/// field's readers are only woken by a real change (a write marks them dirty
+/// whatever the value).
+pub fn set_if_changed<T, F>(mut field: F, value: T)
+where
+    T: PartialEq + 'static,
+    F: Readable<Target = T> + Writable<Target = T>,
+{
+    let changed = *field.peek() != value;
+    if changed {
+        field.set(value);
     }
 }

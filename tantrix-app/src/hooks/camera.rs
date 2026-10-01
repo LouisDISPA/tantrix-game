@@ -1,111 +1,102 @@
 use dioxus::prelude::*;
 
 use crate::state::game_state::GameCtx;
-use crate::state::ui_state::{Drag, UiState, UiStateStoreExt};
+use crate::state::ui_state::{set_if_changed, Drag, UiState, UiStateStoreExt};
 
-/// Immutable display data for the current camera pose.
+const MIN_ZOOM: f64 = 0.3;
+const MAX_ZOOM: f64 = 5.0;
+
+/// The board camera's controls: zoom in/out, reset, wheel zoom and
+/// drag-to-pan. They write the camera fields of `UiState` one at a time
+/// (`zoom`, `pan_x`, `pan_y`, `drag`), so a drag's mousemoves wake the
+/// readers of the pan only, never the rest of the board.
 ///
-/// `style` sets the custom properties `--zoom`, `--pan-x`, `--pan-y` and leaves
-/// the actual `transform` declaration in CSS — this keeps transitions and
-/// easing configurable without touching Rust.
-pub struct BoardCamera {
-    pub style: String,
-    pub zoom_percent: i32,
-    pub viewport_class: String,
-}
-
-/// Camera event handlers. Holds a `Copy`able `Store` so each method just
-/// copies it out of `self` — satisfies Dioxus's ownership rules for closures
-/// attached to event handlers in RSX.
+/// Holds nothing but the `Copy`able `Store`, so each method copies it out of
+/// `self` — what event-handler closures in RSX need. It reads nothing either:
+/// each component reads the camera fields it shows (the viewport its
+/// transform, the zoom buttons the zoom level).
 #[derive(Clone, Copy)]
-pub struct BoardCameraHandlers {
+pub struct BoardCamera {
     ui_state: Store<UiState>,
 }
 
-impl BoardCameraHandlers {
+impl BoardCamera {
+    pub fn new(ui_state: Store<UiState>) -> Self {
+        Self { ui_state }
+    }
+
     pub fn zoom_in(self) {
-        let z = *self.ui_state.zoom().read();
-        self.ui_state.zoom().set((z * 1.25).clamp(0.3, 5.0));
+        self.zoom_with(|zoom| zoom * 1.25);
     }
 
     pub fn zoom_out(self) {
-        let z = *self.ui_state.zoom().read();
-        self.ui_state.zoom().set((z / 1.25).clamp(0.3, 5.0));
+        self.zoom_with(|zoom| zoom / 1.25);
     }
 
-    pub fn reset_zoom(mut self) {
-        let mut ui = self.ui_state.write();
-        ui.zoom = 1.0;
-        ui.pan_x = 0.0;
-        ui.pan_y = 0.0;
+    /// Back to 100%, centered.
+    pub fn reset_zoom(self) {
+        set_if_changed(self.ui_state.zoom(), 1.0);
+        set_if_changed(self.ui_state.pan_x(), 0.0);
+        set_if_changed(self.ui_state.pan_y(), 0.0);
     }
 
-    pub fn on_wheel(self, evt: &WheelEvent) {
-        let delta_y = evt.data().delta().strip_units().y;
-        let z = *self.ui_state.zoom().read();
+    /// Zoom in a step for a wheel scrolled up (`delta_y < 0`), out otherwise.
+    pub fn on_wheel(self, delta_y: f64) {
         let factor = if delta_y < 0.0 { 1.1 } else { 0.9 };
-        self.ui_state.zoom().set((z * factor).clamp(0.3, 5.0));
+        self.zoom_with(|zoom| zoom * factor);
     }
 
-    pub fn on_drag_start(self, evt: &MouseEvent) {
-        let coords = evt.data().client_coordinates();
+    /// The pointer went down at (`x`, `y`): start panning from there.
+    pub fn drag_start(self, x: f64, y: f64) {
         self.ui_state.drag().set(Drag::Active {
-            last_x: coords.x,
-            last_y: coords.y,
+            last_x: x,
+            last_y: y,
         });
     }
 
-    pub fn on_drag_move(self, evt: &MouseEvent) {
-        let mut ui = self.ui_state;
-        let Drag::Active { last_x, last_y } = *ui.drag().read() else {
+    /// The pointer moved to (`x`, `y`): pan by the distance from the last
+    /// position while a drag is on.
+    pub fn drag_to(self, x: f64, y: f64) {
+        let ui = self.ui_state;
+        let Drag::Active { last_x, last_y } = *ui.drag().peek() else {
             return;
         };
-        let coords = evt.data().client_coordinates();
-        let z = *ui.zoom().read();
-        let dx = coords.x - last_x;
-        let dy = coords.y - last_y;
-        let mut w = ui.write();
-        w.pan_x -= dx / z;
-        w.pan_y -= dy / z;
-        w.drag = Drag::Active {
-            last_x: coords.x,
-            last_y: coords.y,
-        };
+        let zoom = *ui.zoom().peek();
+        let pan_x = *ui.pan_x().peek() - (x - last_x) / zoom;
+        let pan_y = *ui.pan_y().peek() - (y - last_y) / zoom;
+        set_if_changed(ui.pan_x(), pan_x);
+        set_if_changed(ui.pan_y(), pan_y);
+        // Its readers only look at whether a drag is on, through a memo.
+        ui.drag().set(Drag::Active {
+            last_x: x,
+            last_y: y,
+        });
     }
 
-    pub fn on_drag_end(self) {
-        self.ui_state.drag().set(Drag::Idle);
+    pub fn drag_end(self) {
+        set_if_changed(self.ui_state.drag(), Drag::Idle);
+    }
+
+    fn zoom_with(self, change: impl FnOnce(f64) -> f64) {
+        let zoom = *self.ui_state.zoom().peek();
+        set_if_changed(self.ui_state.zoom(), change(zoom).clamp(MIN_ZOOM, MAX_ZOOM));
     }
 }
 
-/// Read the current zoom/pan/drag state and expose it plus a bundle of event
-/// handlers. Components that need the CSS transform read this — everything
-/// that needs to *mutate* the camera uses the handler struct.
-pub fn use_board_camera() -> (BoardCamera, BoardCameraHandlers) {
-    let ctx = use_context::<GameCtx>();
-    let ui_state = ctx.ui_state;
+/// The board camera of the game on screen (see [`BoardCamera`]). Subscribes
+/// to nothing.
+pub fn use_board_camera() -> BoardCamera {
+    BoardCamera::new(use_context::<GameCtx>().ui_state)
+}
 
-    let zoom = ui_state.zoom()();
-    let pan_x = ui_state.pan_x()();
-    let pan_y = ui_state.pan_y()();
-    let dragging = ui_state.drag()().is_active();
+/// The viewport's custom properties for a camera pose. They feed the
+/// `transform` declared in CSS, which keeps transitions and easing
+/// configurable without touching Rust.
+pub fn camera_style(zoom: f64, pan_x: f64, pan_y: f64) -> String {
+    format!("--zoom: {zoom:.3}; --pan-x: {pan_x:.1}px; --pan-y: {pan_y:.1}px;")
+}
 
-    let style = format!(
-        "--zoom: {:.3}; --pan-x: {:.1}px; --pan-y: {:.1}px;",
-        zoom, pan_x, pan_y
-    );
-
-    let mut viewport_class = String::from("board-viewport");
-    if dragging {
-        viewport_class.push_str(" dragging");
-    }
-
-    (
-        BoardCamera {
-            style,
-            zoom_percent: (zoom * 100.0) as i32,
-            viewport_class,
-        },
-        BoardCameraHandlers { ui_state },
-    )
+/// The zoom level as the reset button shows it.
+pub fn zoom_percent(zoom: f64) -> i32 {
+    (zoom * 100.0) as i32
 }

@@ -1,4 +1,6 @@
 mod logger;
+#[cfg(test)]
+pub mod render_count;
 
 // The server binary never runs the client, so it never calls this.
 #[cfg_attr(feature = "server", allow(unused_imports))]

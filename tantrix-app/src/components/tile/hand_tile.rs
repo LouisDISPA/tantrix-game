@@ -4,7 +4,9 @@ use tantrix_game::{Color, Rotation};
 use crate::components::tile::hex_svg::HexSvg;
 use crate::state::actions::execute_move;
 use crate::state::game_state::GameCtx;
-use crate::state::ui_state::{HandTileState, Hovered, TurnPhase, UiStateStoreExt};
+use crate::state::ui_state::{
+    HandTileState, Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt,
+};
 use crate::svg::paths::hex_polygon_points;
 
 /// Fixed viewBox size for hand tiles — the SVG internal coordinate space.
@@ -137,7 +139,7 @@ fn click_tile(ctx: GameCtx, idx: usize) {
     match phase {
         TurnPhase::SelectPosition | TurnPhase::SelectRotation => {
             if *ui_state.selected_tile().read() == Some(idx) {
-                ui_state.write().reset_selection();
+                ui_state.reset_selection();
                 return;
             }
         }
@@ -164,6 +166,6 @@ fn click_tile(ctx: GameCtx, idx: usize) {
     if let Some((pos, rot)) = auto {
         execute_move(ctx, idx, pos, rot);
     } else {
-        ui_state.write().select_tile(idx);
+        ui_state.select_tile(idx);
     }
 }

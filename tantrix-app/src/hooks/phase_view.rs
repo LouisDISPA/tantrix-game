@@ -1,3 +1,13 @@
+//! The board layers' view of the current turn phase, as three separate
+//! memos: the empty hexes to click, the ghost preview, and the rotation
+//! wheel.
+//!
+//! `Board` creates all three once and hands each to the one component that
+//! shows it as a `ReadSignal` prop, so each reader re-renders only when its
+//! own value changes: hovering a hex moves the preview, not the hex list or
+//! the wheel. Each memo also reads only the `UiState` fields its phase
+//! needs — the wheel never reads `hovered` at all.
+
 use dioxus::prelude::*;
 use tantrix_game::{Placement, Position, Rotation, Tile};
 
@@ -21,166 +31,118 @@ pub struct WheelData {
     pub rotations: Vec<Rotation>,
 }
 
-/// Everything the board layers need for the current turn phase. A single memo
-/// replaces three separate hooks so phase matching and hand_info lookups
-/// happen once per render.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct PhaseView {
-    /// Empty hex positions to show as click targets (empty in Idle / game over).
-    pub positions: Vec<ValidPosition>,
-    /// Ghost preview of the placement being considered (hover or selection-driven).
-    pub preview: Option<Placement>,
-    /// Rotation wheel data — present only during SelectRotation.
-    pub wheel: Option<WheelData>,
-}
-
-pub fn use_phase_view() -> Memo<PhaseView> {
+/// Empty hex positions to show as click targets: the hovered hand tile's
+/// (faintly) while a tile is being chosen, then the selected tile's. Empty
+/// while the AI plays and once the game is over.
+pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
     use_memo(move || {
-        let phase = ui_state.phase()();
-        let hovered = ui_state.hovered()();
-        let selected_tile = ui_state.selected_tile()();
-        let selected_position = ui_state.selected_position()();
-
+        let (idx, faint) = match ui_state.phase()() {
+            TurnPhase::SelectTile => (ui_state.hovered()().hand_tile(), true),
+            TurnPhase::SelectPosition | TurnPhase::SelectRotation => {
+                (ui_state.selected_tile()(), false)
+            }
+            TurnPhase::WaitingForAi | TurnPhase::GameOver => return Vec::new(),
+        };
+        let Some(idx) = idx else {
+            return Vec::new();
+        };
         let gs = ctx.game_state.read();
-        let hand = gs.hand(gs.current_player());
+        let Some(info) = gs.hand_info().get(idx) else {
+            return Vec::new();
+        };
+        info.positions
+            .keys()
+            .map(|&pos| ValidPosition {
+                pos,
+                forced: info.has_forced,
+                faint,
+            })
+            .collect()
+    })
+}
 
-        match phase {
-            TurnPhase::SelectTile => {
-                let Some(idx) = hovered.hand_tile() else {
-                    return PhaseView::default();
-                };
-                let Some(info) = gs.hand_info().get(idx) else {
-                    return PhaseView::default();
-                };
-                let positions = info
-                    .positions
-                    .keys()
-                    .map(|&pos| ValidPosition {
-                        pos,
-                        forced: info.has_forced,
-                        faint: true,
-                    })
-                    .collect();
+/// Ghost preview of the placement being considered: the hovered hand tile's
+/// only move, the selected tile at the hovered (or selected) position, or at
+/// the selected position in the hovered (or first) rotation.
+pub fn use_preview_placement() -> Memo<Option<Placement>> {
+    let ctx = use_context::<GameCtx>();
+    let ui_state = ctx.ui_state;
 
-                // Auto-preview when a hovered tile has exactly one valid move.
-                let preview = hand.get(idx).and_then(|&tile| {
-                    if info.positions.len() == 1 {
-                        let (&position, rots) = info.positions.iter().next()?;
-                        if rots.len() == 1 {
-                            return Some(Placement {
-                                tile,
-                                position,
-                                rotation: rots[0],
-                            });
-                        }
-                    }
-                    None
-                });
-
-                PhaseView {
-                    positions,
-                    preview,
-                    wheel: None,
-                }
+    use_memo(move || match ui_state.phase()() {
+        TurnPhase::SelectTile => {
+            // Auto-preview when a hovered tile has exactly one valid move.
+            let idx = ui_state.hovered()().hand_tile()?;
+            let gs = ctx.game_state.read();
+            let info = gs.hand_info().get(idx)?;
+            let tile = *gs.hand(gs.current_player()).get(idx)?;
+            if info.positions.len() != 1 {
+                return None;
             }
-
-            TurnPhase::SelectPosition => {
-                let Some(idx) = selected_tile else {
-                    return PhaseView::default();
-                };
-                let Some(info) = gs.hand_info().get(idx) else {
-                    return PhaseView::default();
-                };
-                let positions = info
-                    .positions
-                    .keys()
-                    .map(|&pos| ValidPosition {
-                        pos,
-                        forced: info.has_forced,
-                        faint: false,
-                    })
-                    .collect();
-
-                let preview_pos = hovered.board_position().or(selected_position);
-                let preview = preview_pos.and_then(|position| {
-                    let tile = *hand.get(idx)?;
-                    let rotations = info.positions.get(&position)?;
-                    let rotation = hovered.rotation().unwrap_or(*rotations.first()?);
-                    Some(Placement {
-                        tile,
-                        position,
-                        rotation,
-                    })
-                });
-
-                PhaseView {
-                    positions,
-                    preview,
-                    wheel: None,
-                }
-            }
-
-            TurnPhase::SelectRotation => {
-                let Some(idx) = selected_tile else {
-                    return PhaseView::default();
-                };
-                let Some(info) = gs.hand_info().get(idx) else {
-                    return PhaseView::default();
-                };
-                let positions = info
-                    .positions
-                    .keys()
-                    .map(|&pos| ValidPosition {
-                        pos,
-                        forced: info.has_forced,
-                        faint: false,
-                    })
-                    .collect();
-
-                let Some(position) = selected_position else {
-                    return PhaseView {
-                        positions,
-                        preview: None,
-                        wheel: None,
-                    };
-                };
-                let Some(tile) = hand.get(idx).copied() else {
-                    return PhaseView {
-                        positions,
-                        preview: None,
-                        wheel: None,
-                    };
-                };
-                let Some(rotations) = info.positions.get(&position).cloned() else {
-                    return PhaseView {
-                        positions,
-                        preview: None,
-                        wheel: None,
-                    };
-                };
-
-                let rotation = hovered
-                    .rotation()
-                    .or_else(|| rotations.first().copied())
-                    .unwrap_or(Rotation::None);
-                let preview = Some(Placement {
-                    tile,
-                    position,
-                    rotation,
-                });
-                let wheel = Some(WheelData { tile, rotations });
-
-                PhaseView {
-                    positions,
-                    preview,
-                    wheel,
-                }
-            }
-
-            TurnPhase::WaitingForAi | TurnPhase::GameOver => PhaseView::default(),
+            let (&position, rotations) = info.positions.iter().next()?;
+            (rotations.len() == 1).then(|| Placement {
+                tile,
+                position,
+                rotation: rotations[0],
+            })
         }
+
+        TurnPhase::SelectPosition => {
+            let idx = ui_state.selected_tile()()?;
+            let hovered = ui_state.hovered()();
+            let position = hovered
+                .board_position()
+                .or_else(|| ui_state.selected_position()())?;
+            let gs = ctx.game_state.read();
+            let tile = *gs.hand(gs.current_player()).get(idx)?;
+            let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
+            let rotation = hovered.rotation().unwrap_or(*rotations.first()?);
+            Some(Placement {
+                tile,
+                position,
+                rotation,
+            })
+        }
+
+        TurnPhase::SelectRotation => {
+            let idx = ui_state.selected_tile()()?;
+            let position = ui_state.selected_position()()?;
+            let gs = ctx.game_state.read();
+            let tile = *gs.hand(gs.current_player()).get(idx)?;
+            let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
+            let rotation = ui_state.hovered()()
+                .rotation()
+                .or_else(|| rotations.first().copied())
+                .unwrap_or(Rotation::None);
+            Some(Placement {
+                tile,
+                position,
+                rotation,
+            })
+        }
+
+        TurnPhase::WaitingForAi | TurnPhase::GameOver => None,
+    })
+}
+
+/// The rotation wheel's tile and the rotations that fit at the selected
+/// position — only during SelectRotation. Does not depend on what is
+/// hovered: hovering a rotation changes the preview, not the wheel.
+pub fn use_rotation_wheel() -> Memo<Option<WheelData>> {
+    let ctx = use_context::<GameCtx>();
+    let ui_state = ctx.ui_state;
+
+    use_memo(move || {
+        if ui_state.phase()() != TurnPhase::SelectRotation {
+            return None;
+        }
+        let idx = ui_state.selected_tile()()?;
+        let position = ui_state.selected_position()()?;
+        let gs = ctx.game_state.read();
+        let tile = *gs.hand(gs.current_player()).get(idx)?;
+        let rotations = gs.hand_info().get(idx)?.positions.get(&position)?.clone();
+        Some(WheelData { tile, rotations })
     })
 }

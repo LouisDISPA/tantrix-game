@@ -16,32 +16,51 @@ use crate::state::game_state::{GameCtx, GameState};
 use crate::state::online_state::{
     queries, CommandSender, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
-use crate::state::ui_state::{TurnPhase, UiState};
+use crate::state::ui_state::{
+    set_if_changed, TurnPhase, UiState, UiStateStoreExt, UiStateStoreImplExt,
+};
 
-/// Build the `GameCtx` for an online game, seeded from `initial` and kept
-/// live via reactive effects on the surrounding online store + sender.
+/// Build the `GameCtx` for an online game, dealt from the room's latest
+/// snapshot and kept live via reactive effects on the surrounding online
+/// store + sender. Call it once the room has sent a snapshot
+/// ([`use_has_snapshot`]).
 pub fn use_online_game_ctx(
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
-    initial: GameSnapshot,
 ) -> GameCtx {
     let my_color = use_memo(move || queries::my_color_of(state));
     let names = use_memo(move || player_names_of(state));
     let driver = GameDriver::Online(RoomLink::new(sender, my_color, names));
-    let ctx = use_game_ctx(driver, move || GameState::from_snapshot(&initial));
+    // The first snapshot is read once, without subscribing: the effect below
+    // brings in every later one.
+    let ctx = use_game_ctx(driver, move || {
+        let phase = state.phase();
+        let phase = phase.peek();
+        let snapshot = snapshot_in(&phase).expect("the online game starts from a snapshot");
+        GameState::from_snapshot(snapshot)
+    });
 
     fan_out_snapshots(state, ctx.game_state, ctx.ui_state);
     ctx
 }
 
-/// Read the Playing/Ended snapshot out of the online state, if any. Returns
-/// `None` while the server hasn't sent `GameStarted` yet.
-pub fn use_initial_snapshot(state: Store<OnlineState>) -> Option<GameSnapshot> {
-    let phase = state.phase();
-    let phase = phase.read();
-    match &*phase {
-        OnlinePhase::Playing { snapshot, .. } => Some(snapshot.clone()),
-        OnlinePhase::Ended { snapshot, .. } => Some(snapshot.clone()),
+/// Whether the room has sent the game's first snapshot (`GameStarted`).
+/// A memo, so its reader re-renders when that changes and not on every
+/// snapshot after it.
+pub fn use_has_snapshot(state: Store<OnlineState>) -> Memo<bool> {
+    use_memo(move || {
+        let phase = state.phase();
+        let phase = phase.read();
+        snapshot_in(&phase).is_some()
+    })
+}
+
+/// The Playing/Ended snapshot in `phase`, if any.
+fn snapshot_in(phase: &OnlinePhase) -> Option<&GameSnapshot> {
+    match phase {
+        OnlinePhase::Playing { snapshot, .. } | OnlinePhase::Ended { snapshot, .. } => {
+            Some(snapshot)
+        }
         _ => None,
     }
 }
@@ -66,16 +85,16 @@ fn fan_out_snapshots(
 
         *game_state.write() = GameState::from_snapshot(snapshot);
 
-        let mut ui = ui_state.write();
+        // Field by field (and never reading `ui_state`, which would make this
+        // effect rerun on its own writes): a snapshot leaves the camera, the
+        // animation hints and the scoring overlay alone.
         if terminal {
-            ui.phase = TurnPhase::GameOver;
-            ui.selected_tile = None;
-            ui.selected_position = None;
-            ui.hovered = crate::state::ui_state::Hovered::None;
+            ui_state.clear_selection();
+            set_if_changed(ui_state.phase(), TurnPhase::GameOver);
         } else {
-            ui.reset_selection();
+            ui_state.reset_selection();
             if let Some(m) = last_move {
-                ui.last_placed_position = Some(m.position);
+                set_if_changed(ui_state.last_placed_position(), Some(m.position));
             }
         }
     });

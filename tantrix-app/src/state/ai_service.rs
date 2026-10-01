@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use tantrix_game::Player;
 
 use crate::state::game_state::GameCtx;
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::state::ui_state::{set_if_changed, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::util::sleep;
 
 /// Run AI players' turns with cinematic pacing: select the tile, sweep to
@@ -36,9 +36,10 @@ pub async fn run_ai_loop(ctx: GameCtx) {
         };
         let Some(chosen) = chosen else { break };
 
+        // The phase already is `WaitingForAi` (checked above): only the
+        // selection changes, so only its readers wake.
         if let Some(idx) = tile_idx {
             ui_state.selected_tile().set(Some(idx));
-            ui_state.phase().set(TurnPhase::WaitingForAi);
         }
 
         sleep(Duration::from_millis(500)).await;
@@ -60,15 +61,9 @@ pub async fn run_ai_loop(ctx: GameCtx) {
                 break;
             }
         };
-        {
-            let mut ui = ui_state.write();
-            ui.new_tile = Some((ai_color, played.hand_index));
-            ui.last_placed_position = Some(chosen.position);
-            ui.selected_tile = None;
-            ui.selected_position = None;
-            ui.pan_x = 0.0;
-            ui.pan_y = 0.0;
-        }
+        ui_state.after_move(ai_color, played.hand_index, chosen.position);
+        set_if_changed(ui_state.selected_tile(), None);
+        set_if_changed(ui_state.selected_position(), None);
 
         sleep(Duration::from_millis(300)).await;
         if !ai_can_continue(ctx, game_state.read().current_player()) {

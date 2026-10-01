@@ -18,9 +18,26 @@
 use dioxus::prelude::*;
 use tantrix_game::{Color, Placement, Player, Position, Rotation};
 
+use crate::state::config::GameConfig;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+use crate::state::ui_state::{
+    set_if_changed, TurnPhase, UiState, UiStateStoreExt, UiStateStoreImplExt,
+};
+
+/// The status message of a turn that must fill a forced space.
+const FORCED_MESSAGE: &str = "Forced move! You must fill a forced space.";
+
+/// Deal a new local game from `config`, with a fresh UI state, and hand the
+/// first turn on: to the AI loop when an AI seat starts. Called from the
+/// setup screen's Start Game, so no component writes state while rendering.
+pub fn start_game(ctx: GameCtx, config: &GameConfig) {
+    let mut game_state = ctx.game_state;
+    let mut ui_state = ctx.ui_state;
+    game_state.set(GameState::new(config));
+    ui_state.set(UiState::default());
+    advance_turn(ctx);
+}
 
 /// Play the current player's tile at `tile_idx` at `pos` in `rotation`.
 /// No-op if the tile index is out of range.
@@ -46,7 +63,7 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
         GameDriver::Online(room) => {
             room.play(player_color, placement);
             let mut ui_state = ctx.ui_state;
-            ui_state.write().reset_selection();
+            ui_state.reset_selection();
         }
     }
 }
@@ -66,9 +83,7 @@ fn play_here(ctx: GameCtx, player: Color, placement: Placement) {
         }
     };
 
-    ui_state
-        .write()
-        .after_move(player, played.hand_index, placement.position);
+    ui_state.after_move(player, played.hand_index, placement.position);
     advance_turn(ctx);
 }
 
@@ -176,16 +191,14 @@ fn settle_turn(ctx: GameCtx) {
         )
     };
 
-    let mut ui = ui_state.write();
     if is_over || !has_moves {
-        ui.phase = TurnPhase::GameOver;
-        ui.message = "Game Over!".to_string();
-        ui.new_tile = None;
+        set_if_changed(ui_state.phase(), TurnPhase::GameOver);
+        set_if_changed(ui_state.message(), "Game Over!".to_string());
+        set_if_changed(ui_state.new_tile(), None);
     } else if has_forced {
-        ui.reset_selection();
-        ui.message = "Forced move! You must fill a forced space.".to_string();
+        ui_state.reset_selection_with_message(FORCED_MESSAGE);
     } else {
-        ui.reset_selection();
+        ui_state.reset_selection();
     }
 }
 

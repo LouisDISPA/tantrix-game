@@ -2,8 +2,6 @@ use dioxus::prelude::*;
 use tantrix_game::{Color, Placement};
 
 use crate::components::tile::hex_svg::HexSvg;
-use crate::state::game_state::GameCtx;
-use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::geometry::{hex_position_style, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
 
 /// What kind of board tile is being rendered.
@@ -19,19 +17,20 @@ pub enum BoardTileVariant {
 /// A tile rendered at its board position. Absolutely positioned via
 /// [`hex_position_style`] using the tile's axial coordinates.
 ///
-/// `highlight_colors`: the scoring paths through the tile, and `dimmed` once
-/// the game is over; the tiles layer works both out once for every tile.
+/// `highlight_colors`: the scoring paths through the tile, `just_placed` for
+/// the last move's placement animation, and `dimmed` once the game is over;
+/// the tiles layer works all three out once for every tile. Reads no state.
 #[component]
 pub fn BoardTile(
     placement: Placement,
     hex_size: f64,
     variant: BoardTileVariant,
     #[props(default)] highlight_colors: Vec<Color>,
+    #[props(default)] just_placed: bool,
     #[props(default)] dimmed: bool,
 ) -> Element {
-    let ctx = use_context::<GameCtx>();
-    let just_placed =
-        use_memo(move || ctx.ui_state.last_placed_position()() == Some(placement.position));
+    #[cfg(test)]
+    crate::util::render_count::record("BoardTile", placement.position);
 
     let style = hex_position_style(placement.position, hex_size);
     let is_preview = matches!(variant, BoardTileVariant::Preview);
@@ -40,7 +39,7 @@ pub fn BoardTile(
         div {
             class: "board-tile hex-tile",
             class: if is_preview { "tile-preview" },
-            class: if just_placed() { "just-placed" },
+            class: if just_placed { "just-placed" },
             class: if dimmed { "dimmed-tile" },
             style: "{style}",
             "data-position": "{placement.position.x()},{placement.position.y()}",

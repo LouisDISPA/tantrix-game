@@ -11,26 +11,27 @@ use crate::state::game_state::GameCtx;
 use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::paths::color_name as color_slug;
 
+/// Each value it shows is a memo (or the `message` field, read inline), so
+/// it re-renders when its text changes: not on a hover, a drag, or an AI
+/// selecting its tile.
 #[component]
 pub fn StatusBar() -> Element {
+    #[cfg(test)]
+    crate::util::render_count::record("StatusBar", ());
     let ctx = use_context::<GameCtx>();
     let ui = ctx.ui_state;
 
-    let phase = ui.phase()();
-    let message = ui.message()();
-    let current_color = use_current_player()();
-    let has_forced = use_has_forced_move()();
-    let color_class = format!("color-{}", color_slug(current_color));
-
-    let bag_count = ctx.game_state.read().bag_count();
-
-    let phase_text = phase.status_text(current_color, has_forced);
-    let has_alert = !message.is_empty();
+    let current_color = use_current_player();
+    let has_forced = use_has_forced_move();
+    let phase_text = use_memo(move || ui.phase()().status_text(current_color(), has_forced()));
+    let bag_count = use_memo(move || ctx.game_state.read().bag_count());
+    // The field's handle, not its value: each read below subscribes.
+    let message = ui.message();
 
     rsx! {
         div { class: "status-bar",
             div {
-                class: "hud-chip {color_class}",
+                class: "hud-chip color-{color_slug(current_color())}",
 
                 // Left — player identity
                 div { class: "hud-chip-player",
@@ -43,8 +44,8 @@ pub fn StatusBar() -> Element {
                 // Center — phase instruction or alert
                 span {
                     class: "hud-chip-phase",
-                    class: if has_alert { "alert" },
-                    if has_alert { "{message}" } else { "{phase_text}" }
+                    class: if !message.read().is_empty() { "alert" },
+                    if message.read().is_empty() { "{phase_text}" } else { "{message}" }
                 }
 
                 span { class: "hud-chip-sep", aria_hidden: "true", "·" }

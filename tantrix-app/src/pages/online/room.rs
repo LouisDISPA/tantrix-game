@@ -15,7 +15,7 @@ use crate::pages::online::game::OnlineGameView;
 use crate::pages::online::lobby::OnlineLobbyView;
 use crate::pages::online::screens::{ConnectingView, FailedView};
 use crate::state::nickname;
-use crate::state::online_state::{OnlinePhase, OnlineState, OnlineStateStoreExt};
+use crate::state::online_state::{FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt};
 use crate::state::room_connection;
 
 #[component]
@@ -47,28 +47,53 @@ pub fn OnlineRoom(code: String) -> Element {
 
 #[component]
 fn OnlineRoomSession(code: String, create: bool, on_retry: EventHandler<()>) -> Element {
-    let initial_nickname = nickname::load_or_generate();
-
     let state = use_store(|| OnlineState::new(code.clone()));
     let sender = use_signal(|| None);
 
+    // Once per session: the stored nickname (or a fresh one) is read when the
+    // session opens, not on every render.
     use_hook(|| {
         spawn_session(
             state,
             sender,
             code.clone(),
             create,
-            initial_nickname.clone(),
+            nickname::load_or_generate(),
         );
     });
 
-    let phase = state.phase();
-    let phase = phase.read().clone();
-    match phase {
-        OnlinePhase::Connecting => rsx! { ConnectingView { state, on_retry } },
-        OnlinePhase::Lobby { .. } => rsx! { OnlineLobbyView { state, sender } },
-        OnlinePhase::Playing { .. } => rsx! { OnlineGameView { state, sender } },
-        OnlinePhase::Ended { .. } => rsx! { OnlineGameView { state, sender } },
-        OnlinePhase::Failed { reason } => rsx! { FailedView { reason, on_retry } },
+    // The screen for the room's phase. A memo, so a lobby update or a game
+    // snapshot (which keep the screen) does not re-render this component or
+    // clone the phase.
+    let screen = use_memo(move || RoomScreen::of(&state.phase().read()));
+    match screen() {
+        RoomScreen::Connecting => rsx! { ConnectingView { state, on_retry } },
+        RoomScreen::Lobby => rsx! { OnlineLobbyView { state, sender } },
+        RoomScreen::Playing => rsx! { OnlineGameView { state, sender } },
+        RoomScreen::Ended => rsx! { OnlineGameView { state, sender } },
+        RoomScreen::Failed(reason) => rsx! { FailedView { reason, on_retry } },
+    }
+}
+
+/// Which screen a session shows: one per [`OnlinePhase`], without the
+/// lobby's or the game's contents (each screen reads those itself).
+#[derive(Clone, PartialEq)]
+enum RoomScreen {
+    Connecting,
+    Lobby,
+    Playing,
+    Ended,
+    Failed(FailureReason),
+}
+
+impl RoomScreen {
+    fn of(phase: &OnlinePhase) -> Self {
+        match phase {
+            OnlinePhase::Connecting => Self::Connecting,
+            OnlinePhase::Lobby { .. } => Self::Lobby,
+            OnlinePhase::Playing { .. } => Self::Playing,
+            OnlinePhase::Ended { .. } => Self::Ended,
+            OnlinePhase::Failed { reason } => Self::Failed(reason.clone()),
+        }
     }
 }

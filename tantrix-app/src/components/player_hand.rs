@@ -38,14 +38,22 @@ impl HandPosition {
     }
 }
 
+/// One player's hand. Each value it shows is a memo over the game, so a move
+/// re-renders the hands it changes — the mover's (a tile replaced) and those
+/// whose turn starts or ends — and leaves the others alone.
 #[component]
 pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
+    #[cfg(test)]
+    crate::util::render_count::record("PlayerHand", color);
     let ctx = use_context::<GameCtx>();
 
-    let is_current = ctx.game_state.read().current_player() == color;
-    let hand_tiles = ctx.game_state.read().hand(color).to_vec();
-    let color_class = format!("color-{}", color_slug(color));
+    let is_current = use_memo(move || ctx.game_state.read().current_player() == color);
+    let tiles = use_memo(move || ctx.game_state.read().hand(color).to_vec());
+    // Player nickname (online) + whether this seat belongs to the local user.
+    let player_name = use_memo(move || ctx.driver.player_name(color));
+    let is_mine = use_memo(move || ctx.driver.my_color() == Some(color));
 
+    let color_class = format!("color-{}", color_slug(color));
     let pos_class = position.css_class();
     let area_class = position.area_class();
     let tiles_class = if position.is_vertical() {
@@ -54,34 +62,30 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
         "hand-tiles horizontal"
     };
 
-    // Player nickname (online) + whether this seat belongs to the local user.
-    let player_name = ctx.driver.player_name(color);
-    let is_mine = ctx.driver.my_color() == Some(color);
-
     rsx! {
         div {
             class: "player-hand {pos_class} {area_class} {color_class}",
-            class: if is_current { "active" },
-            class: if is_mine { "mine" },
+            class: if is_current() { "active" },
+            class: if is_mine() { "mine" },
 
             div { class: "hand-header",
-                if is_current {
+                if is_current() {
                     span { class: "active-dot" }
                 }
                 span { class: "hand-header-color", "{color}" }
-                if let Some(name) = player_name {
+                if let Some(name) = player_name() {
                     span { class: "hand-header-name", "{name}" }
                 }
-                if is_mine {
+                if is_mine() {
                     span { class: "hand-header-you", "you" }
                 }
             }
 
-            if hand_tiles.is_empty() {
+            if tiles.read().is_empty() {
                 div { class: "hand-empty", "No tiles" }
             } else {
                 div { class: "{tiles_class}",
-                    for (i, tile) in hand_tiles.iter().copied().enumerate() {
+                    for (i, tile) in tiles.read().iter().copied().enumerate() {
                         HandTile { key: "{color:?}-{tile:?}", color, index: i }
                     }
                 }

@@ -1,32 +1,39 @@
 use dioxus::prelude::*;
 
+use crate::hooks::camera::zoom_percent;
 use crate::hooks::use_board_camera;
 use crate::state::actions::end_game;
 use crate::state::game_state::GameCtx;
+use crate::state::ui_state::UiStateStoreExt;
 
-/// Floating zoom buttons in the corner of the board.
+/// Floating zoom buttons in the corner of the board. Reads the zoom level
+/// only, so panning the board does not re-render them.
 #[component]
 pub fn ZoomControls() -> Element {
-    let (camera, cam_handlers) = use_board_camera();
+    #[cfg(test)]
+    crate::util::render_count::record("ZoomControls", ());
+    let ctx = use_context::<GameCtx>();
+    let camera = use_board_camera();
+    let percent = use_memo(move || zoom_percent(ctx.ui_state.zoom()()));
 
     rsx! {
         div { class: "zoom-controls",
             button {
                 class: "zoom-btn",
                 title: "Zoom in",
-                onclick: move |_| cam_handlers.zoom_in(),
+                onclick: move |_| camera.zoom_in(),
                 "+"
             }
             button {
                 class: "zoom-btn zoom-label",
                 title: "Reset zoom",
-                onclick: move |_| cam_handlers.reset_zoom(),
-                "{camera.zoom_percent}%"
+                onclick: move |_| camera.reset_zoom(),
+                "{percent}%"
             }
             button {
                 class: "zoom-btn",
                 title: "Zoom out",
-                onclick: move |_| cam_handlers.zoom_out(),
+                onclick: move |_| camera.zoom_out(),
                 "−"
             }
         }
