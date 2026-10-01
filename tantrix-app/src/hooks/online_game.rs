@@ -22,8 +22,8 @@ use crate::state::ui_state::{
 
 /// Build the `GameCtx` for an online game, dealt from the room's latest
 /// snapshot and kept live via reactive effects on the surrounding online
-/// store + sender. Call it once the room has sent a snapshot
-/// ([`use_has_snapshot`]).
+/// store + sender. Call it once the room has sent a snapshot (in the
+/// Playing or Ended phase).
 pub fn use_online_game_ctx(
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
@@ -42,17 +42,6 @@ pub fn use_online_game_ctx(
 
     fan_out_snapshots(state, ctx.game_state, ctx.ui_state);
     ctx
-}
-
-/// Whether the room has sent the game's first snapshot (`GameStarted`).
-/// A memo, so its reader re-renders when that changes and not on every
-/// snapshot after it.
-pub fn use_has_snapshot(state: Store<OnlineState>) -> Memo<bool> {
-    use_memo(move || {
-        let phase = state.phase();
-        let phase = phase.read();
-        snapshot_in(&phase).is_some()
-    })
 }
 
 /// The Playing/Ended snapshot in `phase`, if any.

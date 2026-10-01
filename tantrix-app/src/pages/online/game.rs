@@ -4,10 +4,9 @@
 
 use dioxus::prelude::*;
 
-use crate::hooks::{use_has_snapshot, use_online_game_ctx};
+use crate::hooks::use_online_game_ctx;
 use crate::pages::game::{GameOver, GamePlay};
 use crate::pages::online::hud_badge::OnlineHudBadge;
-use crate::pages::online::screens::WaitingForGame;
 use crate::pages::online::seat_takeover::OnlineSeatTakeover;
 use crate::route::Route;
 use crate::state::online_state::{CommandSender, OnlineState};
@@ -17,16 +16,11 @@ use crate::state::online_state::{OnlinePhase, OnlineStateStoreExt};
 pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSender>>) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("OnlineGameView", ());
-    // Which screen to show, as memos over the room's phase: this view
-    // re-renders when the game starts or ends, not on every snapshot (the
-    // game context fans those out to the components that show them).
-    let has_snapshot = use_has_snapshot(state);
+    // The room mounts this view in the Playing and Ended phases, which both
+    // carry a snapshot. Which screen to show is a memo over the phase: this
+    // view re-renders when the game ends, not on every snapshot (the game
+    // context fans those out to the components that show them).
     let ended = use_memo(move || matches!(&*state.phase().read(), OnlinePhase::Ended { .. }));
-
-    if !has_snapshot() {
-        return rsx! { WaitingForGame {} };
-    }
-
     use_online_game_ctx(state, sender);
 
     if ended() {

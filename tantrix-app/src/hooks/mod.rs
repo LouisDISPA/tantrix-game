@@ -20,6 +20,6 @@ pub mod scoring;
 pub use camera::use_board_camera;
 pub use derived::{use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves};
 pub use game_ctx::use_game_ctx;
-pub use online_game::{use_has_snapshot, use_online_game_ctx};
+pub use online_game::use_online_game_ctx;
 pub use phase_view::{use_preview_placement, use_rotation_wheel, use_valid_positions};
 pub use scoring::use_highlight_map;

@@ -59,19 +59,6 @@ pub fn OnlineLobbyView(
         waiting_names(&phase)
     });
 
-    // Gate on actually being in the Lobby phase — otherwise render nothing
-    // (the router should already have picked a different screen). A memo,
-    // so a lobby update re-renders this view only through the memos above
-    // whose values it changes.
-    let in_lobby = use_memo(move || {
-        let phase = state.phase();
-        let phase = phase.read();
-        matches!(&*phase, OnlinePhase::Lobby { .. })
-    });
-    if !in_lobby() {
-        return rsx! {};
-    }
-
     rsx! {
         MenuScreen { scroll: true,
             MenuCard {

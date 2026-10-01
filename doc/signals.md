@@ -96,7 +96,6 @@ no one maintains hand-synced signals.
 | `use_preview_placement` | `Memo<Option<Placement>>` | phase, selection, hover, `game_state` |
 | `use_rotation_wheel` | `Memo<Option<WheelData>>` | phase, selection, `game_state` — not hover |
 | `use_highlight_map` | `Memo<BTreeMap<Position, Vec<Color>>>` | phase, board, highlight/hover color |
-| `use_has_snapshot` | `Memo<bool>` | the online `phase` (has the room sent a game?) |
 
 `use_board_camera` returns a `BoardCamera` — the zoom/pan controls, which
 write the camera fields — and reads nothing: BoardViewport and

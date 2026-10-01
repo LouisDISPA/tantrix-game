@@ -1,5 +1,7 @@
 //! In-game floating badge showing room code + connection state.
 //! Sits next to the local-game `StatusBar` so that component stays pure.
+//! Only `OnlineGameView` mounts it, so the room is playing or the game is
+//! over: on any other phase the room shows another screen.
 
 use dioxus::prelude::*;
 
@@ -8,14 +10,10 @@ use crate::state::online_state::{OnlinePhase, OnlineState, OnlineStateStoreExt};
 #[component]
 pub fn OnlineHudBadge(state: Store<OnlineState>) -> Element {
     let label_and_dot = use_memo(move || {
-        let phase = state.phase();
-        let phase = phase.read();
-        match &*phase {
-            OnlinePhase::Connecting => ("Connecting…", "dot connecting"),
-            OnlinePhase::Lobby { .. } => ("In lobby", "dot lobby"),
-            OnlinePhase::Playing { .. } => ("Connected", "dot live"),
-            OnlinePhase::Ended { .. } => ("Game over", "dot ended"),
-            OnlinePhase::Failed { .. } => ("Disconnected", "dot failed"),
+        if matches!(&*state.phase().read(), OnlinePhase::Ended { .. }) {
+            ("Game over", "dot ended")
+        } else {
+            ("Connected", "dot live")
         }
     });
     rsx! {

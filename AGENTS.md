@@ -72,7 +72,7 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     camera.rs              # use_board_camera → BoardCamera (zoom/pan controls; writes camera fields one by one)
     derived.rs             # use_placed_moves, use_current_player, use_is_game_over, use_has_forced_move
     game_ctx.rs            # use_game_ctx: builds + provides a game page's GameCtx, runs its AI seats
-    online_game.rs         # use_online_game_ctx: the online GameCtx, fed by room snapshots; use_has_snapshot
+    online_game.rs         # use_online_game_ctx: the online GameCtx, fed by room snapshots
     phase_view.rs          # use_valid_positions, use_preview_placement, use_rotation_wheel (one memo per board layer)
     scoring.rs             # use_highlight_map (scoring overlay)
   pages/                   # Route-level pages
