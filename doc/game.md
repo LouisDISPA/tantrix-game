@@ -88,20 +88,19 @@ seat online.
 
 ## AI turn
 
-`advance_turn` (local games only: `GameDriver::runs_turns`) checks
-`Player::Ai(_)` for the current color. If AI, it sets
-`phase = WaitingForAi`. The effect `use_game_ctx` installs on the game page
-reacts to that phase and spawns the loop from the page scope, so the task
-is cancelled if the page unmounts but not when a clicked tile/hex
-disappears.
+`advance_turn` (local games only: `GameDriver::runs_turns`) first skips the
+players who cannot move, then checks the player to move: an AI with a legal
+move gets `phase = WaitingForAi`, anyone else `settle_turn`. The effect
+`use_game_ctx` installs on the game page reacts to that phase and spawns
+the loop from the page scope, so the task is cancelled if the page unmounts
+but not when a clicked tile/hex disappears.
 
 `state/ai_service.rs::run_ai_loop` iterates while the current player is
-still an AI:
+an AI that can move:
 
 ```
-read legal_moves (forced-filtered if any forced exist)
-if no moves → skip_stuck_players          stop if a whole round can't move
-ai_choose()                               pick best move (and its index in the hand)
+ai_choose()                               pick best move (and its index in the hand);
+                                          None for a human, an AI with no move, game over
 ui.selected_tile = idx
 sleep 500ms                               show tile pick
 ui.selected_position = chosen.position
@@ -111,9 +110,11 @@ ui update (new_tile = PlayedMove::hand_index, last_placed_position, reset select
 sleep 300ms                               hand-draw animation
 ```
 
-When the loop exits (next player is human or game over), `settle_turn`
-runs: skip stuck players (writing `game_state` only if the current player
-`Game::is_stuck`), set message, reset selection.
+When the loop exits (next player is a human, a stuck AI, or the game is
+over), `advance_turn` runs again: it skips stuck players (writing
+`game_state` only if the current player `Game::is_stuck`) and hands the
+turn to the loop again if an AI seat is next, or `settle_turn` sets the
+message and resets the selection for a human (or ends the game).
 
 ## Forced moves
 
@@ -145,8 +146,10 @@ players with no legal move (`Game::is_stuck`: no legal move, game not
 over). It checks each player at most once and returns `true` when nobody
 can move although tiles remain (a stall). `Game::advance` (TUI,
 tournament), the room's `PlayMove` / `SkipTurn` / `StartGame`, and the
-app's `settle_turn` and AI loop all use it, so an all-AI game where
-everyone is stuck ends instead of spinning.
+app's `advance_turn` all use it, so an all-AI game where everyone is
+stuck ends instead of spinning. `advance_turn` is the app's only caller, for
+a human's move and after each AI turn alike, so a skip that lands on an AI
+seat always starts the AI loop.
 
 ## Scoring & game over
 

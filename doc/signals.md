@@ -126,17 +126,23 @@ execute_move       → Local:  game_state.write().play_move
                              ui_state.write().after_move
                              advance_turn
                      Online: RoomLink::play (PlayMove) + reset selection
-advance_turn       → (Local only) if next player is AI:
+advance_turn       → (Local only) skip stuck players, then
+                     if the player to move is an AI with a move:
                          phase = WaitingForAi
-                         the page's AI-turn effect spawns run_ai_loop + settle_turn
-                     else: settle_turn directly
-run_ai_loop        → loops: ai_choose → animate selection → play_move
-settle_turn        → skip stuck players, set phase/message, reset selection
+                         the page's AI-turn effect spawns run_ai_loop,
+                         then advance_turn again
+                     else: settle_turn
+run_ai_loop        → loops while an AI can move:
+                     ai_choose → animate selection → play_move
+settle_turn        → set phase/message (GameOver if nobody can move),
+                     reset selection
 End Game           → end_game → Local: phase = GameOver
                                 Online: RoomLink::end_game (EndGame)
 ```
 
 All turn actions live in `state/actions.rs` and take a single `GameCtx`.
+`advance_turn` is the one place the app skips stuck players, so every skip
+hands the turn on the same way: to the AI loop when an AI seat is next.
 The AI loop is spawned from the game page's scope (the effect is installed
 by `use_game_ctx`) so transient tile/hex unmounts do not cancel it, while
 leaving the page still does.

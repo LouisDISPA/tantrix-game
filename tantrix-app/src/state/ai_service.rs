@@ -7,9 +7,12 @@ use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 use crate::util::sleep;
 
-/// Run an AI player's turn with cinematic pacing: select the tile, sweep to
+/// Run AI players' turns with cinematic pacing: select the tile, sweep to
 /// the position, commit the move, pause, then look at the next player. Exits
-/// when the current player becomes a human or the game is over.
+/// when the current player is a human, an AI with no move, or the game is
+/// over; [`advance_turn`](crate::state::actions::advance_turn) then skips
+/// whoever cannot move and hands the turn on (back to this loop if an AI
+/// seat can move).
 ///
 /// Designed to be `spawn`ed — scalar signal reads happen before any `.await`
 /// to avoid holding guards across suspend points.
@@ -21,24 +24,8 @@ pub async fn run_ai_loop(ctx: GameCtx) {
         if *ui_state.phase().read() != TurnPhase::WaitingForAi {
             break;
         }
-        let (is_ai, has_moves) = {
-            let gs = game_state.read();
-            let is_ai =
-                !gs.is_game_over() && matches!(gs.player(gs.current_player()), Player::Ai(_));
-            (is_ai, !gs.legal_moves().is_empty())
-        };
-        if !is_ai {
-            break;
-        }
-        if !has_moves {
-            // Pass over everyone who cannot move. Once a whole round has no
-            // move the game has stalled, and `settle_turn` ends it.
-            if game_state.write().skip_stuck_players() {
-                break;
-            }
-            continue;
-        }
 
+        // `None` for a human, an AI with no legal move, or a finished game.
         let (chosen, ai_color, tile_idx) = {
             let gs = game_state.read();
             let ai_color = gs.current_player();

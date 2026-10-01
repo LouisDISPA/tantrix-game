@@ -19,7 +19,7 @@ use dioxus::prelude::*;
 use tantrix_game::{Color, Placement, Player, Position, Rotation};
 
 use crate::state::game_driver::GameDriver;
-use crate::state::game_state::GameCtx;
+use crate::state::game_state::{GameCtx, GameState};
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
 /// Play the current player's tile at `tile_idx` at `pos` in `rotation`.
@@ -129,37 +129,16 @@ pub fn end_game(ctx: GameCtx) {
     }
 }
 
-/// Run any end-of-turn bookkeeping. If the next active player is an AI, kick
-/// off the async AI loop; otherwise settle directly. Online rooms are
-/// server-authoritative: the room plays the turns, and nothing happens here.
+/// Pass the turn on after a move or an AI turn: skip the players who cannot
+/// move, then hand the turn to the AI loop if an AI seat has a move to play,
+/// or else to a human (or end the game). Online rooms are
+/// server-authoritative: the room does all of this, and nothing happens here.
 pub fn advance_turn(ctx: GameCtx) {
     let ui_state = ctx.ui_state;
     if !ctx.driver.runs_turns() || *ui_state.phase().read() == TurnPhase::GameOver {
         return;
     }
-
-    let needs_ai = {
-        let gs = ctx.game_state.read();
-        !gs.is_game_over() && matches!(gs.player(gs.current_player()), Player::Ai(_))
-    };
-
-    if needs_ai {
-        // Signal the AI's turn. The game page's `use_effect` owns the spawn
-        // so the task lives in the page scope, not this onclick's leaf.
-        ui_state.phase().set(TurnPhase::WaitingForAi);
-    } else {
-        settle_turn(ctx);
-    }
-}
-
-/// After control returns to a human (or the game ends), skip past any stuck
-/// players, adjust the phase + message, and clear stale selections.
-pub fn settle_turn(ctx: GameCtx) {
-    if *ctx.ui_state.phase().read() == TurnPhase::GameOver {
-        return;
-    }
     let mut game_state = ctx.game_state;
-    let mut ui_state = ctx.ui_state;
 
     // Only a stuck player changes the game: otherwise leave the signal
     // (and everything that reads it) alone.
@@ -168,8 +147,28 @@ pub fn settle_turn(ctx: GameCtx) {
         game_state.write().skip_stuck_players();
     }
 
+    let ai_next = ai_to_play(&game_state.read());
+    if ai_next {
+        // Signal the AI's turn. The game page's `use_effect` owns the spawn
+        // so the task lives in the page scope, not this onclick's leaf.
+        ui_state.phase().set(TurnPhase::WaitingForAi);
+    } else {
+        settle_turn(ctx);
+    }
+}
+
+/// Whether the current player is an AI with a move to play.
+fn ai_to_play(gs: &GameState) -> bool {
+    matches!(gs.player(gs.current_player()), Player::Ai(_)) && !gs.legal_moves().is_empty()
+}
+
+/// Give the turn to a human, or end the game when nobody can move: set the
+/// phase and message, and clear stale selections.
+fn settle_turn(ctx: GameCtx) {
+    let mut ui_state = ctx.ui_state;
+
     let (is_over, has_forced, has_moves) = {
-        let gs = game_state.read();
+        let gs = ctx.game_state.read();
         (
             gs.is_game_over(),
             gs.hand_info().iter().any(|info| info.has_forced),
@@ -187,5 +186,77 @@ pub fn settle_turn(ctx: GameCtx) {
         ui.message = "Forced move! You must fill a forced space.".to_string();
     } else {
         ui.reset_selection();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use dioxus::prelude::*;
+    use tantrix_game::Color;
+
+    use super::advance_turn;
+    use crate::hooks::use_game_ctx;
+    use crate::state::config::{GameConfig, PlayerKind};
+    use crate::state::game_driver::GameDriver;
+    use crate::state::game_state::{GameCtx, GameState};
+    use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+
+    /// A seeded local game, played with the first legal move each turn, to
+    /// the point where Red, to play, cannot move (the bag is empty and Red has
+    /// no tile that fits, typically none left) while Blue, seated as `blue`,
+    /// still can.
+    fn red_stuck_before(blue: PlayerKind) -> GameState {
+        (0..100)
+            .find_map(|seed| {
+                let mut config = GameConfig::new(Some(seed));
+                if blue == PlayerKind::Ai {
+                    // Human → AI, as the setup screen's toggle does.
+                    config.cycle_player(Color::Blue);
+                }
+                let mut game = GameState::new(&config);
+                while !game.is_stuck() {
+                    let m = *game.legal_moves().first()?;
+                    game.play_move(m.placement()).ok()?;
+                }
+                let blue_can_move = !game.clone().skip_stuck_players();
+                (game.current_player() == Color::Red && blue_can_move).then_some(game)
+            })
+            .expect("a seed leaves Red stuck while Blue can move")
+    }
+
+    /// Advance the turn on a local game page showing `game`; returns the
+    /// phase and the player to move afterwards.
+    fn advance_on_local_page(game: GameState) -> (TurnPhase, Color) {
+        let mut dom = VirtualDom::new_with_props(
+            |game: GameState| {
+                use_game_ctx(GameDriver::Local, move || game);
+                rsx! {}
+            },
+            game,
+        );
+        dom.rebuild_in_place();
+        dom.in_scope(ScopeId::APP, || {
+            let ctx = consume_context::<GameCtx>();
+            advance_turn(ctx);
+            let phase = *ctx.ui_state.phase().peek();
+            let current = ctx.game_state.peek().current_player();
+            (phase, current)
+        })
+    }
+
+    #[test]
+    fn a_skipped_human_hands_the_turn_to_the_ai() {
+        let (phase, current) = advance_on_local_page(red_stuck_before(PlayerKind::Ai));
+        // The AI loop takes Blue's turn, rather than leaving its tiles for
+        // the human to click.
+        assert_eq!(current, Color::Blue);
+        assert_eq!(phase, TurnPhase::WaitingForAi);
+    }
+
+    #[test]
+    fn a_skipped_human_hands_the_turn_to_the_next_human() {
+        let (phase, current) = advance_on_local_page(red_stuck_before(PlayerKind::Human));
+        assert_eq!(current, Color::Blue);
+        assert_eq!(phase, TurnPhase::SelectTile);
     }
 }

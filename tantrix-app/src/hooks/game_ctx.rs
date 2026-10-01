@@ -2,7 +2,7 @@
 
 use dioxus::prelude::*;
 
-use crate::state::actions::settle_turn;
+use crate::state::actions::advance_turn;
 use crate::state::ai_service::run_ai_loop;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
@@ -46,7 +46,9 @@ fn use_ai_turns(ctx: GameCtx) {
         ai_in_flight.set(true);
         spawn(async move {
             run_ai_loop(ctx).await;
-            settle_turn(ctx);
+            // Hand the turn on: to a human, or to the next AI seat, which
+            // this effect picks up again once `ai_in_flight` clears.
+            advance_turn(ctx);
             ai_in_flight.set(false);
         });
     });
