@@ -357,16 +357,23 @@ fn a_watcher_can_replace_a_player_mid_game_and_inherit_the_turn() {
     assert_eq!(room.color_of(&watcher), Some(current));
     assert_eq!(room.snapshot(&online).unwrap().hands[current], hand_before);
     // The replaced player can no longer act for that seat; the watcher can.
+    // (Online they stay to watch, so it isn't their turn; offline they have
+    // left the room.) Who starts is dealt at random, so either can happen.
     let game = Game::from_data(room.game.clone().unwrap());
     let play = PeerMessage::PlayMove {
         placement: game.legal_moves()[0].placement(),
+    };
+    let refused = if online.contains(&current_holder) {
+        RejectCode::NotYourTurn
+    } else {
+        RejectCode::InvalidMove
     };
     assert_eq!(
         room.apply(&current_holder, play.clone(), &online)
             .err()
             .unwrap()
             .0,
-        RejectCode::NotYourTurn
+        refused
     );
     room.apply(&watcher, play, &online).unwrap();
     // Online replaced players stay to watch; offline ones leave.
