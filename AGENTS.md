@@ -126,7 +126,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 | **Move** | Placement + forced flag, decided by the rules — legal moves, board contents, `PlayedMove` |
 | **Board** | `ArrayVec<Move, 56>` of placed tiles, sorted by position |
 | **TurnEvent** | One recorded change: a move (with the turn state before it, hand index, tiles drawn), a skipped turn, or a retirement — `Game::history`, `undo`, `replay` |
-| **Seed** | `Game::new` deals from a random seed and keeps it (`Game::seed`); `new_seeded` / `from_players_seeded` from a given one. Server-side only: it reveals the draw order |
+| **Seed** | `Game::new` deals from a random seed and keeps it (`Game::seed`); `new_seeded` / `from_players_seeded` from a given one (local `/game?seed=N`, tests, the tournament). Online rooms deal with the thread RNG and keep no seed: `GameData`'s bag and history suffice, and undoing the history gives back the deal. A seed reveals the draw order, so none is ever sent to players |
 | **Forced space** | Empty hex with 3+ neighbors — must be filled if possible |
 | **Golden rule** | Touching edges must match in color |
 | **Restriction rules** | No same-color triples, no 4-sided spaces, no controlled-side plays (while bag has tiles) |

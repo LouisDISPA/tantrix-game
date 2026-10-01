@@ -187,11 +187,14 @@ records every change in order as a `TurnEvent` (`history.rs`), read with
   hand index and draws) and otherwise leaves the game unchanged and returns
   an `EventError` (`ReplayError` says which event). `replay_event` also
   redoes what `undo` returned.
-- **Persistence.** `GameData` (`to_data` / `from_data`) carries the seed and
-  history; rooms saved before them load with none. The room's `StartGame`
-  deals with `Game::new`, so server games can be replayed. The seed reveals
-  the draw order: it stays in `GameData` on the server, and `GameSnapshot`
-  carries neither the seed nor the history.
+- **Persistence.** `GameData` (`to_data` / `from_data`) carries the seed (if
+  any) and history; rooms saved before them load with none. The room's
+  `StartGame` deals with `from_players_with_rng` and the OS-seeded thread
+  RNG, so the hidden bag order is not limited to a 64-bit seed through a
+  non-cryptographic generator, and server games keep no seed. They need
+  none: `GameData` keeps the bag and the full history, and undoing the
+  history gives back the deal (which the history then replays exactly).
+  `GameSnapshot` carries neither the bag, the seed nor the history.
 
 ## AI service
 

@@ -239,24 +239,20 @@ impl RoomData {
                         "need at least two connected seated players".into(),
                     ));
                 }
-                let player_for = |c: Color| {
+                let players = EnumMap::from_fn(|c| {
                     if self.seats[c].is_some() {
                         Player::Someone
                     } else {
                         Player::None
                     }
-                };
-                // `Game::new` deals from a random seed and keeps it with the
-                // history in `GameData`, so the game can be replayed. Both stay
-                // on the server: snapshots never carry them (the seed reveals
-                // the draw order).
-                let mut game = Game::new(
-                    player_for(Color::Red),
-                    player_for(Color::Blue),
-                    player_for(Color::Yellow),
-                    player_for(Color::Green),
-                )
-                .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
+                });
+                // The hidden bag order is the game's secret, so it is shuffled
+                // by the OS-seeded thread RNG (ChaCha12), not from a 64-bit
+                // seed, and no seed is kept. Nothing needs one: `GameData`
+                // keeps the bag and the full history, and undoing the history
+                // gives back the deal. Snapshots carry neither.
+                let mut game = Game::from_players_with_rng(players, &mut rand::rng())
+                    .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
                 self.ended = game.skip_stuck_players();
                 self.game = Some(game.to_data());
                 Ok(Change {

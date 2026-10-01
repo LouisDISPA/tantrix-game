@@ -58,9 +58,10 @@ reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
 example `https://tantrix.example.com`) so cookie security and WebSocket origin
 checks use that origin.
 
-On either backend a saved game keeps the seed it was dealt from and its move
-history, so it can be replayed. Neither is ever sent to players: the seed
-reveals the draw order.
+Rooms deal from the OS-seeded thread RNG (ChaCha12), not from a seed: the
+hidden bag order is the game's secret. A saved game keeps its bag and full
+move history, so undoing the history recovers the deal, and the history
+replays it exactly. Neither the bag nor the history is ever sent to players.
 
 ## Why workers-rs (wasm32) and not the Emscripten target
 

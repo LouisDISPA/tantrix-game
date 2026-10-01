@@ -4,7 +4,8 @@ use rand::rngs::Xoshiro256PlusPlus;
 use rand::SeedableRng;
 use serde::Deserialize;
 use tantrix_game::{
-    Color, Direction, EnumMap, Game, Move, Placement, Player, Position, Rotation, Tile, TurnStep,
+    Color, Direction, Game, Move, Placement, Player, Position, Rotation, Tile, TurnStep,
+    TILES_IN_HAND,
 };
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
 use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
@@ -129,11 +130,14 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
 }
 
 #[test]
-fn server_games_can_be_replayed_but_keep_their_seed_to_themselves() {
+fn server_games_keep_no_seed_and_undo_back_to_their_deal() {
     let (mut room, red, blue, connected) = setup();
     let started = room
         .apply(&red, PeerMessage::StartGame, &connected)
         .unwrap();
+    // The deal comes from the thread RNG: there is no seed to give it away.
+    let dealt = Game::from_data(room.game.clone().unwrap());
+    assert_eq!(dealt.seed(), None);
     let mut sent = vec![started.message];
     for _ in 0..4 {
         let game = Game::from_data(room.game.clone().unwrap());
@@ -149,32 +153,49 @@ fn server_games_can_be_replayed_but_keep_their_seed_to_themselves() {
         sent.push(change.message);
     }
 
-    // The saved game knows its seed and history...
+    // The saved game keeps its bag and history, but still no seed...
     let saved: RoomData = serde_json::from_str(&serde_json::to_string(&room).unwrap()).unwrap();
-    let game = Game::from_data(saved.game.unwrap());
-    let seed = game.seed().expect("server games are dealt from a seed");
-    assert!(game.history().len() >= 4);
-    let players = EnumMap::from_fn(|c| {
-        if room.seats[c].is_some() {
-            Player::Someone
-        } else {
-            Player::None
-        }
-    });
-    let replayed = Game::replay(seed, players, game.history()).unwrap();
+    let data = saved.game.unwrap();
+    let mut game = Game::from_data(data.clone());
+    assert_eq!(game.seed(), None);
+    let history = game.history().to_vec();
+    assert!(history.len() >= 4);
+
+    // ...and undoing the whole history gives back a fresh deal: an empty
+    // board, six tiles per hand, and every other tile in the bag.
+    while game.undo().is_some() {}
+    assert!(game.history().is_empty());
+    assert!(game.board().is_empty());
+    assert_eq!(game.playing_colors(), dealt.playing_colors());
+    assert_eq!(game.current_player(), dealt.current_player());
+    let all_tiles = 56;
+    let mut tiles: HashSet<Tile> = serde_json::from_value(
+        serde_json::to_value(game.to_data()).unwrap()["bag"]["tiles"].take(),
+    )
+    .unwrap();
+    assert_eq!(game.bag_count(), all_tiles - 2 * TILES_IN_HAND);
+    for &color in game.playing_colors() {
+        assert_eq!(game.hand(color).len(), TILES_IN_HAND);
+        assert_eq!(game.hand(color), dealt.hand(color));
+        tiles.extend(game.hand(color).iter());
+    }
+    assert_eq!(tiles.len(), all_tiles);
+    // The history plays out from there to the saved game again.
+    for event in &history {
+        game.replay_event(event).unwrap();
+    }
     assert_eq!(
-        serde_json::to_value(replayed.to_data()).unwrap(),
-        serde_json::to_value(game.to_data()).unwrap()
+        serde_json::to_value(game.to_data()).unwrap(),
+        serde_json::to_value(data).unwrap()
     );
 
-    // ...but players never see either: the seed reveals the draw order.
+    // Players never see the history (or the bag).
     for message in sent {
         let wire = serde_json::to_string(&message).unwrap();
         assert!(
-            !wire.contains("seed") && !wire.contains("history"),
+            !wire.contains("seed") && !wire.contains("history") && !wire.contains("bag\""),
             "{wire}"
         );
-        assert!(!wire.contains(&seed.to_string()), "{wire}");
     }
 }
 
@@ -553,6 +574,7 @@ fn session_cookie_is_parsed_strictly_and_set_http_only() {
         session_cookie::read(Some(&format!("tantrix_session={}", generated.as_str()))),
         Some(generated)
     );
+
 }
 
 /// Times whole seeded games played through the room, as a server adapter
