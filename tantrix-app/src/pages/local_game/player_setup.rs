@@ -42,7 +42,7 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                                         ColorSwatch { color }
                                         div { class: "player-label", "{color}" }
                                         button {
-                                            class: "{toggle_class}",
+                                            class: toggle_class,
                                             onclick: move |_| {
                                                 config.write().cycle_player(color);
                                             },

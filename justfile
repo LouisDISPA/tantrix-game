@@ -37,7 +37,7 @@ dev:
 
 # Build + serve the release fullstack binary (no hot reload, no browser).
 run:
-    cd tantrix-app && dx run --release --port {{ port }} --hot-reload false --open false
+    cd tantrix-app && dx run  --web --features fullstack --release --port {{ port }} --open false
 
 # Build the Worker and run the browser end-to-end suite against it.
 e2e: worker-e2e

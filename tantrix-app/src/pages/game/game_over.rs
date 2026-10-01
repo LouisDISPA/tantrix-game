@@ -29,7 +29,7 @@ pub fn GameOver(
                 button {
                     class: "results-btn results-btn-primary",
                     onclick: move |_| on_again.call(()),
-                    "{again_label}"
+                    {again_label}
                 }
                 button {
                     class: "results-btn results-btn-secondary",

@@ -40,8 +40,8 @@ pub fn MenuCard(
                     "← Back"
                 }
             }
-            h1 { class: "menu-card-title", "{title}" }
-            p { class: "menu-card-subtitle", "{subtitle}" }
+            h1 { class: "menu-card-title", {title} }
+            p { class: "menu-card-subtitle", {subtitle} }
             {children}
         }
     }

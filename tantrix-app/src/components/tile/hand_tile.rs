@@ -95,7 +95,7 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         },
                         svg { view_box: "0 0 {TILE_VB:.0} {TILE_VB:.0}",
                             if show_outline {
-                                polygon { points: "{outline_points}", class: "{outline_class}" }
+                                polygon { points: outline_points, class: outline_class }
                             }
                             HexSvg {
                                 tile,

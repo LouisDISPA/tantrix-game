@@ -31,14 +31,14 @@ pub fn HexSvg(
     let pairs = find_color_pairs(tile, rotation);
 
     rsx! {
-        g { class: "{base_class}",
-            polygon { points: "{points}", class: "hex-tile-fill" }
+        g { class: base_class,
+            polygon { points: points, class: "hex-tile-fill" }
             for (d1 , d2 , color) in pairs.iter().copied() {
                 {
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let css_class = color_css_class(color);
                     rsx! {
-                        path { key: "{color:?}-{d1:?}-{d2:?}", d: "{path_d}", class: "hex-curve {css_class}" }
+                        path { key: "{color:?}-{d1:?}-{d2:?}", d: path_d, class: "hex-curve {css_class}" }
                     }
                 }
             }
@@ -49,7 +49,7 @@ pub fn HexSvg(
                     let path_d = color_link_path(cx, cy, d1, d2, hex_size);
                     let name = color_name(color);
                     rsx! {
-                        path { key: "score-{color:?}-{d1:?}-{d2:?}", d: "{path_d}", class: "scoring-curve scoring-curve-{name}" }
+                        path { key: "score-{color:?}-{d1:?}-{d2:?}", d: path_d, class: "scoring-curve scoring-curve-{name}" }
                     }
                 }
             }

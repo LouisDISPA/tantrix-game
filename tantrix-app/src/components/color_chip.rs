@@ -45,7 +45,7 @@ pub fn ColorChip(
             div { class: "lobby-color-meta",
                 span { class: "lobby-color-label", "{color}" }
                 if let Some(name) = seat_label().clone() {
-                    span { class: "lobby-color-player", "{name}" }
+                    span { class: "lobby-color-player", {name} }
                 } else {
                     span { class: "lobby-color-player empty", "Open" }
                 }

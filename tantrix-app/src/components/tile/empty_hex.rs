@@ -22,7 +22,7 @@ pub fn EmptyHex(position: Position, hex_size: f64, forced: bool, faint: bool) ->
             class: "board-empty hex-empty",
             class: if forced { "forced" },
             class: if faint { "faint" },
-            style: "{style}",
+            style: style,
             "data-position": "{position.x()},{position.y()}",
             role: "button",
             tabindex: "0",
@@ -38,7 +38,7 @@ pub fn EmptyHex(position: Position, hex_size: f64, forced: bool, faint: bool) ->
             onmouseenter: move |_| hovered.set(Hovered::BoardPosition(position)),
             onmouseleave: move |_| hovered.set(Hovered::None),
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
-                polygon { points: "{points}" }
+                polygon { points: points }
             }
         }
     }

@@ -74,7 +74,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
                 }
                 span { class: "hand-header-color", "{color}" }
                 if let Some(name) = player_name() {
-                    span { class: "hand-header-name", "{name}" }
+                    span { class: "hand-header-name", {name} }
                 }
                 if is_mine() {
                     span { class: "hand-header-you", "you" }
@@ -84,7 +84,7 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
             if tiles.read().is_empty() {
                 div { class: "hand-empty", "No tiles" }
             } else {
-                div { class: "{tiles_class}",
+                div { class: tiles_class,
                     for (i, tile) in tiles.read().iter().copied().enumerate() {
                         HandTile { key: "{color:?}-{tile:?}", color, index: i }
                     }

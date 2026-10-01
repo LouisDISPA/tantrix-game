@@ -19,14 +19,16 @@ futures-channel = "0.3.34"
 # browser transport (tantrix-net) depends on it anyway.
 futures-timer = "3.0.4"
 log = "0.4.34"
-web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
-wasm-bindgen-futures = "0.4.79"
 
 # Server-only: Axum serves the native fullstack app and online rooms.
 axum = { version = "0.8.9", features = ["ws"], optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
 rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 serde_json = { version = "1.0.151", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
+wasm-bindgen-futures = "0.4.79"
 
 [dev-dependencies]
 serde = { version = "1.0.229", features = ["derive"] }

@@ -1,3 +1,5 @@
+#![allow(unreachable_code)] // The generated router contains unreachable fallback branches.
+
 use dioxus::prelude::*;
 
 use crate::components::title_decoration::TitleDecoration;

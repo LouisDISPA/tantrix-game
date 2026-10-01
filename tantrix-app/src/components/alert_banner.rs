@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 pub fn AlertBanner(message: ReadSignal<Option<&'static str>>) -> Element {
     rsx! {
         if let Some(text) = message() {
-            p { class: "lobby-error", "{text}" }
+            p { class: "lobby-error", {text} }
         }
     }
 }

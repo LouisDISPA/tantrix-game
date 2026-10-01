@@ -28,8 +28,8 @@ pub fn ConfirmDialog(
                         on_cancel.call(());
                     }
                 },
-                h2 { id: "modal-title", class: "modal-title", "{title}" }
-                p { class: "modal-message", "{message}" }
+                h2 { id: "modal-title", class: "modal-title", {title} }
+                p { class: "modal-message", {message} }
                 div { class: "modal-actions",
                     button {
                         class: "modal-btn",
@@ -44,7 +44,7 @@ pub fn ConfirmDialog(
                     button {
                         class: "modal-btn modal-btn-primary",
                         onclick: move |_| on_confirm.call(()),
-                        "{confirm_label}"
+                        {confirm_label}
                     }
                 }
             }

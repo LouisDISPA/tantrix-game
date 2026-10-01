@@ -67,7 +67,7 @@ pub fn OnlineEntry() -> Element {
                     }
 
                     if let Some(err) = error.read().clone() {
-                        p { class: "online-error", "{err}" }
+                        p { class: "online-error", {err} }
                     }
 
                 }
@@ -105,7 +105,7 @@ pub fn JoinRoom(code: String) -> Element {
                 title: "Join Room",
                 subtitle: "Room code",
                 div { class: "online-entry",
-                    p { class: "online-room-code", "{code_upper}" }
+                    p { class: "online-room-code", {code_upper} }
                     if code_is_valid {
                         p { class: "lobby-waiting", "Connecting…" }
                     } else {
