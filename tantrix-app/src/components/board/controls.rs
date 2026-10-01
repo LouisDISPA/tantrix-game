@@ -1,9 +1,8 @@
 use dioxus::prelude::*;
-use tantrix_net::SessionCommand;
 
 use crate::hooks::use_board_camera;
+use crate::state::actions::end_game;
 use crate::state::game_state::GameCtx;
-use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
 /// Floating zoom buttons in the corner of the board.
 #[component]
@@ -35,11 +34,11 @@ pub fn ZoomControls() -> Element {
 }
 
 /// End local play immediately, or ask the room to end online play for everyone.
+/// Hidden from someone watching a room.
 #[component]
 pub fn EndGameButton() -> Element {
     let ctx = use_context::<GameCtx>();
-    let ui_state = ctx.ui_state;
-    let can_end = use_memo(move || ctx.online.read().is_none() || ctx.my_color.read().is_some());
+    let can_end = use_memo(move || ctx.driver.can_end_game());
 
     if !can_end() {
         return rsx! {};
@@ -50,14 +49,7 @@ pub fn EndGameButton() -> Element {
             button {
                 class: "board-ctrl-btn end-game-btn",
                 title: "End game",
-                onclick: move |_| {
-                    if let Some(sender) = ctx.online.read().as_ref() {
-                        sender.send(SessionCommand::EndGame);
-                    } else {
-                        ui_state.phase().set(TurnPhase::GameOver);
-                        ui_state.message().set("Game ended early.".to_string());
-                    }
-                },
+                onclick: move |_| end_game(ctx),
                 "End Game"
             }
         }

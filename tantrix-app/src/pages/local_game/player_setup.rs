@@ -6,15 +6,14 @@ use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
 use crate::state::config::{GameConfig, PlayerKind};
-use crate::state::game_state::{GameCtx, GameState};
-use crate::state::ui_state::{Screen, UiState};
 use crate::svg::paths::color_name as color_slug;
 
+/// The new-game form: who plays each color. Start Game hands the chosen
+/// config to `on_start`.
 #[component]
-pub fn PlayerSetup(seed: Option<u64>) -> Element {
+pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Element {
     let mut config = use_signal(|| GameConfig::new(seed));
     let nav = navigator();
-    let mut ctx = use_context::<GameCtx>();
 
     let cfg = config.read().clone();
     let can_start = cfg.active_count() >= 2;
@@ -59,13 +58,7 @@ pub fn PlayerSetup(seed: Option<u64>) -> Element {
                     MenuButton {
                         full_width: true,
                         disabled: !can_start,
-                        on_click: move |_| {
-                            let cfg = config.read();
-                            let gs = GameState::new(&cfg);
-                            ctx.game_state.set(gs);
-                            ctx.ui_state.set(UiState::default());
-                            ctx.screen.set(Screen::Playing);
-                        },
+                        on_click: move |_| on_start.call(config.read().clone()),
                         "Start Game"
                     }
                 }

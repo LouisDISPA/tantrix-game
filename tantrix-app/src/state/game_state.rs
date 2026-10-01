@@ -1,34 +1,25 @@
 use std::ops::Deref;
 
 use dioxus::prelude::*;
-use tantrix_game::{Color, EnumMap, Game, MoveError, Placement, PlayedMove, TileMoveInfo};
+use tantrix_game::{EnumMap, Game, MoveError, Placement, PlayedMove, TileMoveInfo};
 use tantrix_proto::GameSnapshot;
 
 use super::config::GameConfig;
-use super::online_state::CommandSender;
-use super::ui_state::{Screen, UiState};
+use super::game_driver::GameDriver;
+use super::ui_state::UiState;
 
-/// The single context shared across every component in the local-game page.
+/// The single context shared by every component of the game screens, local
+/// or online. Built once per game page by `hooks::use_game_ctx`.
 ///
-/// * `screen` — which top-level screen is showing (Setup / Playing)
 /// * `game_state` — the atomic game snapshot; components read it wholesale
 /// * `ui_state` — per-field reactive UI state (zoom, hover, selection, …)
-/// * `online` — if set, `actions::execute_move` forwards the move to the
-///   server instead of mutating the local `game_state`. Local games leave
-///   this as `None`.
-/// * `my_color` — if `Some(c)`, only this color's hand is interactive on
-///   this device. Online games set this from the lobby seat; local games
-///   leave it `None` so every current-turn hand is clickable.
-/// * `player_names` — optional nicknames per color, shown beside the color
-///   in each hand's header. Empty for local games.
+/// * `driver` — who plays: every seat on this device, or an online room
+///   this device sends its seat's moves to (see [`GameDriver`])
 #[derive(Clone, Copy)]
 pub struct GameCtx {
-    pub screen: Signal<Screen>,
     pub game_state: Signal<GameState>,
     pub ui_state: Store<UiState>,
-    pub online: Signal<Option<CommandSender>>,
-    pub my_color: Signal<Option<Color>>,
-    pub player_names: Signal<EnumMap<Color, Option<String>>>,
+    pub driver: GameDriver,
 }
 
 /// The game as this device sees it. [`Game`] is the single source of truth

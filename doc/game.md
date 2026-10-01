@@ -61,7 +61,11 @@ non-human turn  ────────────▶  WaitingForAi
 ```
 
 `TurnPhase` lives in `state/ui_state.rs`. Routing between `PlayerSetup`,
-`GamePlay`, and `GameOver` matches on `(Screen, TurnPhase)` in `LocalGame`.
+`GamePlay`, and `GameOver` matches on `(Screen, TurnPhase)` in `LocalGame`;
+`OnlineGameView` shows `GamePlay` until the room's game has ended, then
+`GameOver`. Both screens live in `pages/game/` and read the page's
+`GameCtx`, whose `GameDriver` says who plays: `Local` (every seat on this
+device) or `Online` (a room; this device only sends its seat's intents).
 
 ## Human turn
 
@@ -71,17 +75,25 @@ All in `state/actions.rs`, each action takes `GameCtx`:
 click hand tile  → click_tile        select, or auto-play if only 1 move
 click position   → click_position    execute_move, or → SelectRotation
 pick rotation    → pick_rotation     execute_move
-execute_move     → game_state.write().play_move(Placement { tile, position, rotation })
-                 → ui_state.write().after_move    (new_tile + pan reset)
-                 → advance_turn
+execute_move     → Local:  game_state.write().play_move(Placement { tile, position, rotation })
+                           ui_state.write().after_move    (new_tile + pan reset)
+                           advance_turn
+                   Online: RoomLink::play → SessionCommand::PlayMove (own seat only);
+                           the room's next snapshot redraws the board
 ```
+
+A hand tile is clickable only on its seat's turn and when
+`GameDriver::controls(color)`: any seat locally, only this device's own
+seat online.
 
 ## AI turn
 
-`advance_turn` checks `Player::Ai(_)` for the current color. If AI, it
-sets `phase = WaitingForAi`. `LocalGame` owns a `use_effect` that reacts
-to that phase and spawns the loop from the page scope, so the task is
-cancelled if the page unmounts but not when a clicked tile/hex disappears.
+`advance_turn` (local games only: `GameDriver::runs_turns`) checks
+`Player::Ai(_)` for the current color. If AI, it sets
+`phase = WaitingForAi`. The effect `use_game_ctx` installs on the game page
+reacts to that phase and spawns the loop from the page scope, so the task
+is cancelled if the page unmounts but not when a clicked tile/hex
+disappears.
 
 `state/ai_service.rs::run_ai_loop` iterates while the current player is
 still an AI:
@@ -152,8 +164,11 @@ everyone is stuck ends instead of spinning.
   scores already worked out (the app's `ScoresPanel`, which scores the
   board once for every row).
 - Entering `TurnPhase::GameOver` switches the screen to `GameOver` (via
-  `LocalGame`'s routing match), which shows `Board` (read-only, scoring
-  overlays on) beside `ScoresPanel`. `BoardTilesLayer` builds the scoring
+  `LocalGame`'s routing match; online, the room's `GameEnded`), which shows
+  `Board` (read-only, scoring overlays on) beside `ScoresPanel` and the
+  exits: Play Again (local) or Online Menu (online), and Main Menu. End
+  Game calls `actions::end_game`: locally it ends the game here, online it
+  asks the room to end it for everyone. `BoardTilesLayer` builds the scoring
   overlay (`use_highlight_map`: the paths once per game over, filtered by
   the hovered or locked color) and hands each `BoardTile` its colors.
 

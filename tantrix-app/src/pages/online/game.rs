@@ -1,13 +1,11 @@
-//! Online game view — reuses the local `GamePlay` screen by providing a
-//! `GameCtx` whose `game_state` is rebuilt from every incoming
-//! `GameSnapshot`, and whose `online` sender is wired to the session.
+//! Online game view — shows the shared game screens with a `GameCtx` whose
+//! `game_state` is rebuilt from every incoming `GameSnapshot`, and whose
+//! driver sends this device's moves to the room.
 
 use dioxus::prelude::*;
 
-use crate::components::board::Board;
-use crate::components::scores_panel::ScoresPanel;
 use crate::hooks::{use_initial_snapshot, use_online_game_ctx};
-use crate::pages::local_game::GamePlay;
+use crate::pages::game::{GameOver, GamePlay};
 use crate::pages::online::hud_badge::OnlineHudBadge;
 use crate::pages::online::screens::WaitingForGame;
 use crate::pages::online::seat_takeover::OnlineSeatTakeover;
@@ -21,31 +19,17 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
         return rsx! { WaitingForGame {} };
     };
 
-    let ctx = use_online_game_ctx(state, sender, initial);
-    use_context_provider(|| ctx);
+    use_online_game_ctx(state, sender, initial);
 
     let ended = matches!(&*state.phase().read(), OnlinePhase::Ended { .. });
     if ended {
         let nav = navigator();
         return rsx! {
-            div { class: "game-layout game-over-layout",
-                div { class: "board-slot", Board {} }
-                ScoresPanel {
-                    button {
-                        class: "results-btn results-btn-primary",
-                        onclick: move |_| {
-                            let _ = nav.push(Route::OnlineEntry {});
-                        },
-                        "Online Menu"
-                    }
-                    button {
-                        class: "results-btn results-btn-secondary",
-                        onclick: move |_| {
-                            let _ = nav.push(Route::MainMenu {});
-                        },
-                        "Main Menu"
-                    }
-                }
+            GameOver {
+                again_label: "Online Menu",
+                on_again: move |_| {
+                    let _ = nav.push(Route::OnlineEntry {});
+                },
                 OnlineHudBadge { state }
             }
         };

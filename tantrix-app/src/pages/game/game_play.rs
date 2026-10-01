@@ -33,7 +33,8 @@ pub fn GamePlay() -> Element {
     let ctx = use_context::<GameCtx>();
     let mut ui = ctx.ui_state;
 
-    // On mount, kick off AI turns if the AI plays first.
+    // On mount, kick off AI turns if the AI plays first (a no-op online,
+    // where the room plays the turns).
     use_hook(|| {
         advance_turn(ctx);
     });

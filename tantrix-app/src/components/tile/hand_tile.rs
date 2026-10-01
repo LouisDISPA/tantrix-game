@@ -31,18 +31,10 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
 
     let just_drawn = use_memo(move || ctx.ui_state.new_tile()() == Some((color, index())));
 
-    // Only the player who owns the current seat can commit a move.
+    // Only the current seat's tiles can be played, and only by a player who
+    // plays that seat on this device (any seat locally, their own online).
     let is_active_seat = use_memo(move || ctx.game_state.read().current_player() == color);
-    let can_play = use_memo(move || {
-        if !is_active_seat() {
-            return false;
-        }
-        match (*ctx.my_color.read(), ctx.online.read().is_some()) {
-            (Some(mine), _) => mine == color, // online, own this seat
-            (None, false) => true,            // local game: any current-player tile is live
-            (None, true) => false,            // online player without a seat
-        }
-    });
+    let can_play = use_memo(move || is_active_seat() && ctx.driver.controls(color));
 
     rsx! {
         if let Some(tile) = tile() {

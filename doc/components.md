@@ -12,29 +12,49 @@ Three rules for this codebase:
 ## Tree
 
 ```
-App (main.rs)
+App (lib.rs)
 └── AppLayout                        theme toggle
     └── Router
         ├── MainMenu                 title screen, nav to LocalGame
-        └── LocalGame                provides GameCtx
-            ├── PlayerSetup          player count + AI/Human toggle → Screen::Playing
-            ├── GamePlay             grid: Board + PlayerHand × N
-            │   ├── Board
-            │   │   ├── StatusBar           phase banner + counters
-            │   │   ├── EndGameButton       (hidden on game over)
-            │   │   ├── ZoomControls        +/- zoom buttons
-            │   │   ├── BoardViewport       pan/zoom host (children slot)
-            │   │   │   ├── BoardTilesLayer placed moves
-            │   │   │   └── BoardEmptyLayer click targets + preview
-            │   │   └── RotationWheel       only renders in SelectRotation phase
-            │   └── PlayerHand × N   one per active color
-            │       └── HandTile × hand_size
-            └── GameOver             Board (reused) + ScoresPanel
+        ├── LocalGame                use_game_ctx(Local) provides GameCtx
+        │   ├── PlayerSetup          player count + AI/Human toggle → on_start
+        │   ├── GamePlay             (shared, below)
+        │   └── GameOver             (shared) Play Again / Main Menu
+        └── OnlineRoom → OnlineGameView   use_online_game_ctx provides GameCtx (Online driver)
+            ├── GamePlay + OnlineSeatTakeover + OnlineHudBadge
+            └── GameOver             Online Menu / Main Menu, OnlineHudBadge as child
+
+GamePlay                             grid: Board + PlayerHand × N
+├── Board
+│   ├── StatusBar                    phase banner + counters
+│   ├── EndGameButton                (hidden on game over, and from watchers)
+│   ├── ZoomControls                 +/- zoom buttons
+│   ├── BoardViewport                pan/zoom host (children slot)
+│   │   ├── BoardTilesLayer          placed moves
+│   │   └── BoardEmptyLayer          click targets + preview
+│   └── RotationWheel                only renders in SelectRotation phase
+└── PlayerHand × N                   one per active color
+    └── HandTile × hand_size
+GameOver                             Board (reused) + ScoresPanel + exit buttons
 ```
+
+`GamePlay` and `GameOver` live in `pages/game/` and serve both pages. They
+read the `GameCtx` their page provides; its `driver` (`state/game_driver.rs`)
+says who plays — `Local`: this device plays every seat, AI seats included;
+`Online(RoomLink)`: moves go to the room. Components ask the driver
+(`controls`, `can_end_game`, `my_color`, `player_name`) and call turn
+actions (`execute_move`, `end_game`) that dispatch on it, so nothing under
+`components/` knows about the session.
 
 ## Directories
 
 ```
+pages/
+  game/                game screens shared by local + online play
+    game_play.rs       GamePlay: board + hands grid
+    game_over.rs       GameOver: final board + scores + exit buttons
+  local_game/          LocalGame (Setup → Playing → GameOver), player_setup.rs
+  online/game.rs       OnlineGameView: the game screens fed by room snapshots
 components/
   board/               Board submodule — 5 layers + the rotation wheel
     mod.rs             Board composer (5 children, no logic)
@@ -73,6 +93,8 @@ a memo.
 | `HexSvg` | `tile: Tile`, `rotation: Rotation`, `cx: f64`, `cy: f64`, `hex_size: f64`, `base_class`, `highlight_colors` |
 | `PlayerHand` | `color: Color`, `position: HandPosition` |
 | `ScoresPanel` | `children: Element` (action buttons) |
+| `GameOver` | `again_label: String`, `on_again: EventHandler<()>`, `children: Element` (page overlays) |
+| `PlayerSetup` | `seed: Option<u64>`, `on_start: EventHandler<GameConfig>` |
 | `ScoreRow` | `color: Color` |
 | `StatusBar` | — |
 
@@ -89,8 +111,9 @@ Plain `T` throughout; no `ReadSignal<T>` props.
 | `BoardTile` | highlight_map, is-game-over, last placed | memos per-tile |
 | `EmptyHex` | hovered (write), dispatches `click_position` | direct |
 | `RotationWheel` | phase_view.wheel, hovered (write) | `use_phase_view` |
-| `HandTile` | hand, hand_info, selected_tile, new_tile, phase | memos from `GameCtx` |
-| `PlayerHand` | is_current, hand length | `game_state.read()` |
+| `HandTile` | hand, hand_info, selected_tile, new_tile, phase, `driver.controls` | memos from `GameCtx` |
+| `PlayerHand` | is_current, hand, `driver.my_color` / `player_name` | `game_state.read()`, `ctx.driver` |
+| `EndGameButton` | `driver.can_end_game`, dispatches `end_game` | memo |
 | `ScoresPanel` | active players, scores, winners | `game_state.read()` |
 | `ScoreRow` | score, winner flag, highlighted_color | memos + `ui_state.highlighted_color` |
 
@@ -114,7 +137,8 @@ own positioning + state classes; `HexSvg` owns geometry.
 
 ## When in doubt
 
-- Need a new screen? → `pages/local_game/screens/`
+- Need a new in-game screen for local and online play? → `pages/game/`
+- Need a new local-only screen? → `pages/local_game/`
 - Need a new reusable board layer? → `components/board/`
 - Need a new tile-shaped thing? → reuse `HexSvg` inside a new wrapper
 - Need a new piece of derived state used by >1 component? → `hooks/`

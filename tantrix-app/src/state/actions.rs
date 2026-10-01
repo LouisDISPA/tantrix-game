@@ -2,31 +2,31 @@
 //!
 //! Functions here take a `GameCtx` (one `Copy` struct) and drive the state
 //! machine: select a tile, click a position, pick a rotation, play a move,
-//! then advance the turn.
+//! then advance the turn. Playing a move and ending the game go through the
+//! context's [`GameDriver`]: a local game changes `game_state` here, an
+//! online room is sent the intent and its next snapshot drives the next
+//! render.
 //!
 //! Turn-advance does *not* spawn the AI loop itself. Spawning from a leaf
 //! component's click handler ties the task to whichever component was
 //! firing (e.g. a `HandTile` that may unmount when the hand shrinks),
 //! which would cancel the AI task mid-move. Instead, `advance_turn` just
-//! flips the phase to `WaitingForAi`; the `LocalGame` page owns a
-//! `use_effect` that reacts to that phase and spawns the AI loop in its
-//! own stable scope.
+//! flips the phase to `WaitingForAi`; the game page owns a `use_effect`
+//! (installed by `hooks::use_game_ctx`) that reacts to that phase and spawns
+//! the AI loop in its own stable scope.
 
 use dioxus::prelude::*;
-use tantrix_game::{Placement, Player, Position, Rotation};
-use tantrix_net::SessionCommand;
+use tantrix_game::{Color, Placement, Player, Position, Rotation};
 
+use crate::state::game_driver::GameDriver;
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
-/// Place the selected tile, play it, and hand off to [`advance_turn`].
+/// Play the current player's tile at `tile_idx` at `pos` in `rotation`.
 /// No-op if the tile index is out of range.
 pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rotation) {
-    let mut game_state = ctx.game_state;
-    let mut ui_state = ctx.ui_state;
-
     let (player_color, tile) = {
-        let gs = game_state.read();
+        let gs = ctx.game_state.read();
         let color = gs.current_player();
         let Some(&tile) = gs.hand(color).get(tile_idx) else {
             return;
@@ -39,21 +39,23 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
         rotation,
     };
 
-    // Online play: forward the intent and let the server's StateUpdate drive
-    // the next render. The local GameState stays untouched until then.
-    if let Some(sender) = ctx.online.read().as_ref().cloned() {
-        // Only the peer who owns the current seat may dispatch a move.
-        // Spectators (and non-current seats) can hover to preview but
-        // their click handlers are gated upstream — this is the
-        // belt-and-suspenders check.
-        if *ctx.my_color.read() != Some(player_color) {
+    match ctx.driver {
+        GameDriver::Local => play_here(ctx, player_color, placement),
+        // The room plays it and its next snapshot drives the next render; the
+        // local `game_state` stays untouched until then.
+        GameDriver::Online(room) => {
+            room.play(player_color, placement);
+            let mut ui_state = ctx.ui_state;
             ui_state.write().reset_selection();
-            return;
         }
-        sender.send(SessionCommand::PlayMove(placement));
-        ui_state.write().reset_selection();
-        return;
     }
+}
+
+/// Play `placement` for `player` on this device's game, then hand off to
+/// [`advance_turn`].
+fn play_here(ctx: GameCtx, player: Color, placement: Placement) {
+    let mut game_state = ctx.game_state;
+    let mut ui_state = ctx.ui_state;
 
     let result = game_state.write().play_move(placement);
     let played = match result {
@@ -66,7 +68,7 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
 
     ui_state
         .write()
-        .after_move(player_color, played.hand_index, pos);
+        .after_move(player, played.hand_index, placement.position);
     advance_turn(ctx);
 }
 
@@ -114,18 +116,25 @@ pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
     execute_move(ctx, tile_idx, pos, rotation);
 }
 
+/// End the game early: on this device for a local game, or for everyone in
+/// an online room (the room's `GameEnded` then shows the results).
+pub fn end_game(ctx: GameCtx) {
+    match ctx.driver {
+        GameDriver::Local => {
+            let ui_state = ctx.ui_state;
+            ui_state.phase().set(TurnPhase::GameOver);
+            ui_state.message().set("Game ended early.".to_string());
+        }
+        GameDriver::Online(room) => room.end_game(),
+    }
+}
+
 /// Run any end-of-turn bookkeeping. If the next active player is an AI, kick
-/// off the async AI loop; otherwise settle directly.
+/// off the async AI loop; otherwise settle directly. Online rooms are
+/// server-authoritative: the room plays the turns, and nothing happens here.
 pub fn advance_turn(ctx: GameCtx) {
     let ui_state = ctx.ui_state;
-
-    if *ui_state.phase().read() == TurnPhase::GameOver {
-        return;
-    }
-
-    // Online rooms are server-authoritative: we never schedule AI turns or
-    // mutate local state here.
-    if ctx.online.read().is_some() {
+    if !ctx.driver.runs_turns() || *ui_state.phase().read() == TurnPhase::GameOver {
         return;
     }
 
@@ -135,7 +144,7 @@ pub fn advance_turn(ctx: GameCtx) {
     };
 
     if needs_ai {
-        // Signal the AI's turn. `LocalGame`'s `use_effect` owns the spawn
+        // Signal the AI's turn. The game page's `use_effect` owns the spawn
         // so the task lives in the page scope, not this onclick's leaf.
         ui_state.phase().set(TurnPhase::WaitingForAi);
     } else {

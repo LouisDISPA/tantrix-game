@@ -55,8 +55,8 @@ pub fn PlayerHand(color: Color, position: HandPosition) -> Element {
     };
 
     // Player nickname (online) + whether this seat belongs to the local user.
-    let player_name = ctx.player_names.read()[color].clone();
-    let is_mine = *ctx.my_color.read() == Some(color);
+    let player_name = ctx.driver.player_name(color);
+    let is_mine = ctx.driver.my_color() == Some(color);
 
     rsx! {
         div {
