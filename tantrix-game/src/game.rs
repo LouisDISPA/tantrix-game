@@ -299,7 +299,7 @@ impl Game {
     }
 
     /// The current player's legal moves at their step of the turn: only
-    /// forced moves while one is possible and the bag still has tiles.
+    /// forced moves while one is possible, even after the bag is empty.
     pub fn legal_moves(&self) -> &[Move] {
         self.legal_moves.get_or_init(|| {
             self.board.possible_moves(
@@ -373,13 +373,14 @@ impl Game {
 
     // --- Changes ---
 
-    /// Play `placement` for the current player, draw a replacement tile, and
+    /// Play `placement` for the current player, draw a replacement when available, and
     /// pass the turn once it is over. `placement` must match one of the
     /// [`Self::legal_moves`]; the returned [`PlayedMove`] holds that move as
     /// placed, with the board's `forced` flag.
     ///
-    /// While the bag has tiles, fill forced spaces, make one free move, then
-    /// fill forced spaces again. With an empty bag, the free move ends the turn.
+    /// Fill forced spaces, make one free move, then fill forced spaces again.
+    /// These steps still apply with an empty bag; only the three restriction
+    /// rules are lifted then.
     pub fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
         let current = self.current_player();
         let step = self.turn_step();
@@ -1098,7 +1099,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_bag_removes_forced_moves_and_ends_turn_after_one_placement() {
+    fn empty_bag_keeps_forced_moves_before_the_free_move() {
         let source = seeded_game_where(|g| {
             g.turn_step() == TurnStep::BeforeFreeMove
                 && g.legal_moves().first().is_some_and(|m| m.forced)
@@ -1115,20 +1116,20 @@ mod tests {
         )
         .unwrap();
 
-        assert!(game.legal_moves().iter().all(|m| !m.forced));
+        assert!(game.legal_moves().iter().all(|m| m.forced));
         assert!(game
             .legal_moves()
             .iter()
             .any(|m| m.placement() == geometric_forced.placement()));
 
         let played = game.play_move(geometric_forced.placement()).unwrap();
-        assert!(!played.m.forced);
-        assert_ne!(game.current_player(), player);
+        assert!(played.m.forced);
+        assert_eq!(game.current_player(), player);
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
     }
 
     #[test]
-    fn drawing_the_last_tile_removes_forced_moves() {
+    fn drawing_the_last_tile_keeps_forced_moves() {
         let source = seeded_game_where(|g| {
             g.turn_step() == TurnStep::BeforeFreeMove
                 && g.legal_moves().first().is_some_and(|m| m.forced)
@@ -1149,15 +1150,17 @@ mod tests {
         assert!(game.bag_is_empty());
         assert_eq!(game.current_player(), player);
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
-        assert!(game.legal_moves().iter().all(|m| !m.forced));
+        assert!(!game.legal_moves().is_empty());
+        assert!(game.legal_moves().iter().all(|m| m.forced));
 
-        let free = game.legal_moves()[0];
-        game.play_move(free.placement()).unwrap();
-        assert_ne!(game.current_player(), player);
+        let next_fill = game.legal_moves()[0];
+        game.play_move(next_fill.placement()).unwrap();
+        assert_eq!(game.current_player(), player);
+        assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
     }
 
     #[test]
-    fn a_free_move_that_empties_the_bag_passes_the_turn() {
+    fn a_free_move_that_empties_the_bag_still_requires_forced_fills() {
         let mut source = seeded_game_where(after_free_move);
         assert!(source.legal_moves()[0].forced);
         let TurnEvent::Played { m: free, .. } = source.undo().unwrap() else {
@@ -1178,7 +1181,16 @@ mod tests {
         game.play_move(free.placement()).unwrap();
 
         assert!(game.bag_is_empty());
-        assert_ne!(game.current_player(), player);
+        assert_eq!(game.current_player(), player);
+        assert_eq!(game.turn_step(), TurnStep::AfterFreeMove);
+        assert!(game.legal_moves().iter().all(|m| m.forced));
+        assert!(!game.legal_moves().is_empty());
+
+        while game.current_player() == player {
+            let fill = game.legal_moves()[0];
+            assert!(fill.forced);
+            game.play_move(fill.placement()).unwrap();
+        }
         assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
     }
 

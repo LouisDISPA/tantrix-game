@@ -211,7 +211,7 @@ fn EndgameLesson() -> Element {
             p { class: "learn-step", "04 / WHEN THE BAG EMPTIES" }
             h2 { "The board " strong { "opens up." } }
             p { class: "learn-rule", "With tiles in the bag: no same-color triples, fourth sides, or controlled-side plays." }
-            p { class: "learn-hint", "Bag empty? " strong { "No blocking rules. No forced gaps." } " Colors still match; play one tile per turn." }
+            p { class: "learn-hint", "Bag empty? " strong { "Restrictions lift." } " Forced gaps and matching edges stay. Here, your tile cannot fill the gap." }
             div { class: "learn-switch", role: "group", aria_label: "Tiles left in bag",
                 button {
                     class: if !bag_empty() { "is-active" } else { "" },
@@ -240,13 +240,14 @@ fn EndgameLesson() -> Element {
                 }
             }
             if placed() {
-                p { class: "learn-feedback", "Legal now. The edge colors still match." }
+                p { class: "learn-feedback", "Legal now. Forced gaps still come first." }
             } else if tried() {
                 p { class: "learn-feedback learn-feedback-error", "Blocked while the bag has tiles." }
             }
         }
         MiniBoard {
             moves: endgame_board(placed()),
+            forced_space: Some(Position::CENTER),
             target: if placed() { None } else { Some(side_tile().position) },
             target_blocked: !bag_empty(),
             preview: if placed() { None } else { Some(side_tile()) },
@@ -285,6 +286,7 @@ fn ScoreLesson() -> Element {
 #[component]
 fn MiniBoard(
     moves: Vec<Move>,
+    #[props(default)] forced_space: Option<Position>,
     #[props(default)] target: Option<Position>,
     #[props(default)] target_forced: bool,
     #[props(default)] target_blocked: bool,
@@ -294,6 +296,9 @@ fn MiniBoard(
     #[props(into)] label: String,
 ) -> Element {
     let mut positions: Vec<Position> = moves.iter().map(|m| m.position).collect();
+    if let Some(position) = forced_space {
+        positions.push(position);
+    }
     if let Some(position) = target {
         positions.push(position);
     }
@@ -320,7 +325,14 @@ fn MiniBoard(
     rsx! {
         div { class: "learn-board",
             svg { view_box, role: "img",
-                title { "{label}" }
+                title { {label} }
+                if let Some(position) = forced_space {
+                    {
+                        let (x, y) = axial_to_pixel(position, HEX);
+                        let points = hex_polygon_points(x, y, HEX);
+                        rsx! { polygon { class: "learn-forced-space", points } }
+                    }
+                }
                 if let Some(position) = target {
                     {
                         let (x, y) = axial_to_pixel(position, HEX);
@@ -473,6 +485,8 @@ fn loop_board() -> Vec<Move> {
 
 #[cfg(test)]
 mod tests {
+    use tantrix_game::{Hand, TurnStep};
+
     use super::*;
 
     fn board_of(moves: &[Move]) -> Board {
@@ -515,5 +529,27 @@ mod tests {
             .any(|m| m.rotation == side_tile().rotation));
         board_of(&endgame_board(true));
         board_of(&forced_board(2));
+    }
+
+    #[test]
+    fn endgame_example_lifts_the_side_restriction_but_keeps_forced_priority() {
+        let board = board_of(&gap_board());
+        let side_only: Hand = serde_json::from_str(r#"{"tiles":["YRRBYB"]}"#).unwrap();
+        let with_gap_tile: Hand = serde_json::from_str(r#"{"tiles":["YRRBYB","YGGBBY"]}"#).unwrap();
+
+        assert!(!board
+            .possible_moves(&side_only, false, TurnStep::BeforeFreeMove)
+            .iter()
+            .any(|m| m.placement() == side_tile().placement()));
+        assert!(board
+            .possible_moves(&side_only, true, TurnStep::BeforeFreeMove)
+            .iter()
+            .any(|m| m.placement() == side_tile().placement()));
+        let forced = board.possible_moves(&with_gap_tile, true, TurnStep::BeforeFreeMove);
+        assert!(!forced.is_empty());
+        assert!(forced.iter().all(|m| m.forced));
+        assert!(!forced
+            .iter()
+            .any(|m| m.placement() == side_tile().placement()));
     }
 }

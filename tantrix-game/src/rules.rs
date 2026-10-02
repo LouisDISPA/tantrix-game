@@ -85,9 +85,9 @@ impl Board {
     }
 
     /// Compute all valid moves for tiles in the given hand at `step` of the turn.
-    /// While the bag has tiles, restriction rules (controlled sides,
-    /// same-color triples) apply and forced spaces must be filled first.
-    /// Once the bag is empty, every fitting placement is a free move.
+    /// Forced spaces must be filled first whenever a tile fits, including
+    /// after the bag empties. Restriction rules (controlled sides and
+    /// same-color triples) apply only while the bag has tiles.
     ///
     /// Moves come tile by tile in hand order, then by position, then by
     /// rotation. The placements are the same as checking every tile, contour
@@ -99,14 +99,6 @@ impl Board {
     pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool, step: TurnStep) -> Vec<Move> {
         let restricted = !bag_is_empty;
         let spaces = self.spaces(restricted);
-
-        if bag_is_empty {
-            return if step == TurnStep::AfterFreeMove {
-                Vec::new()
-            } else {
-                moves_into(hand, &spaces, |_| true)
-            };
-        }
 
         let forced = moves_into(hand, &spaces, |space| space.forced);
         if !forced.is_empty() || step == TurnStep::AfterFreeMove {
@@ -147,7 +139,7 @@ impl Board {
                 Space {
                     position,
                     edges,
-                    forced: restricted && neighbors >= 3,
+                    forced: neighbors >= 3,
                     controlled: false,
                     triples: [None; 6],
                 }
@@ -333,14 +325,7 @@ mod tests {
         if !bag_is_empty {
             moves.retain(|m| !board.creates_same_color_triple(m));
         }
-        if bag_is_empty {
-            if step == TurnStep::AfterFreeMove {
-                return Vec::new();
-            }
-            for m in &mut moves {
-                m.forced = false;
-            }
-        } else if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
+        if step == TurnStep::AfterFreeMove || moves.iter().any(|m| m.forced) {
             moves.retain(|m| m.forced);
         }
         moves

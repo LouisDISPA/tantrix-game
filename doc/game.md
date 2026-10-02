@@ -41,11 +41,11 @@ tantrix-ai   ──┤
   mutation path, which takes a `Placement` and places the legal `Move`
   that matches it. `Board::insert_move` is a low-level occupancy-only
   insertion helper.
-- **Forced space.** Empty hex with 3+ filled neighbors. While the bag has
-  tiles, the player must fill one if possible. Once the bag is empty,
-  every fitting placement is a free move.
+- **Forced space.** Empty hex with 3+ filled neighbors. The player must
+  fill one if possible, including after the bag empties.
 - **Restrictions** (while `bag` is non-empty):
   - No same-color triples (would create an unfillable forced space).
+  - No fourth tile around a forced space.
   - No controlled-side plays.
   See `Board::possible_moves` for the full filter chain.
 
@@ -134,13 +134,13 @@ message and resets the selection for a human (or ends the game).
 ## Forced moves
 
 A turn is: fill forced spaces, make one free move, fill forced spaces
-again while the bag has tiles. With an empty bag, each turn is one free
-move. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
+again. This still applies after the bag empties; only the three
+restriction rules are lifted. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
 `AfterFreeMove`); online snapshots carry it as `turn_step`.
 
-- While the bag has tiles, `Board::possible_moves` retains only `forced`
-  moves if any exist, and only forced moves once the free move is played.
-  With an empty bag, every fitting placement is free. It works out each
+- `Board::possible_moves` retains only `forced` moves if any exist, and
+  only forced moves once the free move is played. With an empty bag,
+  forced spaces still take priority while restrictions lift. It works out each
   contour position's neighbor colors, forced flag, controlled side and
   same-color-triple colors once per call, and tries forced spaces first;
   the move-by-move rules (`get_possible_move`, `controlled_positions`,
@@ -154,7 +154,7 @@ move. `TurnTracker` records the step (`TurnStep::BeforeFreeMove` /
   matches it says whether it fills a forced space. An illegal placement is
   `MoveError::InvalidMove`, a tile the player doesn't hold `TileNotInHand`.
   It passes the turn after the free move once no forced space is left
-  that the player can fill, or immediately if the bag is empty, and returns
+  that the player can fill, including with an empty bag, and returns
   the `PlayedMove` as placed.
 
 ## Stuck players

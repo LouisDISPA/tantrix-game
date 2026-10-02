@@ -22,7 +22,7 @@ Each turn has 3 steps:
 2. **Make one free move** (play any tile anywhere legal).
 3. **Fill forced spaces** again.
 
-After each tile played (forced or free), draw a replacement from the bag. Always maintain a hand of 6.
+After each tile played (forced or free), draw a replacement while the bag has tiles. Keep a hand of 6 until the bag empties.
 
 ## Forced Spaces
 
@@ -38,7 +38,9 @@ These restrictions apply **only while tiles remain in the bag**. All three are l
 
 ## Endgame
 
-When the bag is empty: announce "bag empty". The 3 restriction rules are lifted immediately. Forced spaces must still be filled. Basic rules (match colors, replace tiles, fill forced spaces) still apply.
+When the bag is empty, the 3 restriction rules are lifted immediately. Forced spaces must still be filled when possible, before and after the one free move. Touching colors must still match. No replacement tiles are drawn once the bag is empty.
+
+Source: [Official Tantrix Game Rules — The Endgame](https://www.tantrix.com/english/TantrixGameRules.html).
 
 ## Scoring
 
