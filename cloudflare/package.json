@@ -1,6 +1,7 @@
 {
   "name": "tantrix-cloudflare",
   "private": true,
+  "packageManager": "pnpm@12.8.1",
   "devDependencies": {
     "wrangler": "^4.144.0"
   },

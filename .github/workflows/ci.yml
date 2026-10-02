@@ -18,13 +18,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
-      # Official Dioxus CI building blocks, pinned to v0.1.0. The toolchain
-      # matches rust-toolchain.toml.
-      - uses: DioxusLabs/dioxus-ci/actions/setup-dioxus@68b5983fd6c83a02ed52638fe5063678ce8ad09c # v0.1.0
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
-          toolchain: nightly
-          components: rustfmt, clippy
-          targets: wasm32-unknown-unknown
+          cache-all-crates: true
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
       - run: just fmt-check
       - run: just lint
@@ -36,32 +33,30 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: DioxusLabs/dioxus-ci/actions/setup-dioxus@68b5983fd6c83a02ed52638fe5063678ce8ad09c # v0.1.0
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         with:
-          toolchain: nightly
-          targets: wasm32-unknown-unknown
-          # `just worker-ssr` installs worker-build here.
+          cache-all-crates: true
           cache-directories: target/tools
-      # Prebuilt `dx` through cargo-binstall instead of compiling it. Keep the
-      # version in step with the dioxus crates in Cargo.lock.
       - uses: DioxusLabs/dioxus-ci/actions/install-dioxus-cli@68b5983fd6c83a02ed52638fe5063678ce8ad09c # v0.1.0
         with:
           version: 0.7.10
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 12.8.1
       - uses: actions/setup-node@v7.0.0
         with:
-          node-version: 24
-          cache: npm
+          node-version-file: .node-version
+          cache: pnpm
           cache-dependency-path: |
-            e2e/package-lock.json
-            cloudflare/package-lock.json
+            e2e/pnpm-lock.yaml
+            cloudflare/pnpm-lock.yaml
       - name: Install Playwright
         working-directory: e2e
         run: |
-          npm ci
-          npx playwright install --with-deps chromium
-      # Builds the client and the SSR module, installs the pinned Wrangler,
-      # then runs the suite against `wrangler dev`.
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
       - run: just worker-e2e
       - name: Upload test report
         if: failure()

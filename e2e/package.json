@@ -1,6 +1,7 @@
 {
   "name": "tantrix-e2e",
   "private": true,
+  "packageManager": "pnpm@12.8.1",
   "scripts": {
     "test": "playwright test",
     "test:worker": "playwright test --config playwright.worker.config.ts",

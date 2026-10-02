@@ -19,24 +19,23 @@ Playwright runs headless Chromium against either the native Axum server or
 
 ## Setup
 
-Install the repository's nightly Rust toolchain, the `wasm32-unknown-unknown`
-target, Dioxus CLI, Node.js, and Chromium. Then install the e2e dependencies:
+Follow the [repository setup](../README.md), then install Chromium:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cd e2e && npm ci && npx playwright install chromium
+just setup-e2e
+cd e2e && pnpm exec playwright install chromium
 ```
 
 ## Run
 
 From the repository root, `just native-e2e` builds and tests the native server;
-`just worker-e2e` builds and tests the Worker. `just e2e` aliases the Worker
-suite. For a focused Worker run after `just worker-build`:
+`just worker-e2e` builds and tests the Worker. For a focused Worker run after
+`just worker-build` and `just setup-worker`:
 
 ```bash
 cd e2e
-npx playwright test tests/online-flow.spec.ts
-JOIN_ATTEMPTS=50 npx playwright test tests/online-join.spec.ts
+pnpm exec playwright test tests/online-flow.spec.ts
+JOIN_ATTEMPTS=50 pnpm exec playwright test tests/online-join.spec.ts
 ```
 
 The Worker config starts Wrangler on port 4174; the native config starts

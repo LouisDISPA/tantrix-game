@@ -83,8 +83,8 @@ turns makes a room survive an isolate restart.
 
 The web client must be built before the SSR module: `tantrix-worker/build.rs`
 embeds the client's generated `index.html`, including its hashed asset names.
-`just worker-build` builds both. Wrangler is installed from
-`cloudflare/package-lock.json` by the recipes.
+`just worker-build` builds both. `just setup-worker` installs Wrangler from
+`cloudflare/pnpm-lock.yaml`; Worker recipes run that setup automatically.
 
 ```bash
 just worker-dev      # build, then serve locally at http://localhost:8787
