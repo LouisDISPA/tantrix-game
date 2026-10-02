@@ -34,6 +34,11 @@ pub fn MainMenu() -> Element {
                         },
                         "Online"
                     }
+                    button {
+                        class: "title-btn-link learn-menu-link",
+                        onclick: move |_| { let _ = nav.push(Route::Learn {}); },
+                        "Learn the rules · 2 min →"
+                    }
                 }
         }
     }

@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::title_decoration::TitleDecoration;
+use crate::pages::learn::Learn;
 use crate::pages::local_game::LocalGame;
 use crate::pages::main_menu::MainMenu;
 use crate::pages::online::{JoinRoom, OnlineEntry, OnlineRoom};
@@ -13,6 +14,8 @@ pub enum Route {
     #[layout(AppLayout)]
     #[route("/")]
     MainMenu {},
+    #[route("/learn")]
+    Learn {},
     #[route("/game?:seed")]
     LocalGame { seed: Option<u64> },
     #[route("/online")]
