@@ -12,10 +12,16 @@ browser host.
 | --- | --- |
 | Existing CSS, JS, Wasm, and images | Workers Static Assets, before the Worker runs |
 | `GET /health` | Worker health response |
+| `GET /robots.txt`, `GET /sitemap.xml` | Worker search-discovery responses |
 | `WS /room/{CODE}?create=1` | Create a room in its Durable Object and connect its creator |
 | `WS /room/{CODE}` | Connect to an existing room; unknown codes are rejected |
 | Missing file-like path | Static Assets 404 |
 | App routes such as `/`, `/game`, `/online`, `/join/{CODE}` | Rust Dioxus server rendering and hydration |
+
+The Worker sends canonical `Link` headers for `/`, `/learn`, `/about`, and
+`/online`. Other rendered pages, including room and seeded-game URLs, receive
+`X-Robots-Tag: noindex`. Keep `SITE_ORIGIN` in `src/index.js` aligned with the
+custom domain in `wrangler.toml` when changing domains.
 
 The room code selects one Durable Object. The code is generated in the browser
 when the player clicks **Create a room**. Only that first connection carries

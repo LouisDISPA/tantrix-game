@@ -8396,11 +8396,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "dioxus",
+ "dioxus-fullstack-core",
  "futures",
  "futures-channel",
  "futures-timer",
  "getrandom 0.4.3",
  "gloo-timers 0.4.0",
+ "http",
  "log",
  "rusqlite",
  "serde",

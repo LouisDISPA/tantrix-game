@@ -34,10 +34,17 @@ pub fn MainMenu() -> Element {
                         },
                         "Online"
                     }
-                    button {
-                        class: "title-btn-link learn-menu-link",
-                        onclick: move |_| { let _ = nav.push(Route::Learn {}); },
-                        "Learn the rules · 2 min →"
+                    div { class: "title-secondary-links",
+                        button {
+                            class: "title-btn-link",
+                            onclick: move |_| { let _ = nav.push(Route::Learn {}); },
+                            "Learn the rules · 2 min →"
+                        }
+                        button {
+                            class: "title-btn-link",
+                            onclick: move |_| { let _ = nav.push(Route::About {}); },
+                            "About"
+                        }
                     }
                 }
         }

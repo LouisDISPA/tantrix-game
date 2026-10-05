@@ -3,9 +3,11 @@
 use dioxus::prelude::*;
 
 use crate::components::title_decoration::TitleDecoration;
+use crate::pages::about::About;
 use crate::pages::learn::Learn;
 use crate::pages::local_game::LocalGame;
 use crate::pages::main_menu::MainMenu;
+use crate::pages::not_found::NotFound;
 use crate::pages::online::{JoinRoom, OnlineEntry, OnlineRoom};
 use crate::state::theme::{toggle_theme, THEME};
 
@@ -16,6 +18,8 @@ pub enum Route {
     MainMenu {},
     #[route("/learn")]
     Learn {},
+    #[route("/about")]
+    About {},
     #[route("/game?:seed")]
     LocalGame { seed: Option<u64> },
     #[route("/online")]
@@ -24,6 +28,8 @@ pub enum Route {
     OnlineRoom { code: String },
     #[route("/join/:code")]
     JoinRoom { code: String },
+    #[route("/:..path")]
+    NotFound { path: Vec<String> },
 }
 
 #[derive(Clone, Copy)]
@@ -39,6 +45,14 @@ fn AppLayout() -> Element {
     rsx! {
         div { class: "menu-background", aria_hidden: "true", TitleDecoration {} }
         div { class: "app-page", Outlet::<Route> {} }
-        button { class: "theme-toggle", onclick: move |_| toggle_theme(), "{THEME.resolve().read().icon()}" }
+        button {
+            class: "theme-toggle",
+            aria_label: match *THEME.resolve().read() {
+                crate::state::theme::Theme::Dark => "Switch to light theme",
+                crate::state::theme::Theme::Light => "Switch to dark theme",
+            },
+            onclick: move |_| toggle_theme(),
+            "{THEME.resolve().read().icon()}"
+        }
     }
 }

@@ -228,6 +228,35 @@
   animation: slideUp 0.25s ease-out both;
 }
 
+.title-secondary-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 16px;
+}
+
+.title-secondary-links .title-btn-link {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.about-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.about-copy h2 {
+  font-size: 18px;
+  margin-bottom: 4px;
+}
+
+.about-copy p {
+  color: var(--text-secondary);
+}
+
 .title-btn {
   position: relative;
   border: none;
