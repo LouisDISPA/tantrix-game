@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="title">
+  <title id="title">Tantrix tile with three colored corner turns</title>
+  <defs><clipPath id="tile"><path d="M32 2 58 17v30L32 62 6 47V17Z"/></clipPath></defs>
+  <path d="M32 2 58 17v30L32 62 6 47V17Z" fill="#171717"/>
+  <g clip-path="url(#tile)" fill="none" stroke-width="8">
+    <path d="M19 9.5Q32 22 45 9.5" stroke="#ff0e30"/>
+    <path d="M6 32Q21 38 19 54.5" stroke="#ffab00"/>
+    <path d="M58 32Q43 38 45 54.5" stroke="#008cff"/>
+  </g>
+  <path d="M32 2 58 17v30L32 62 6 47V17Z" fill="none" stroke="#555" stroke-width="1.5"/>
+</svg>

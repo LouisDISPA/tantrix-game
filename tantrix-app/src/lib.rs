@@ -26,11 +26,13 @@ const HAND_CSS: Asset = asset!("/assets/hand.css");
 const MENU_CSS: Asset = asset!("/assets/menu.css");
 const LEARN_CSS: Asset = asset!("/assets/learn.css");
 const ANIMATIONS_CSS: Asset = asset!("/assets/animations.css");
+const FAVICON: Asset = asset!("/assets/favicon.svg");
 
 pub fn app() -> Element {
     let theme = *THEME.resolve().read();
 
     rsx! {
+        document::Link { rel: "icon", href: FAVICON, sizes: "any", r#type: "image/svg+xml" }
         document::Stylesheet { href: MAIN_CSS }
         document::Stylesheet { href: BOARD_CSS }
         document::Stylesheet { href: HAND_CSS }
