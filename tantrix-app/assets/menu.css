@@ -589,6 +589,48 @@
   filter: brightness(1.15);
 }
 
+/* An AI seat grows a second row: its difficulty chips. */
+.player-slot.has-level {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.player-slot .difficulty-picker {
+  flex-basis: 100%;
+}
+
+.difficulty-picker {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.difficulty-chip {
+  flex: 1;
+  padding: 7px 4px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.difficulty-chip:hover:not(.on) {
+  color: var(--text-primary);
+}
+
+.difficulty-chip.on {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
 /* ============================================================ */
 /* Online pages                                                  */
 /* ============================================================ */

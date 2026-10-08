@@ -24,6 +24,10 @@ tiles into a bag of its own (`AiView::determinize`).
 | `Lookahead` | Strategist's 8 best moves, each answered by the next player's best reply | 1686 | 0.56 |
 | `MonteCarlo` | Strategist's 16 best moves played out to the end on determinized bags, by successive halving | 2076 | 29.7 |
 
+The app offers four of them as difficulty levels, per AI seat (`Difficulty`
+in `tantrix-app/src/state/config.rs`): Easy `Smart`, Medium `Strategist`
+(the default), Hard `Lookahead`, Expert `MonteCarlo`.
+
 All are deterministic but `Random` and `MonteCarlo`, which draw from a
 seeded generator once `with_seed` gives them one (the tournament does, per
 game), so a seed always plays the same game.
@@ -243,10 +247,9 @@ Legal-move generation is now about half of MonteCarlo's time.
 - **Exact endgame.** Once the bag is empty nothing is hidden: search the
   last few tiles exactly.
 - **A time budget.** MonteCarlo playing for a set time rather than a set
-  number of playouts suits the app, where devices differ. The app could
-  offer levels: Strategist (easy, instant), Lookahead (medium), MonteCarlo
-  (hard), once MonteCarlo's cost in wasm is measured. Strategist alone
-  would already beat today's `Smart` 69–31.
+  number of playouts suits the app, where devices differ: Expert plays it
+  by playouts, and the browser e2e (`local-game.spec.ts`) only shows it
+  answers, not how long it takes on a slow device.
 - **Automatic tuning.** Drive headless tournaments from generated configs
   (SPSA, CMA-ES) instead of tuning by hand; try new features (how many
   tiles fit an end, not only whether one does).

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::components::color_swatch::ColorSwatch;
+use crate::components::difficulty_picker::DifficultyPicker;
 use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
@@ -32,13 +33,14 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                                 let toggle_class = match kind {
                                     PlayerKind::Off => "player-toggle off",
                                     PlayerKind::Human => "player-toggle human",
-                                    PlayerKind::Ai => "player-toggle ai",
+                                    PlayerKind::Ai(_) => "player-toggle ai",
                                 };
                                 rsx! {
                                     div {
                                         key: "{color:?}",
                                         class: "player-slot {color_class}",
                                         class: if is_active { "active" },
+                                        class: if matches!(kind, PlayerKind::Ai(_)) { "has-level" },
                                         ColorSwatch { color }
                                         div { class: "player-label", "{color}" }
                                         button {
@@ -47,6 +49,14 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                                                 config.write().cycle_player(color);
                                             },
                                             "{kind.label()}"
+                                        }
+                                        if let PlayerKind::Ai(level) = kind {
+                                            DifficultyPicker {
+                                                level,
+                                                on_change: move |difficulty| {
+                                                    config.write().set_difficulty(color, difficulty);
+                                                },
+                                            }
                                         }
                                     }
                                 }

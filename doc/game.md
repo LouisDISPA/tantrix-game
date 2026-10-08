@@ -265,8 +265,10 @@ and `AiView::determinize(rng)` deals them into a bag of its own: a `Game`
 `legal_moves`; callers play its `placement()`.
 
 The AIs, how they choose, the tournament that ranks them and its results
-are in [ai.md](ai.md). The app plays `SmartAi` (`state/config.rs`,
-`player_for`); the TUI `RandomAi`.
+are in [ai.md](ai.md). Each AI seat of the app plays at a `Difficulty`
+(`state/config.rs`, chosen with chips on the setup screen, Medium by
+default): Easy `SmartAi`, Medium `Strategist`, Hard `Lookahead`, Expert
+`MonteCarlo`. The TUI plays `RandomAi`.
 
 ## Frontend cache
 

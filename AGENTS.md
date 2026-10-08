@@ -74,7 +74,7 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     ui_state.rs            # UiState, TurnPhase, Hovered enum, HandTileState enum; per-field #[store] methods (reset_selection, after_move…), set_if_changed
     actions.rs             # Turn actions: start_game, click_tile, click_position, pick_rotation, execute_move, end_game, advance_turn; auto_move (a tile played without a choice)
     ai_service.rs          # Async AI turn loop
-    config.rs              # GameConfig (player count/colors)
+    config.rs              # GameConfig (seats, AI difficulty per seat)
     theme.rs               # Global light/dark theme signal
     test_games.rs          # (tests) seeded games: the e2e fixture, find_game, tiles with one move / several positions
   hooks/                   # Reactive derived values

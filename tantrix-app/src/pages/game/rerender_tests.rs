@@ -14,7 +14,7 @@ use super::GamePlay;
 use crate::hooks::camera::BoardCamera;
 use crate::hooks::use_game_ctx;
 use crate::state::actions::{click_position, execute_move, start_game};
-use crate::state::config::{GameConfig, PlayerKind};
+use crate::state::config::{Difficulty, GameConfig, PlayerKind};
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
@@ -298,7 +298,10 @@ fn showing_the_game_screen_changes_no_state() {
     // An AI is to move, but only Start Game hands it the turn: mounting the
     // screen (and every re-render after) writes nothing.
     let ais = config(
-        &[(Color::Red, PlayerKind::Ai), (Color::Blue, PlayerKind::Ai)],
+        &[
+            (Color::Red, PlayerKind::Ai(Difficulty::Easy)),
+            (Color::Blue, PlayerKind::Ai(Difficulty::Easy)),
+        ],
         3,
     );
     let page = Page::new(GameState::new(&ais));
@@ -314,7 +317,10 @@ fn starting_a_game_hands_the_first_turn_on() {
 
     // Whoever starts in an all-AI game is an AI: the AI loop takes the turn.
     let ais = config(
-        &[(Color::Red, PlayerKind::Ai), (Color::Blue, PlayerKind::Ai)],
+        &[
+            (Color::Red, PlayerKind::Ai(Difficulty::Easy)),
+            (Color::Blue, PlayerKind::Ai(Difficulty::Easy)),
+        ],
         5,
     );
     page.dom.in_scope(ScopeId::APP, || start_game(ctx, &ais));

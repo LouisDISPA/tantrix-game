@@ -17,7 +17,7 @@ App (lib.rs)
     └── Router
         ├── MainMenu                 title screen, nav to LocalGame
         ├── LocalGame                use_game_ctx(Local) provides GameCtx
-        │   ├── PlayerSetup          player count + AI/Human toggle → on_start
+        │   ├── PlayerSetup          player count + AI/Human toggle, difficulty chips → on_start
         │   ├── GamePlay             (shared, below)
         │   └── GameOver             (shared) Play Again / Main Menu
         └── OnlineRoom → OnlineGameView   use_online_game_ctx provides GameCtx (Online driver)
@@ -97,6 +97,7 @@ a memo.
 | `ScoresPanel` | `children: Element` (action buttons) |
 | `GameOver` | `again_label: String`, `on_again: EventHandler<()>`, `children: Element` (page overlays) |
 | `PlayerSetup` | `seed: Option<u64>`, `on_start: EventHandler<GameConfig>` |
+| `DifficultyPicker` | `level: Difficulty`, `on_change: EventHandler<Difficulty>` |
 | `ScoreRow` | `color: Color`, `score: usize`, `is_winner: bool` |
 | `StatusBar` | — |
 

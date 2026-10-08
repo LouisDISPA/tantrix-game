@@ -3,6 +3,7 @@ pub mod board;
 pub mod color_chip;
 pub mod color_swatch;
 pub mod confirm_dialog;
+pub mod difficulty_picker;
 pub mod menu_button;
 pub mod menu_card;
 pub mod menu_screen;
