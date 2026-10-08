@@ -19,6 +19,9 @@ cd tantrix-app && dx serve --hot-reload
 # TUI
 cargo run -p tantrix-tui
 
+# AI tournament (TUI; --headless prints progress to stderr, results to stdout)
+cargo run --release -p tantrix-tournament -- --config tantrix-tournament/configs/championship.toml --headless
+
 # Rust checks (the same recipes CI runs)
 just fmt-check
 just lint
@@ -46,14 +49,16 @@ just worker-deploy
 tantrix-game/src/          # Core library — game rules, no UI
   lib.rs                   # Module list + crate-root re-exports
   tiles.rs                 # 56 Tile variants, Color enum (Red/Blue/Yellow/Green)
+  edges.rs                 # Edges: a hex's edge colors packed 2 bits per direction (Tile::edges, Move::edges)
+  grid.rs                  # Grid: dense position lookups for one pass over the board (legal moves, scoring)
   coordinate_system.rs     # Position (axial hex), Direction, Rotation
   moves.rs                 # Placement (player input), Move, PlayedMove, TileMoveInfo (legal moves per hand tile)
   board.rs                 # Board storage, lookups, contour, neighbor counts
   rules.rs                 # Legal moves: golden rule, forced spaces, restriction rules
-  scoring.rs               # Longest line/loop per color: scores, scoring_paths, scores_after (incremental, for AIs)
+  scoring.rs               # Longest line/loop per color: scores, scoring_paths, lines (with open ends), scores_after/score_after + IndexedBoard (incremental, for AIs)
   bag.rs, hand.rs          # Bag (draw pile), Hand (6 tiles)
   turn.rs                  # TurnTracker, TurnStep
-  player.rs                # Player, TantrixAi trait
+  player.rs                # Player, TantrixAi trait, AiView (what an AI sees; determinize to play ahead)
   game.rs                  # Game (single source of truth: accessors, legal moves, play_move, skip_stuck_players, winners, undo, replay), GameData
   history.rs               # TurnEvent: every move, skipped turn and retirement, in order (undo, replay)
   error.rs                 # MoveError, SetupError, EventError, ReplayError
@@ -105,9 +110,10 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     geometry.rs            # axial_to_pixel, hex_vertices, bounding box
     paths.rs               # Color curves (arc/bezier/line), hex polygon
 
-tantrix-ai/src/            # AI players behind TantrixAi (RandomAi::seeded for reproducible games)
+tantrix-ai/src/            # AI players behind TantrixAi: baselines (Greedy, Smart…), Strategist/Builder (line evaluation, eval.rs), Lookahead, MonteCarlo; seeded via with_seed (doc/ai.md)
 tantrix-ai/examples/       # seeded_games: times seeded AI games, prints a play checksum
-tantrix-tournament/src/    # AI round robin (ratatui): `tantrix-tournament [SEED]` replays the same tournament
+tantrix-tournament/src/    # AI round robin, TUI or --headless: `tantrix-tournament --help`; the same seed replays the same tournament
+tantrix-tournament/configs/ # TOML tournaments: AIs + parameters (weights, width, playouts), settings (serde/toml in this crate only)
 tantrix-tui/src/           # Terminal UI (ratatui)
 
 tantrix-room/src/          # Room server code shared by both backends, no I/O: room_logic.rs (rules),

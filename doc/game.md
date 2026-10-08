@@ -15,9 +15,10 @@ tantrix-ai   ──┤
 | Crate | Purpose |
 |---|---|
 | `tantrix-game` | Rules, board, tiles, moves, scoring. No UI, no async. |
-| `tantrix-ai` | AI players (`SmartAi`, `RandomAi`, …) behind a `TantrixAi` trait |
+| `tantrix-ai` | AI players (`SmartAi`, `MonteCarloAi`, …) behind a `TantrixAi` trait |
 | `tantrix-app` | Dioxus frontend |
 | `tantrix-tui` | ratatui terminal frontend |
+| `tantrix-tournament` | AI round robin: TUI or headless, AIs set by TOML configs ([ai.md](ai.md)) |
 
 ## Domain (from `tantrix-game`)
 
@@ -142,7 +143,11 @@ restriction rules are lifted. `TurnTracker` records the step (`TurnStep::BeforeF
   only forced moves once the free move is played. With an empty bag,
   forced spaces still take priority while restrictions lift. It works out each
   contour position's neighbor colors, forced flag, controlled side and
-  same-color-triple colors once per call, and tries forced spaces first;
+  same-color-triple colors once per call, looking positions up in a dense
+  `Grid` of the board's bounding box (`grid.rs`) rather than searching the
+  sorted board, checks tiles against packed `Edges` (two bits per
+  direction: a whole rotation in one compare, `edges.rs`; the golden-rule
+  checks on them stay in `rules.rs`), and tries forced spaces first;
   the move-by-move rules (`get_possible_move`, `controlled_positions`,
   `creates_same_color_triple`) stay as the reference its tests compare
   against, move order included.
@@ -162,8 +167,8 @@ restriction rules are lifted. `TurnTracker` records the step (`TurnStep::BeforeF
 `Game::skip_stuck_players` is the one routine that passes the turn over
 players with no legal move (`Game::is_stuck`: no legal move, game not
 over). It checks each player at most once and returns `true` when nobody
-can move although tiles remain (a stall). `Game::advance` (TUI,
-tournament), the room's `PlayMove` and `StartGame`, and the app's
+can move although tiles remain (a stall). `Game::advance` (TUI; the
+tournament runs the same loop, timing each choice), the room's `PlayMove` and `StartGame`, and the app's
 `advance_turn` all use it, so an all-AI game where everyone is stuck ends
 instead of spinning. `advance_turn` is the app's only caller, for
 a human's move and after each AI turn alike, so a skip that lands on an AI
@@ -179,7 +184,12 @@ seat always starts the AI loop.
   is placed without copying the board: paths only grow, so each color's
   line through `m` is compared with its old best (a move that closes a
   loop is scored on a copy). The AIs score every candidate this way, from
-  the board's scores worked out once per decision.
+  the board's scores worked out once per decision, on `Board::indexed()`
+  (an `IndexedBoard`: the board with a position grid, built once for all
+  the candidates). `score_after(score, m, color)` scores one color alone:
+  a loop outscores the line it closes, so it is exact without a copy.
+- `Board::lines()` lists every line and loop, each line with the empty
+  positions its ends lead into (`LineEnd`): the planning AIs' evaluation.
 - `Game::winners` returns every playing color tied for the top score
   (the room's `EndReason`); `winners_from(scores)` does the same from
   scores already worked out (the app's `ScoresPanel`, which scores the
@@ -234,41 +244,29 @@ records every change in order as a `TurnEvent` (`history.rs`), read with
 
 ## AI service
 
-`tantrix-ai` exposes the `TantrixAi` trait:
+`tantrix-game` defines the `TantrixAi` trait (`player.rs`); `tantrix-ai`
+implements it:
 
 ```rust
 trait TantrixAi: Send + Sync {
     fn name(&self) -> &str;
     fn clone_box(&self) -> Box<dyn TantrixAi>;
     fn with_seed(&self, seed: u64) -> Box<dyn TantrixAi>;  // default: clone_box
-    fn choose_move(&self, board: &Board, hands: &EnumMap<Color, Hand>,
-                   current_player: Color, active_players: &[Color],
-                   possible_moves: &[Move]) -> Move;
+    fn choose_move(&self, view: &AiView) -> Move;
 }
 ```
 
-An AI picks one of the legal `possible_moves`, so it returns a `Move`;
-callers play its `placement()`.
+`Game::ai_view` shows an AI what a player sees: the board, every hand (face
+up), the current player, the playing colors in turn order, the turn step,
+the bag count and the legal moves (never empty), but not the draw order.
+`AiView::unseen_tiles` lists the tiles neither on the board nor in a hand,
+and `AiView::determinize(rng)` deals them into a bag of its own: a `Game`
+(every seat `Player::Someone`) to play on from here. An AI returns one of
+`legal_moves`; callers play its `placement()`.
 
-Implementations: `RandomAi`, `FirstMoveAi`, `GreedyAi`, `DefensiveAi`,
-`LoopHunterAi`, `SmartAi`. Pick per player in `state/config.rs`
-(`player_for`). All but `RandomAi` are deterministic (ties go to the last
-best move in legal-move order). `RandomAi::new()` draws from the thread's
-RNG; `RandomAi::seeded(seed)` (or `with_seed`) owns a seeded RNG, and a
-copy carries on from the same state.
-
-`tantrix-tournament [SEED]` plays every pairing of `all_ais()`, the first
-AI as Red and the second as Blue, and scores each AI by its color. Each
-game's seed is drawn in order from the tournament seed before any game
-runs, and deals the game and seeds both AIs (`with_seed`), so a tournament
-gives the same results however rayon schedules its games. Only those seeds
-are kept up front (`game_seeds`); each game's pairing comes from its index
-(`pairing`) as it is played, and the leaderboard is sorted once per frame.
-
-`cargo run --release -p tantrix-ai --example seeded_games [GAMES_PER_PAIR]`
-times seeded games between every pairing (then the rules and the scoring
-alone) and prints a checksum of their histories and scores: a change that
-must not alter play leaves it unchanged.
+The AIs, how they choose, the tournament that ranks them and its results
+are in [ai.md](ai.md). The app plays `SmartAi` (`state/config.rs`,
+`player_for`); the TUI `RandomAi`.
 
 ## Frontend cache
 

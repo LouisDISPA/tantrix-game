@@ -1,5 +1,7 @@
 use enum_map::EnumMap;
-use tantrix_game::{Board, Color, Hand, Move, PlayerScore, Position, ScoringPath, TantrixAi};
+use tantrix_game::{
+    AiView, Color, IndexedBoard, Move, PlayerScore, Position, ScoringPath, TantrixAi,
+};
 
 #[derive(Clone)]
 pub struct SmartAi;
@@ -12,7 +14,7 @@ pub struct SmartAi;
 /// `scores_before` and `paths_before` are the board's own, worked out once
 /// for every candidate.
 fn evaluate(
-    board: &Board,
+    board: &IndexedBoard,
     scores_before: &EnumMap<Color, PlayerScore>,
     paths_before: &EnumMap<Color, ScoringPath>,
     m: &Move,
@@ -59,26 +61,23 @@ impl TantrixAi for SmartAi {
         Box::new(self.clone())
     }
 
-    fn choose_move(
-        &self,
-        board: &Board,
-        _hands: &EnumMap<Color, Hand>,
-        current_player: Color,
-        active_players: &[Color],
-        possible_moves: &[Move],
-    ) -> Move {
-        let scores = board.scores();
-        let paths = board.scoring_paths();
-        let opponent = active_players
+    fn choose_move(&self, view: &AiView) -> Move {
+        let current_player = view.current_player;
+        let scores = view.board.scores();
+        let paths = view.board.scoring_paths();
+        let board = view.board.indexed();
+        let opponent = view
+            .playing_colors
             .iter()
             .copied()
             .filter(|&c| c != current_player)
             .max_by_key(|&c| scores[c].score)
             .unwrap_or(current_player);
 
-        *possible_moves
+        *view
+            .legal_moves
             .iter()
-            .max_by_key(|m| evaluate(board, &scores, &paths, m, current_player, opponent))
+            .max_by_key(|m| evaluate(&board, &scores, &paths, m, current_player, opponent))
             .unwrap()
     }
 }

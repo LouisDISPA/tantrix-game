@@ -1,0 +1,52 @@
+# A tournament config: `tantrix-tournament --config configs/example.toml`.
+# Every setting is optional, and the command-line flags override them.
+
+seed = 0        # the same seed plays the same tournament
+games = 200     # games per pairing
+mirror = true   # play each deal twice, the AIs' seats swapped
+# threads = 8   # worker threads (one per core by default)
+
+# The AIs, in order; without any [[ai]], every AI plays. `kind` is a name
+# `tantrix-tournament --list` shows (any case). `name` is what the
+# tournament calls it, the kind's name by default: two AIs of the same kind
+# need names of their own.
+
+[[ai]]
+kind = "Smart"
+
+# Strategist and Builder look one move ahead with the line evaluation. Each
+# weight left out keeps the kind's default (Builder's `opponent` is 0).
+[[ai]]
+kind = "Strategist"
+
+[ai.weights]
+open_end = 3.0       # per line end a remaining tile can extend (shrinks as the bag empties)
+forced_end = 3.0     # more per open end on a forced space
+ready_end = 0.5      # more per open end a tile of the owner's hand fits
+closable_loop = 0.25 # share of the loop's points for a line one tile can close
+joinable = 1.0       # share of the joined length for two lines one tile can join
+opponent = 1.0       # how much the best opponent's value counts against
+
+# Lookahead answers its `width` best moves with the next player's best reply.
+[[ai]]
+kind = "Lookahead"
+width = 8
+
+# MonteCarlo plays its `width` best moves out to the end, `playouts` times
+# each on average: its cost grows with width × playouts. Halving (the
+# default) spends them over rounds, keeping the better half of the moves
+# each round; `halving = false` plays every move out as often.
+[[ai]]
+kind = "MonteCarlo"
+width = 16
+playouts = 16
+halving = true
+weights = { opponent = 1.0 }
+
+# The same AI twice should score 50%: a check on the tournament itself.
+[[ai]]
+kind = "Random"
+name = "Random 2"
+
+[[ai]]
+kind = "Random"

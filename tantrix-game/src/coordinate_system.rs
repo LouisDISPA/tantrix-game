@@ -169,6 +169,10 @@ impl Sub<Rotation> for Direction {
 impl Position {
     pub const CENTER: Position = Position { x: 0, y: 0 };
 
+    pub(crate) fn new(x: i8, y: i8) -> Self {
+        Position { x, y }
+    }
+
     pub fn x(self) -> i8 {
         self.x
     }

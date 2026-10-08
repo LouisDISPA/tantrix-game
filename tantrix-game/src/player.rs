@@ -4,7 +4,25 @@ use std::fmt;
 
 use enum_map::EnumMap;
 
-use crate::{Board, Color, Hand, Move};
+use crate::{Board, Color, Hand, Move, TurnStep};
+
+/// What an AI knows when it is its turn ([`Game::ai_view`](crate::Game::ai_view)):
+/// the table (the board and every hand, all face up), whose turn it is and
+/// at which step, and how many tiles are left in the bag, but not which
+/// ones are drawn next. [`Self::determinize`] deals the unseen tiles into a
+/// bag of the AI's own, to play the game on from here.
+#[derive(Debug, Clone, Copy)]
+pub struct AiView<'a> {
+    pub board: &'a Board,
+    pub hands: &'a EnumMap<Color, Hand>,
+    pub current_player: Color,
+    /// The colors in the game, in turn order.
+    pub playing_colors: &'a [Color],
+    pub turn_step: TurnStep,
+    pub bag_count: usize,
+    /// The current player's legal moves; never empty.
+    pub legal_moves: &'a [Move],
+}
 
 pub trait TantrixAi: Send + Sync {
     fn name(&self) -> &str;
@@ -15,14 +33,8 @@ pub trait TantrixAi: Send + Sync {
     fn with_seed(&self, _seed: u64) -> Box<dyn TantrixAi> {
         self.clone_box()
     }
-    fn choose_move(
-        &self,
-        board: &Board,
-        hands: &EnumMap<Color, Hand>,
-        current_player: Color,
-        active_players: &[Color],
-        possible_moves: &[Move],
-    ) -> Move;
+    /// One of `view.legal_moves`.
+    fn choose_move(&self, view: &AiView) -> Move;
 }
 
 impl Clone for Box<dyn TantrixAi> {

@@ -1,0 +1,70 @@
+# Tuning the line evaluation: Strategist with one weight changed at a time
+# around its defaults (Weights::BALANCED: open_end 3, forced_end 3,
+# ready_end 0.5, closable_loop 0.25, joinable 1, opponent 1). A variant that
+# beats the default is a direction to try; recenter there and play again.
+#   tantrix-tournament --config configs/weights.toml
+seed = 1
+games = 1000
+
+[[ai]]
+kind = "Strategist"
+
+[[ai]]
+kind = "Strategist"
+name = "open_end 1.5"
+weights = { open_end = 1.5 }
+
+[[ai]]
+kind = "Strategist"
+name = "open_end 5"
+weights = { open_end = 5 }
+
+[[ai]]
+kind = "Strategist"
+name = "forced_end 2"
+weights = { forced_end = 2 }
+
+[[ai]]
+kind = "Strategist"
+name = "forced_end 4.5"
+weights = { forced_end = 4.5 }
+
+[[ai]]
+kind = "Strategist"
+name = "ready_end 0"
+weights = { ready_end = 0 }
+
+[[ai]]
+kind = "Strategist"
+name = "ready_end 1"
+weights = { ready_end = 1 }
+
+[[ai]]
+kind = "Strategist"
+name = "closable_loop 0"
+weights = { closable_loop = 0 }
+
+[[ai]]
+kind = "Strategist"
+name = "closable_loop 0.5"
+weights = { closable_loop = 0.5 }
+
+[[ai]]
+kind = "Strategist"
+name = "joinable 0.6"
+weights = { joinable = 0.6 }
+
+[[ai]]
+kind = "Strategist"
+name = "joinable 1.5"
+weights = { joinable = 1.5 }
+
+[[ai]]
+kind = "Strategist"
+name = "opponent 0.6"
+weights = { opponent = 0.6 }
+
+[[ai]]
+kind = "Strategist"
+name = "opponent 1.4"
+weights = { opponent = 1.4 }

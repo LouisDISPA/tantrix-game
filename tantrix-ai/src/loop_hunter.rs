@@ -1,5 +1,4 @@
-use enum_map::EnumMap;
-use tantrix_game::{Board, Color, Hand, Move, TantrixAi};
+use tantrix_game::{AiView, Move, TantrixAi};
 
 #[derive(Clone)]
 pub struct LoopHunterAi;
@@ -13,19 +12,14 @@ impl TantrixAi for LoopHunterAi {
         Box::new(self.clone())
     }
 
-    fn choose_move(
-        &self,
-        board: &Board,
-        _hands: &EnumMap<Color, Hand>,
-        current_player: Color,
-        _active_players: &[Color],
-        possible_moves: &[Move],
-    ) -> Move {
-        let before = board.scores();
-        *possible_moves
+    fn choose_move(&self, view: &AiView) -> Move {
+        let board = view.board.indexed();
+        let before = view.board.scores();
+        *view
+            .legal_moves
             .iter()
             .max_by_key(|m| {
-                let scores = board.scores_after(&before, m)[current_player];
+                let scores = board.scores_after(&before, m)[view.current_player];
                 scores.longest_loop * 3 + scores.longest_line
             })
             .unwrap()

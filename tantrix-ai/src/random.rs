@@ -1,10 +1,9 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use enum_map::EnumMap;
 use rand::prelude::IndexedRandom;
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::SeedableRng;
-use tantrix_game::{Board, Color, Hand, Move, TantrixAi};
+use tantrix_game::{AiView, Move, TantrixAi};
 
 /// Plays a random legal move. [`RandomAi::seeded`] makes its choices
 /// reproducible.
@@ -58,17 +57,10 @@ impl TantrixAi for RandomAi {
         Box::new(Self::seeded(seed))
     }
 
-    fn choose_move(
-        &self,
-        _board: &Board,
-        _hands: &EnumMap<Color, Hand>,
-        _current_player: Color,
-        _active_players: &[Color],
-        possible_moves: &[Move],
-    ) -> Move {
+    fn choose_move(&self, view: &AiView) -> Move {
         let chosen = match &self.rng {
-            Some(rng) => possible_moves.choose(&mut *lock(rng)),
-            None => possible_moves.choose(&mut rand::rng()),
+            Some(rng) => view.legal_moves.choose(&mut *lock(rng)),
+            None => view.legal_moves.choose(&mut rand::rng()),
         };
         *chosen.expect("possible_moves must not be empty")
     }
@@ -91,15 +83,7 @@ mod tests {
         )
         .unwrap();
         (0..count)
-            .map(|_| {
-                ai.choose_move(
-                    game.board(),
-                    game.hands(),
-                    game.current_player(),
-                    game.playing_colors(),
-                    game.legal_moves(),
-                )
-            })
+            .map(|_| ai.choose_move(&game.ai_view()))
             .collect()
     }
 

@@ -4,6 +4,7 @@
 use arrayvec::ArrayVec;
 use enum_map::{enum_map, EnumMap};
 
+use crate::grid::Grid;
 use crate::tiles::NUMBER_OF_TILE;
 use crate::{Board, Color, Direction, Move, Position};
 
@@ -23,6 +24,7 @@ pub struct ScoringPath {
 
 /// Find the two directions of a given color on a placed tile.
 /// Returns `None` if the tile doesn't have that color.
+#[cfg(test)]
 fn color_link(m: &Move, color: Color) -> Option<(Direction, Direction)> {
     let mut dirs: ArrayVec<Direction, 2> = ArrayVec::new();
     for dir in enum_iterator::all::<Direction>() {
@@ -37,12 +39,51 @@ fn color_link(m: &Move, color: Color) -> Option<(Direction, Direction)> {
     }
 }
 
+/// One line or loop of one color on the board ([`Board::lines`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Line {
+    pub color: Color,
+    pub tiles: usize,
+    pub is_loop: bool,
+    /// Where each end of a line leads; `None` for a loop.
+    pub ends: [Option<LineEnd>; 2],
+}
+
+/// Where a line ends: the empty position its last tile leads into. A tile
+/// placed there shows the line's color `toward` the line, by the golden
+/// rule, so it extends it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineEnd {
+    pub position: Position,
+    /// From `position` to the line's last tile.
+    pub toward: Direction,
+}
+
+/// Where [`Board::trace`] stops.
+enum PathEnd {
+    /// Back round at the start: the path is a loop.
+    Loop,
+    /// At an empty position.
+    Open(LineEnd),
+    /// At a tile that doesn't go on with the color; never on a board that
+    /// follows the golden rule.
+    Closed,
+}
+
+impl PathEnd {
+    fn is_loop(&self) -> bool {
+        matches!(self, PathEnd::Loop)
+    }
+}
+
 /// One line or loop of one color, as [`Board::for_each_path`] finds it.
 struct Trace {
     color: Color,
     /// The tile the path was found from.
     start: Position,
     is_loop: bool,
+    /// Where a line's forward and backward ends lead.
+    ends: [Option<LineEnd>; 2],
     /// The tiles after `start` through its first link of `color`, in order:
     /// for a loop, the rest of the loop.
     forward: ArrayVec<Position, NUMBER_OF_TILE>,
@@ -78,48 +119,51 @@ impl Trace {
 
 impl Board {
     /// Follow `color` from `start` out through `exit`, calling `visit` with
-    /// the board index of each tile on the way. Returns whether the path
-    /// came back round to `start`: a loop. `start` itself need not hold a
-    /// tile yet ([`Self::scores_after`]).
+    /// the board index of each tile on the way (`tile_at` finds the board
+    /// index of a position's tile), to where the path stops. `start` itself
+    /// need not hold a tile yet ([`Self::scores_after`]).
     fn trace(
         &self,
+        tile_at: impl Fn(Position) -> Option<usize>,
         color: Color,
         start: Position,
         exit: Direction,
         mut visit: impl FnMut(usize),
-    ) -> bool {
+    ) -> PathEnd {
         let mut current_pos = start;
         let mut current_exit = exit;
 
         loop {
             let next_pos = current_pos.neighbor(current_exit);
             if next_pos == start {
-                return true;
+                return PathEnd::Loop;
             }
-            let Some(next) = self.index_of(&next_pos) else {
-                return false;
-            };
-            let Some((da, db)) = color_link(&self[next], color) else {
-                return false;
-            };
             let arrival = current_exit.opposite();
-            let next_exit = if da == arrival {
-                db
-            } else if db == arrival {
-                da
-            } else {
-                return false;
+            let Some(next) = tile_at(next_pos) else {
+                return PathEnd::Open(LineEnd {
+                    position: next_pos,
+                    toward: arrival,
+                });
             };
+            let edges = self[next].edges();
+            if edges.get(arrival) != Some(color) {
+                return PathEnd::Closed;
+            }
 
             visit(next);
             current_pos = next_pos;
-            current_exit = next_exit;
+            current_exit = edges.other_end(arrival);
         }
     }
 
     /// Every line and loop on the board, once per color: tile by tile in
     /// board order, each color of the tile not already on a path found.
     fn for_each_path(&self, mut found: impl FnMut(&Trace)) {
+        if self.is_empty() {
+            return;
+        }
+        let grid = Grid::of(self);
+        let tile_at = |pos| grid.tile(pos);
         // Board indices already on a path, per color (the board holds at
         // most 56 tiles).
         let mut visited: EnumMap<Color, u64> = EnumMap::default();
@@ -127,18 +171,23 @@ impl Board {
             color: Color::Red,
             start: Position::CENTER,
             is_loop: false,
+            ends: [None; 2],
             forward: ArrayVec::new(),
             backward: ArrayVec::new(),
         };
 
         for (index, m) in self.iter().enumerate() {
-            for color in enum_iterator::all::<Color>() {
+            let edges = m.edges();
+            // Each color once, from the first of its two edges.
+            for dir_a in enum_iterator::all::<Direction>() {
+                let dir_b = edges.other_end(dir_a);
+                if dir_b.index() < dir_a.index() {
+                    continue;
+                }
+                let color = edges.get(dir_a).expect("a tile's edges are all set");
                 if visited[color] & (1 << index) != 0 {
                     continue;
                 }
-                let Some((dir_a, dir_b)) = color_link(m, color) else {
-                    continue;
-                };
 
                 let seen = &mut visited[color];
                 *seen |= 1 << index;
@@ -147,19 +196,41 @@ impl Board {
                 trace.forward.clear();
                 trace.backward.clear();
 
-                trace.is_loop = self.trace(color, m.position, dir_a, |next| {
+                let forward = self.trace(tile_at, color, m.position, dir_a, |next| {
                     *seen |= 1 << next;
                     trace.forward.push(self[next].position);
                 });
+                trace.is_loop = forward.is_loop();
+                trace.ends = [None; 2];
                 if !trace.is_loop {
-                    self.trace(color, m.position, dir_b, |next| {
+                    let backward = self.trace(tile_at, color, m.position, dir_b, |next| {
                         *seen |= 1 << next;
                         trace.backward.push(self[next].position);
                     });
+                    for (end, path_end) in trace.ends.iter_mut().zip([forward, backward]) {
+                        if let PathEnd::Open(line_end) = path_end {
+                            *end = Some(line_end);
+                        }
+                    }
                 }
                 found(&trace);
             }
         }
+    }
+
+    /// Every line and loop on the board, of every color, each once: tile by
+    /// tile in board order, each color of the tile not already on one.
+    pub fn lines(&self) -> Vec<Line> {
+        let mut lines = Vec::new();
+        self.for_each_path(|trace| {
+            lines.push(Line {
+                color: trace.color,
+                tiles: trace.tiles(),
+                is_loop: trace.is_loop,
+                ends: trace.ends,
+            })
+        });
+        lines
     }
 
     /// Compute the best scoring path for each color, including positions:
@@ -201,6 +272,42 @@ impl Board {
         }
     }
 
+    /// `color`'s score once `m` is placed, given its `score` now, for a
+    /// legal move `m`: the `score` of [`Self::scores_after`] for `color`,
+    /// from `color`'s path through `m` alone. A loop `m` closes outscores the
+    /// line it closes (twice the tiles, and one more), so the color's score
+    /// is the larger of its score now and the path through `m`.
+    pub fn score_after(&self, score: usize, m: &Move, color: Color) -> usize {
+        self.score_after_by(|pos| self.index_of(&pos), score, m, color)
+    }
+
+    /// [`Self::score_after`], finding tiles with `tile_at`.
+    fn score_after_by(
+        &self,
+        tile_at: impl Fn(Position) -> Option<usize> + Copy,
+        score: usize,
+        m: &Move,
+        color: Color,
+    ) -> usize {
+        let edges = m.edges();
+        let Some(dir_a) = enum_iterator::all::<Direction>().find(|&d| edges.get(d) == Some(color))
+        else {
+            return score;
+        };
+        let mut tiles = 1;
+        let path = if self
+            .trace(tile_at, color, m.position, dir_a, |_| tiles += 1)
+            .is_loop()
+        {
+            tiles * 2
+        } else {
+            let dir_b = edges.other_end(dir_a);
+            self.trace(tile_at, color, m.position, dir_b, |_| tiles += 1);
+            tiles
+        };
+        score.max(path)
+    }
+
     /// The [`Self::scores`] of this board once `m` is placed, given this
     /// board's `scores`, for a legal move `m` (it follows the golden rule, so
     /// every path it touches runs on through it). Equal to scoring a copy of
@@ -213,14 +320,31 @@ impl Board {
         scores: &EnumMap<Color, PlayerScore>,
         m: &Move,
     ) -> EnumMap<Color, PlayerScore> {
+        self.scores_after_by(|pos| self.index_of(&pos), scores, m)
+    }
+
+    /// [`Self::scores_after`], finding tiles with `tile_at`.
+    fn scores_after_by(
+        &self,
+        tile_at: impl Fn(Position) -> Option<usize> + Copy,
+        scores: &EnumMap<Color, PlayerScore>,
+        m: &Move,
+    ) -> EnumMap<Color, PlayerScore> {
         let mut after = *scores;
-        for color in enum_iterator::all::<Color>() {
-            let Some((dir_a, dir_b)) = color_link(m, color) else {
+        let edges = m.edges();
+        for dir_a in enum_iterator::all::<Direction>() {
+            let dir_b = edges.other_end(dir_a);
+            if dir_b.index() < dir_a.index() {
                 continue;
-            };
+            }
+            let color = edges.get(dir_a).expect("a tile's edges are all set");
             let mut tiles = 1;
-            let closes_loop = self.trace(color, m.position, dir_a, |_| tiles += 1)
-                || self.trace(color, m.position, dir_b, |_| tiles += 1);
+            let closes_loop = self
+                .trace(tile_at, color, m.position, dir_a, |_| tiles += 1)
+                .is_loop()
+                || self
+                    .trace(tile_at, color, m.position, dir_b, |_| tiles += 1)
+                    .is_loop();
             if closes_loop {
                 let mut board = self.clone();
                 board
@@ -233,6 +357,45 @@ impl Board {
             score.score = score.score.max(tiles);
         }
         after
+    }
+
+    /// This board with its tiles indexed by position, to score many moves
+    /// on it in a row.
+    pub fn indexed(&self) -> IndexedBoard<'_> {
+        IndexedBoard {
+            board: self,
+            grid: (!self.is_empty()).then(|| Grid::of(self)),
+        }
+    }
+}
+
+/// A board with its tiles indexed by position ([`Board::indexed`]):
+/// [`Board::score_after`] and [`Board::scores_after`] for many moves on the
+/// same board, without searching the board for each tile a path runs
+/// through.
+pub struct IndexedBoard<'a> {
+    board: &'a Board,
+    /// `None` for an empty board.
+    grid: Option<Grid>,
+}
+
+impl IndexedBoard<'_> {
+    fn tile_at(&self) -> impl Fn(Position) -> Option<usize> + Copy + '_ {
+        move |pos| self.grid.as_ref().and_then(|grid| grid.tile(pos))
+    }
+
+    /// [`Board::score_after`].
+    pub fn score_after(&self, score: usize, m: &Move, color: Color) -> usize {
+        self.board.score_after_by(self.tile_at(), score, m, color)
+    }
+
+    /// [`Board::scores_after`].
+    pub fn scores_after(
+        &self,
+        scores: &EnumMap<Color, PlayerScore>,
+        m: &Move,
+    ) -> EnumMap<Color, PlayerScore> {
+        self.board.scores_after_by(self.tile_at(), scores, m)
     }
 }
 
@@ -358,6 +521,50 @@ mod tests {
     }
 
     #[test]
+    fn lines_cover_every_path_and_lead_into_empty_positions() {
+        for_each_seeded_state(20, |game| {
+            let board = game.board();
+            let lines = board.lines();
+            let scores = board.scores();
+            for color in enum_iterator::all::<Color>() {
+                let of_color = || lines.iter().filter(|l| l.color == color);
+                let longest = |is_loop| {
+                    of_color()
+                        .filter(|l| l.is_loop == is_loop)
+                        .map(|l| l.tiles)
+                        .max()
+                        .unwrap_or(0)
+                };
+                assert_eq!(longest(false), scores[color].longest_line);
+                assert_eq!(longest(true), scores[color].longest_loop);
+                // Each tile showing the color is on exactly one of its paths.
+                let tiles: usize = of_color().map(|l| l.tiles).sum();
+                let showing = board
+                    .iter()
+                    .filter(|m| m.tile.colors().contains(&color))
+                    .count();
+                assert_eq!(tiles, showing);
+            }
+            for line in &lines {
+                if line.is_loop {
+                    assert_eq!(line.ends, [None, None]);
+                    continue;
+                }
+                for end in line.ends {
+                    let end = end.expect("lines on a legal board end at empty positions");
+                    assert!(board.is_available(&end.position));
+                    let last = board.get_move(&end.position.neighbor(end.toward)).unwrap();
+                    assert_eq!(last.color(end.toward.opposite()), line.color);
+                    assert_eq!(
+                        board.edges_toward(end.position).get(end.toward),
+                        Some(line.color)
+                    );
+                }
+            }
+        });
+    }
+
+    #[test]
     fn scores_after_a_move_match_scoring_the_board_with_it() {
         let (mut checked, mut closed) = (0, 0);
         for_each_seeded_state(12, |game| {
@@ -372,6 +579,19 @@ mod tests {
                     expected,
                     "{m:?} on {board:?}"
                 );
+                let indexed = board.indexed();
+                assert_eq!(indexed.scores_after(&scores, m), expected);
+                for color in enum_iterator::all::<Color>() {
+                    assert_eq!(
+                        board.score_after(scores[color].score, m, color),
+                        expected[color].score,
+                        "{color:?} {m:?} on {board:?}"
+                    );
+                    assert_eq!(
+                        indexed.score_after(scores[color].score, m, color),
+                        expected[color].score,
+                    );
+                }
                 checked += 1;
                 closed += usize::from(
                     expected

@@ -9,10 +9,7 @@ use crate::route::Route;
 pub fn NotFound(path: Vec<String>) -> Element {
     let _ = path;
     #[cfg(any(feature = "server", feature = "worker"))]
-    dioxus_fullstack_core::FullstackContext::commit_http_status(
-        http::StatusCode::NOT_FOUND,
-        None,
-    );
+    dioxus_fullstack_core::FullstackContext::commit_http_status(http::StatusCode::NOT_FOUND, None);
     let nav = navigator();
 
     rsx! {

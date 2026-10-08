@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 use arrayvec::ArrayVec;
 use enum_map::{enum_map, EnumMap};
 
-use crate::{Board, Color, Direction, Hand, Move, Position, Rotation, Tile, TurnStep};
+use crate::edges::LOW_BITS;
+use crate::grid::{Cell, Grid};
+use crate::{Board, Color, Direction, Edges, Hand, Move, Position, Rotation, Tile, TurnStep};
 
 impl Board {
     pub fn position_is_forced(&self, pos: &Position) -> bool {
@@ -114,47 +116,57 @@ impl Board {
     /// each. `restricted`: the restriction rules apply, so controlled sides and
     /// same-color triples are worked out too.
     fn spaces(&self, restricted: bool) -> Vec<Space> {
-        let mut positions: Vec<Position> = if self.is_empty() {
-            vec![Position::CENTER]
-        } else {
-            self.iter()
-                .flat_map(|m| m.position.around())
-                .map(|(pos, _)| pos)
-                .filter(|pos| self.is_available(pos))
-                .collect()
-        };
-        positions.sort_unstable();
-        positions.dedup();
-
-        let mut spaces: Vec<Space> = positions
-            .into_iter()
+        if self.is_empty() {
+            return vec![Space::new(Position::CENTER, Edges::default())];
+        }
+        // Mark the empty positions next to a tile, then number them in
+        // position order.
+        let mut grid = Grid::of(self);
+        const UNNUMBERED: Cell = Cell::Space(u16::MAX);
+        for m in self.iter() {
+            for (pos, _) in m.position.around() {
+                if grid.get(pos) == Cell::Empty {
+                    grid.set(pos, UNNUMBERED);
+                }
+            }
+        }
+        grid.number_spaces(UNNUMBERED);
+        let mut spaces: Vec<Space> = grid
+            .spaces()
             .map(|position| {
-                let mut edges = [None; 6];
+                let mut edges = Edges::default();
                 for (neighbor, dir) in position.around() {
-                    if let Some(m) = self.get_move(&neighbor) {
-                        edges[dir.index()] = Some(m.color(dir.opposite()));
+                    if let Some(index) = grid.tile(neighbor) {
+                        let color = self[index].edges().get(dir.opposite());
+                        edges.set(dir, color.expect("a tile's edges are all set"));
                     }
                 }
-                let neighbors = edges.iter().flatten().count();
-                Space {
-                    position,
-                    edges,
-                    forced: neighbors >= 3,
-                    controlled: false,
-                    triples: [None; 6],
-                }
+                Space::new(position, edges)
             })
             .collect();
 
         if restricted {
-            let triples: Vec<_> = spaces.iter().map(|s| s.triples(&spaces)).collect();
-            let controlled = controlled_spaces(&spaces);
+            let uniform: Vec<Option<Color>> = spaces.iter().map(Space::uniform_color).collect();
+            let triples: Vec<_> = spaces.iter().map(|s| s.triples(&uniform, &grid)).collect();
+            let controlled = controlled_spaces(&spaces, &grid);
             for ((space, triples), controlled) in spaces.iter_mut().zip(triples).zip(controlled) {
                 space.triples = triples;
                 space.controlled = controlled;
             }
         }
         spaces
+    }
+
+    /// The colors the tiles around `pos` show it, by direction: what a tile
+    /// placed there must match ([`Edges::matches`]).
+    pub fn edges_toward(&self, pos: Position) -> Edges {
+        let mut edges = Edges::default();
+        for (neighbor, dir) in pos.around() {
+            if let Some(m) = self.get_move(&neighbor) {
+                edges.set(dir, m.color(dir.opposite()));
+            }
+        }
+        edges
     }
 
     pub fn get_possible_move(
@@ -190,11 +202,41 @@ impl Board {
     }
 }
 
+/// The golden rule, on packed edges.
+impl Edges {
+    /// Whether `tile` (a tile's edges, all set) shows the same color on
+    /// every edge set here: the golden rule, for a space's edges.
+    pub fn matches(self, tile: Edges) -> bool {
+        (self.colors ^ tile.colors) & self.known == 0
+    }
+
+    /// Whether `tile` (a tile's edges, all set) shows another color on every
+    /// edge set here.
+    pub fn avoids(self, tile: Edges) -> bool {
+        let differ = self.colors ^ tile.colors;
+        // The low bit of each direction whose two bits differ somewhere.
+        let differs = (differ | differ >> 1) & LOW_BITS;
+        differs & self.known == self.known & LOW_BITS
+    }
+
+    /// The rotations of `tile` that [`Self::matches`] these edges.
+    pub fn rotations(self, tile: Tile) -> impl Iterator<Item = Rotation> {
+        let turned = tile.all_edges();
+        enum_iterator::all::<Rotation>()
+            .filter(move |&rotation| self.matches(turned[rotation as usize]))
+    }
+
+    /// Whether some rotation of `tile` [`Self::matches`] these edges.
+    pub fn accepts(self, tile: Tile) -> bool {
+        tile.all_edges().iter().any(|&turned| self.matches(turned))
+    }
+}
+
 /// One empty position on the contour, as [`Board::possible_moves`] sees it.
 struct Space {
     position: Position,
     /// The color each neighboring tile shows this space, by direction.
-    edges: [Option<Color>; 6],
+    edges: Edges,
     /// Three or more neighbors while the bag has tiles: must be filled first.
     forced: bool,
     /// On a controlled side of a forced space ([`Board::controlled_positions`]).
@@ -205,16 +247,26 @@ struct Space {
     /// that color, so a third would make a same-color triple
     /// ([`Board::creates_same_color_triple`]). Only worked out while the
     /// restriction rules apply.
-    triples: [Option<Color>; 6],
+    triples: Edges,
 }
 
 impl Space {
+    fn new(position: Position, edges: Edges) -> Self {
+        Self {
+            position,
+            edges,
+            forced: edges.count() >= 3,
+            controlled: false,
+            triples: Edges::default(),
+        }
+    }
+
     /// The color every neighbor shows this space, when it has two or more.
     fn uniform_color(&self) -> Option<Color> {
-        let mut colors = self.edges.iter().flatten();
-        let first = *colors.next()?;
+        let mut colors = enum_iterator::all::<Direction>().filter_map(|dir| self.edges.get(dir));
+        let first = colors.next()?;
         let mut count = 1;
-        for &color in colors {
+        for color in colors {
             if color != first {
                 return None;
             }
@@ -223,47 +275,39 @@ impl Space {
         (count >= 2).then_some(first)
     }
 
-    /// [`Self::triples`], given every space on the contour. An empty
-    /// neighbor with a neighbor of its own is on the contour too.
-    fn triples(&self, spaces: &[Space]) -> [Option<Color>; 6] {
-        let mut triples = [None; 6];
+    /// [`Self::triples`], given the [`Self::uniform_color`] of every space
+    /// on the contour, numbered in `grid`. An empty neighbor with a
+    /// neighbor of its own is on the contour too.
+    fn triples(&self, uniform: &[Option<Color>], grid: &Grid) -> Edges {
+        let mut triples = Edges::default();
         for (neighbor, dir) in self.position.around() {
-            if let Some(space) = find_space(spaces, neighbor) {
-                triples[dir.index()] = spaces[space].uniform_color();
+            if let Some(color) = grid.space(neighbor).and_then(|i| uniform[i]) {
+                triples.set(dir, color);
             }
         }
         triples
     }
 
-    /// Whether `tile` turned by `rotation` may be placed here: every edge
+    /// Whether a tile showing `edges` may be placed here: every edge
     /// matches its neighbor's color (the golden rule) and completes no
     /// same-color triple.
-    fn fits(&self, tile: Tile, rotation: Rotation) -> bool {
-        enum_iterator::all::<Direction>().all(|dir| {
-            let color = tile.color(dir - rotation);
-            let d = dir.index();
-            self.edges[d].is_none_or(|edge| edge == color) && self.triples[d] != Some(color)
-        })
+    fn fits(&self, edges: Edges) -> bool {
+        self.edges.matches(edges) && self.triples.avoids(edges)
     }
 }
 
-fn find_space(spaces: &[Space], position: Position) -> Option<usize> {
-    spaces
-        .binary_search_by(|space| space.position.cmp(&position))
-        .ok()
-}
-
-/// Which `spaces` lie on a controlled side of a forced space, by the rays of
-/// [`Board::controlled_positions`].
-fn controlled_spaces(spaces: &[Space]) -> Vec<bool> {
+/// Which `spaces` (numbered in `grid`) lie on a controlled side of a forced
+/// space, by the rays of [`Board::controlled_positions`].
+fn controlled_spaces(spaces: &[Space], grid: &Grid) -> Vec<bool> {
     let mut controlled = vec![false; spaces.len()];
     for space in spaces.iter().filter(|space| space.forced) {
-        let occupied = space.edges.map(|edge| edge.is_some());
+        let occupied: [bool; 6] =
+            std::array::from_fn(|d| space.edges.get(Direction::from(d as i8)).is_some());
         for d in 0..6 {
             if !occupied[d] && (occupied[(d + 5) % 6] || occupied[(d + 1) % 6]) {
                 let dir = Direction::from(d as i8);
                 let mut p = space.position.neighbor(dir);
-                while let Some(i) = find_space(spaces, p).filter(|&i| !spaces[i].forced) {
+                while let Some(i) = grid.space(p).filter(|&i| !spaces[i].forced) {
                     controlled[i] = true;
                     p = p.neighbor(dir);
                 }
@@ -278,9 +322,10 @@ fn controlled_spaces(spaces: &[Space]) -> Vec<bool> {
 fn moves_into(hand: &Hand, spaces: &[Space], include: impl Fn(&Space) -> bool) -> Vec<Move> {
     let mut moves = Vec::new();
     for &tile in hand.iter() {
+        let turned = tile.all_edges();
         for space in spaces.iter().filter(|space| include(space)) {
             for rotation in enum_iterator::all::<Rotation>() {
-                if space.fits(tile, rotation) {
+                if space.fits(turned[rotation as usize]) {
                     moves.push(Move {
                         tile,
                         position: space.position,
@@ -297,7 +342,7 @@ fn moves_into(hand: &Hand, spaces: &[Space], include: impl Fn(&Space) -> bool) -
 #[cfg(test)]
 mod tests {
     use crate::test_games::for_each_seeded_state;
-    use crate::{Board, Direction, Hand, Move, Position, Rotation, Tile, TurnStep};
+    use crate::{Board, Color, Direction, Edges, Hand, Move, Position, Rotation, Tile, TurnStep};
 
     /// [`Board::possible_moves`] move by move, straight from the rules:
     /// every tile, contour position and rotation, then the restriction
@@ -329,6 +374,33 @@ mod tests {
             moves.retain(|m| m.forced);
         }
         moves
+    }
+
+    #[test]
+    fn edges_match_and_avoid_only_the_edges_set() {
+        let tile = Tile::BYYBRR.edges(Rotation::None); // B Y Y B R R
+        let mut space = Edges::default();
+        assert!(space.matches(tile) && space.avoids(tile));
+        assert_eq!(space.get(Direction::Left), None);
+
+        space.set(Direction::Left, Color::Blue);
+        assert!(space.matches(tile) && !space.avoids(tile));
+        space.set(Direction::Right, Color::Red);
+        assert!(!space.matches(tile) && !space.avoids(tile));
+        space.set(Direction::Left, Color::Green);
+        assert!(!space.matches(tile) && space.avoids(tile));
+        assert_eq!(space.get(Direction::Left), Some(Color::Green));
+        assert_eq!(space.count(), 2);
+
+        // Some rotation of the tile fits Blue on the left and Red on the right.
+        let mut space = Edges::default();
+        space.set(Direction::Left, Color::Blue);
+        space.set(Direction::BottomRight, Color::Red);
+        assert!(space.accepts(Tile::BYYBRR));
+        assert!(space
+            .rotations(Tile::BYYBRR)
+            .all(|r| space.matches(Tile::BYYBRR.edges(r))));
+        assert_eq!(space.rotations(Tile::BYYBRR).count(), 1);
     }
 
     #[test]

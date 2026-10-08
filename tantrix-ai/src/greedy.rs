@@ -1,5 +1,4 @@
-use enum_map::EnumMap;
-use tantrix_game::{Board, Color, Hand, Move, TantrixAi};
+use tantrix_game::{AiView, Move, TantrixAi};
 
 #[derive(Clone)]
 pub struct GreedyAi;
@@ -13,18 +12,13 @@ impl TantrixAi for GreedyAi {
         Box::new(self.clone())
     }
 
-    fn choose_move(
-        &self,
-        board: &Board,
-        _hands: &EnumMap<Color, Hand>,
-        current_player: Color,
-        _active_players: &[Color],
-        possible_moves: &[Move],
-    ) -> Move {
-        let scores = board.scores();
-        *possible_moves
+    fn choose_move(&self, view: &AiView) -> Move {
+        let board = view.board.indexed();
+        let score = view.board.scores()[view.current_player].score;
+        *view
+            .legal_moves
             .iter()
-            .max_by_key(|m| board.scores_after(&scores, m)[current_player].score)
+            .max_by_key(|m| board.score_after(score, m, view.current_player))
             .unwrap()
     }
 }

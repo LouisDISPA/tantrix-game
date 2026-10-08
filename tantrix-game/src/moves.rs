@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Color, Direction, Position, Rotation, Tile};
+use crate::{Color, Direction, Edges, Position, Rotation, Tile};
 
 /// A tile a player asks to place: which one, where, and how it is turned.
 /// [`Game::play_move`](crate::Game::play_move) accepts it only if it matches
@@ -32,6 +32,11 @@ pub struct Move {
 impl Move {
     pub fn color(&self, dir: Direction) -> Color {
         self.tile.color(dir - self.rotation)
+    }
+
+    /// The colors of the placed tile's edges.
+    pub fn edges(&self) -> Edges {
+        self.tile.edges(self.rotation)
     }
 
     /// The tile, position and rotation, without the rules' `forced` flag.

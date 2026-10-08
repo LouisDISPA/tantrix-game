@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 tantrix-game = { path = "../tantrix-game" }
 enum-map = "3.1.0"
+enum-iterator = "2.3.0"
 rand = "0.10.3"

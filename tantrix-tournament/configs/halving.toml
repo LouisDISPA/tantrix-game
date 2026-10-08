@@ -1,0 +1,45 @@
+# Does successive halving get more from the same playouts? Each `halving`
+# AI spends width × playouts playouts per move, like the flat one of the
+# same width and playouts, but keeps only the better half of its moves each
+# round.
+#   tantrix-tournament --config configs/halving.toml
+seed = 3
+games = 200
+
+[[ai]]
+kind = "Lookahead"
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 10x16"
+width = 10
+playouts = 16
+halving = false
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 10x16 halving"
+width = 10
+playouts = 16
+halving = true
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 16x16 halving"
+width = 16
+playouts = 16
+halving = true
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 24x16 halving"
+width = 24
+playouts = 16
+halving = true
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 10x32"
+width = 10
+playouts = 32
+halving = false

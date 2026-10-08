@@ -28,6 +28,13 @@ impl Bag {
         Bag { tiles }
     }
 
+    /// A bag that draws `tiles` from the last to the first.
+    pub(crate) fn from_tiles(tiles: impl IntoIterator<Item = Tile>) -> Self {
+        Bag {
+            tiles: tiles.into_iter().collect(),
+        }
+    }
+
     pub fn draw(&mut self) -> Option<Tile> {
         self.tiles.pop()
     }
@@ -36,6 +43,12 @@ impl Bag {
     /// [`Self::draw`].
     pub(crate) fn put_back(&mut self, tile: Tile) {
         self.tiles.push(tile);
+    }
+
+    /// The tiles left, the next one drawn last.
+    #[cfg(test)]
+    pub(crate) fn tiles(&self) -> &[Tile] {
+        &self.tiles
     }
 
     pub fn count(&self) -> usize {

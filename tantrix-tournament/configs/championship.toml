@@ -1,0 +1,6 @@
+# Every AI against every other, 1000 games per pairing on mirrored deals:
+# which AI is the best?
+#   tantrix-tournament --config configs/championship.toml --headless
+# Without [[ai]] tables, every AI of `tantrix-tournament --list` plays.
+seed = 2026
+games = 1000

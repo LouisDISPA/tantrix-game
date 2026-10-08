@@ -1,5 +1,4 @@
-use enum_map::EnumMap;
-use tantrix_game::{Board, Color, Hand, Move, TantrixAi};
+use tantrix_game::{AiView, Move, TantrixAi};
 
 #[derive(Clone)]
 pub struct DefensiveAi;
@@ -13,21 +12,17 @@ impl TantrixAi for DefensiveAi {
         Box::new(self.clone())
     }
 
-    fn choose_move(
-        &self,
-        board: &Board,
-        _hands: &EnumMap<Color, Hand>,
-        current_player: Color,
-        active_players: &[Color],
-        possible_moves: &[Move],
-    ) -> Move {
-        let before = board.scores();
-        *possible_moves
+    fn choose_move(&self, view: &AiView) -> Move {
+        let (board, current_player) = (view.board.indexed(), view.current_player);
+        let before = view.board.scores();
+        *view
+            .legal_moves
             .iter()
             .max_by_key(|m| {
                 let scores = board.scores_after(&before, m);
                 let own = scores[current_player].score as i64;
-                let best_opponent = active_players
+                let best_opponent = view
+                    .playing_colors
                     .iter()
                     .copied()
                     .filter(|&c| c != current_player)

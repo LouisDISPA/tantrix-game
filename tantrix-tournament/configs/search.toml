@@ -1,0 +1,54 @@
+# How wide and how deep should the searching AIs look? MonteCarlo's cost
+# grows with width × playouts: compare settings of the same cost, played
+# flat (see halving.toml for the default, successive halving).
+#   tantrix-tournament --config configs/search.toml
+seed = 2
+games = 200
+
+[[ai]]
+kind = "Strategist"
+
+[[ai]]
+kind = "Lookahead"
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 6x16"
+width = 6
+playouts = 16
+halving = false
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 10x16"
+width = 10
+playouts = 16
+halving = false
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 16x8"
+width = 16
+playouts = 8
+halving = false
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 16x16"
+width = 16
+playouts = 16
+halving = false
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 24x8"
+width = 24
+playouts = 8
+halving = false
+
+[[ai]]
+kind = "MonteCarlo"
+name = "MC 10x32"
+width = 10
+playouts = 32
+halving = false
