@@ -14,7 +14,7 @@ Rust implementation of the Tantrix board game — a hex-tile strategy game where
 
 ```bash
 # Dioxus web app (dev)
-cd tantrix-app && dx serve --hot-reload
+cd tantrix-app && dx serve --features devtools --hot-reload   # `devtools` = hot reload + dioxus logs, off in release
 
 # TUI
 cargo run -p tantrix-tui
@@ -34,7 +34,10 @@ cargo test -p tantrix-app
 just worker-e2e
 just native-e2e
 
-# Production build
+# Production browser client: rebuilt std, no panic locations, silent panics (see the justfile)
+just worker-client
+
+# Plain release build
 cd tantrix-app && dx build --release
 
 # Cloudflare Worker (SSR + hydration): build, run locally, deploy
@@ -179,6 +182,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 - **Debounce rapid input** — delay processing for search/filter inputs
 - **Batch mutations** — use `extend()` / `with_mut()` instead of multiple individual pushes
 - **Profile before optimizing** — use Chrome DevTools Performance tab, don't guess
+- **Bundle size** — `just worker-client` builds the client with `build-std` and `-Cpanic=immediate-abort` (a panic prints nothing in the console). Keep dx's debug symbols (hydration), and never add `-Zfmt-debug=none`: `Color`'s `Display` and several `key:` / `data-*` attributes go through `Debug`. Measure wasm changes with `twiggy top` on a `dx build --keep-names` copy
 
 ## Critical Rules
 
