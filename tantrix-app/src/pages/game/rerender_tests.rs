@@ -17,8 +17,10 @@ use crate::state::actions::{click_position, execute_move, start_game};
 use crate::state::config::{Difficulty, GameConfig, PlayerKind};
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
-use crate::state::gesture::TOUCH_SLOP;
+use crate::state::gesture::{Pointer, TOUCH_SLOP};
+use crate::state::tile_drag::{move_tile, press_tile};
 use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
+use crate::svg::geometry::Rect;
 use crate::util::render_count;
 use crate::util::test_page::settle;
 
@@ -236,6 +238,34 @@ fn dragging_the_board_re_renders_only_the_viewport() {
     }
     // Only camera fields were written: no other UiState reader woke.
     assert_eq!(render_count::total(NON_CAMERA_FIELDS), 0);
+}
+
+#[test]
+fn moving_a_lifted_tile_re_renders_only_the_floating_tile() {
+    let (game, index, _) = game_with_choices();
+    let mut page = Page::new(game);
+    page.act(|ctx| {
+        let color = ctx.game_state.peek().current_player();
+        ctx.ui_state
+            .stage()
+            .set(Some(Rect::at(100.0, 100.0, 900.0, 500.0)));
+        press_tile(
+            ctx,
+            color,
+            index,
+            Pointer::new(1, 400.0, 700.0),
+            Rect::at(370.0, 665.0, 60.0, 70.0),
+            TOUCH_SLOP,
+        );
+        move_tile(ctx, Pointer::new(1, 20.0, 20.0));
+    });
+    render_count::reset();
+    for step in 1..=3 {
+        page.act(|ctx| move_tile(ctx, Pointer::new(1, 20.0 + f64::from(step), 20.0)));
+    }
+    assert_eq!(render_count::total("GameDraggedTile"), 3);
+    assert_quiet(&BOARD_AND_HANDS);
+    assert_eq!(render_count::total("BoardTile"), 0);
 }
 
 #[test]

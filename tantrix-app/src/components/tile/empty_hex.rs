@@ -21,6 +21,11 @@ pub fn EmptyHex(
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
     let camera = use_board_camera();
+    let snap_target = use_memo(move || {
+        ctx.ui_state.tile_drag()()
+            .and_then(|drag| drag.target)
+            .is_some_and(|target| target.position == position)
+    });
 
     let style = hex_position_style(position, hex_size);
     let points = hex_polygon_points(TILE_CX, TILE_CY, TILE_HEX);
@@ -31,6 +36,7 @@ pub fn EmptyHex(
             class: if forced { "forced" },
             class: if faint { "faint" },
             class: if picked { "picked" },
+            class: if snap_target() { "drag-target" },
             style: style,
             "data-position": "{position.x()},{position.y()}",
             role: "button",

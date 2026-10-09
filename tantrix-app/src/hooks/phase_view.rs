@@ -82,56 +82,62 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
 pub fn use_preview_placement() -> Memo<Option<Placement>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
+    let dragging = use_memo(move || ui_state.tile_drag()().is_some_and(|drag| drag.is_dragging()));
 
-    use_memo(move || match ui_state.phase()() {
-        TurnPhase::SelectTile => {
-            // Auto-preview when a hovered tile has exactly one valid move:
-            // not the opening tile, which fits every way round (a click
-            // plays it in its first rotation, but no ghost shows one).
-            let idx = ui_state.hovered()().hand_tile()?;
-            let gs = ctx.game_state.read();
-            let info = gs.hand_info().get(idx)?;
-            let tile = *gs.hand(gs.current_player()).get(idx)?;
-            let (position, rotation) = auto_move(info, false)?;
-            Some(Placement {
-                tile,
-                position,
-                rotation,
-            })
+    use_memo(move || {
+        if dragging() {
+            return None;
         }
+        match ui_state.phase()() {
+            TurnPhase::SelectTile => {
+                // Auto-preview when a hovered tile has exactly one valid move:
+                // not the opening tile, which fits every way round (a click
+                // plays it in its first rotation, but no ghost shows one).
+                let idx = ui_state.hovered()().hand_tile()?;
+                let gs = ctx.game_state.read();
+                let info = gs.hand_info().get(idx)?;
+                let tile = *gs.hand(gs.current_player()).get(idx)?;
+                let (position, rotation) = auto_move(info, false)?;
+                Some(Placement {
+                    tile,
+                    position,
+                    rotation,
+                })
+            }
 
-        TurnPhase::SelectPosition => {
-            let idx = ui_state.selected_tile()()?;
-            let hovered = ui_state.hovered()();
-            let position = hovered
-                .board_position()
-                .or_else(|| ui_state.selected_position()())?;
-            let gs = ctx.game_state.read();
-            let tile = *gs.hand(gs.current_player()).get(idx)?;
-            let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
-            let rotation = hovered.rotation().unwrap_or(*rotations.first()?);
-            Some(Placement {
-                tile,
-                position,
-                rotation,
-            })
+            TurnPhase::SelectPosition => {
+                let idx = ui_state.selected_tile()()?;
+                let hovered = ui_state.hovered()();
+                let position = hovered
+                    .board_position()
+                    .or_else(|| ui_state.selected_position()())?;
+                let gs = ctx.game_state.read();
+                let tile = *gs.hand(gs.current_player()).get(idx)?;
+                let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
+                let rotation = hovered.rotation().unwrap_or(*rotations.first()?);
+                Some(Placement {
+                    tile,
+                    position,
+                    rotation,
+                })
+            }
+
+            TurnPhase::SelectRotation => {
+                let rotation = ui_state.hovered()().rotation()?;
+                let idx = ui_state.selected_tile()()?;
+                let position = ui_state.selected_position()()?;
+                let gs = ctx.game_state.read();
+                let tile = *gs.hand(gs.current_player()).get(idx)?;
+                let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
+                rotations.contains(&rotation).then_some(Placement {
+                    tile,
+                    position,
+                    rotation,
+                })
+            }
+
+            TurnPhase::WaitingForAi | TurnPhase::GameOver => None,
         }
-
-        TurnPhase::SelectRotation => {
-            let rotation = ui_state.hovered()().rotation()?;
-            let idx = ui_state.selected_tile()()?;
-            let position = ui_state.selected_position()()?;
-            let gs = ctx.game_state.read();
-            let tile = *gs.hand(gs.current_player()).get(idx)?;
-            let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
-            rotations.contains(&rotation).then_some(Placement {
-                tile,
-                position,
-                rotation,
-            })
-        }
-
-        TurnPhase::WaitingForAi | TurnPhase::GameOver => None,
     })
 }
 

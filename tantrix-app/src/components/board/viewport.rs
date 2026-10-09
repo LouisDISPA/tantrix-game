@@ -6,6 +6,7 @@ use crate::hooks::camera::camera_style;
 use crate::hooks::use_board_camera;
 use crate::state::game_state::GameCtx;
 use crate::state::gesture::{MOUSE_SLOP, TOUCH_SLOP};
+use crate::state::tile_drag::holds_tile_pointer;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::svg::geometry::{board_center, HEX_SIZE};
 
@@ -32,6 +33,8 @@ pub fn BoardViewport(placed_moves: ReadSignal<Vec<Move>>, children: Element) -> 
     // A drag rewrites `gesture` on every pointer move; only its start and
     // end change the class (a tap that stays within the slop is no drag).
     let dragging = use_memo(move || ui_state.gesture()().is_drag());
+    let tile_dragging =
+        use_memo(move || ui_state.tile_drag()().is_some_and(|drag| drag.is_dragging()));
 
     // Recenter the tiles layer on the bounding box of placed moves so new
     // tiles push outward from the middle rather than off-screen.
@@ -45,10 +48,16 @@ pub fn BoardViewport(placed_moves: ReadSignal<Vec<Move>>, children: Element) -> 
         div {
             class: "board-viewport",
             class: if dragging() { "dragging" },
+            class: if tile_dragging() { "tile-dragging" },
             style: "{transform}",
 
-            onwheel: move |evt| camera.on_wheel(evt.data().delta().strip_units().y),
+            onwheel: move |evt| {
+                if !holds_tile_pointer(ctx) {
+                    camera.on_wheel(evt.data().delta().strip_units().y);
+                }
+            },
             onpointerdown: move |evt| {
+                if holds_tile_pointer(ctx) { return; }
                 // The primary button (or a touch) pans; the right one is "back".
                 if evt.data().trigger_button() == Some(MouseButton::Primary) {
                     let at = evt.data().client_coordinates();
@@ -61,6 +70,7 @@ pub fn BoardViewport(placed_moves: ReadSignal<Vec<Move>>, children: Element) -> 
                 }
             },
             onpointermove: move |evt| {
+                if holds_tile_pointer(ctx) { return; }
                 // A mouse that moves with no button held let go somewhere we
                 // did not see (outside the window, over a dialog).
                 if evt.data().pointer_type() == "mouse"

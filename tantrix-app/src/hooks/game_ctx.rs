@@ -6,7 +6,7 @@ use crate::state::actions::advance_turn;
 use crate::state::ai_service::run_ai_loop;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
-use crate::state::ui_state::{TurnPhase, UiState, UiStateStoreExt};
+use crate::state::ui_state::{set_if_changed, TurnPhase, UiState, UiStateStoreExt};
 
 /// Create a game page's state (`game`, a fresh `UiState`, played by
 /// `driver`) and provide it as the `GameCtx` of every component below.
@@ -26,6 +26,21 @@ pub fn use_game_ctx(driver: GameDriver, game: impl FnOnce() -> GameState) -> Gam
         driver,
     });
     use_ai_turns(ctx);
+    // A tile gesture never survives a changed hand or seat.
+    use_effect(move || {
+        let game = ctx.game_state.read();
+        let phase = ctx.ui_state.phase()();
+        let drag = *ctx.ui_state.tile_drag().peek();
+        if let Some(drag) = drag {
+            if !drag.is_current(&game)
+                || !ctx.driver.controls(drag.color)
+                || matches!(phase, TurnPhase::WaitingForAi | TurnPhase::GameOver)
+            {
+                set_if_changed(ctx.ui_state.tile_drag(), None);
+                set_if_changed(ctx.ui_state.suppress_tile_click(), true);
+            }
+        }
+    });
     ctx
 }
 

@@ -12,6 +12,7 @@ mod player_hand;
 #[cfg(test)]
 mod rerender_tests;
 mod shown_hand;
+mod tile_drag;
 
 pub use game_over::GameOver;
 pub use game_play::GamePlay;

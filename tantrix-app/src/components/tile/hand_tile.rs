@@ -1,11 +1,16 @@
+use std::rc::Rc;
+
+use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
 use tantrix_game::{Color, Rotation};
 
 use crate::components::tile::hex_svg::HexSvg;
 use crate::state::actions::click_tile;
 use crate::state::game_state::{GameCtx, GameState};
+use crate::state::gesture::{Pointer, MOUSE_SLOP, TOUCH_SLOP};
+use crate::state::tile_drag::{press_tile, DragPhase};
 use crate::state::ui_state::{HandTileState, Hovered, UiStateStoreExt};
-use crate::svg::geometry::{TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
+use crate::svg::geometry::{Rect, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
 use crate::svg::paths::hex_polygon_points;
 
 /// Slightly larger hex used for selection/forced outline rings. It spills
@@ -43,6 +48,36 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
     // plays that seat on this device (any seat locally, their own online).
     let is_active_seat = use_memo(move || ctx.game_state.read().current_player() == color);
     let can_play = use_memo(move || is_active_seat() && ctx.driver.controls(color));
+    let lifted = use_memo(move || {
+        ctx.ui_state.tile_drag()().is_some_and(|drag| {
+            drag.color == color && drag.index == index() && drag.phase != DragPhase::Pressed
+        })
+    });
+    let mut mounted = use_signal(|| None::<Rc<MountedData>>);
+    let mut bounds = use_signal(|| None::<Rect>);
+    let measure = move || {
+        spawn(async move {
+            let element = mounted.peek().clone();
+            if let Some(element) = element {
+                if let Ok(r) = element.get_client_rect().await {
+                    let origin = Rect::new(r.min_x(), r.min_y(), r.max_x(), r.max_y());
+                    bounds.set(Some(origin));
+                    // Refresh at press, too: selection and hover can lift a tile.
+                    let mut dragging = ctx.ui_state.tile_drag();
+                    let drag = *dragging.peek();
+                    if let Some(mut drag) = drag {
+                        if drag.color == color
+                            && drag.index == index()
+                            && drag.phase == DragPhase::Pressed
+                        {
+                            drag.origin = origin;
+                            dragging.set(Some(drag));
+                        }
+                    }
+                }
+            }
+        });
+    };
 
     rsx! {
         if let Some(tile) = tile() {
@@ -62,11 +97,34 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         class: "hand-tile",
                         class: "{state_class}",
                         class: if just_drawn() { "new-tile" },
+                        class: if lifted() { "lifted" },
                         "data-tile": "{tile:?}",
+                        "data-draggable": "{interactive}",
+                        draggable: false,
                         role: "button",
                         tabindex: if interactive { "0" } else { "-1" },
                         aria_label: "Select tile",
+                        onmounted: move |evt| {
+                            mounted.set(Some(evt.data()));
+                            measure();
+                        },
+                        onresize: move |_| measure(),
+                        ondragstart: move |evt| evt.prevent_default(),
+                        onpointerdown: move |evt| {
+                            if interactive && evt.data().trigger_button() == Some(MouseButton::Primary) {
+                                if let Some(origin) = *bounds.peek() {
+                                    let at = evt.data().client_coordinates();
+                                    let slop = if evt.data().pointer_type() == "mouse" { MOUSE_SLOP } else { TOUCH_SLOP };
+                                    press_tile(ctx, color, index(), Pointer::new(evt.data().pointer_id(), at.x, at.y), origin, slop);
+                                    measure();
+                                }
+                            }
+                        },
                         onclick: move |_| {
+                            if *ctx.ui_state.suppress_tile_click().peek() {
+                                ctx.ui_state.suppress_tile_click().set(false);
+                                return;
+                            }
                             if interactive {
                                 click_tile(ctx, color, index());
                             }
@@ -87,7 +145,7 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                             }
                         },
                         onpointerleave: move |e| {
-                            if is_active_seat() && e.data().pointer_type() == "mouse" {
+                            if is_active_seat() && e.data().pointer_type() == "mouse" && *hovered.peek() == Hovered::HandTile(index()) {
                                 hovered.set(Hovered::None);
                             }
                         },

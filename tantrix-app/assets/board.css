@@ -47,6 +47,12 @@
     transition: none;
 }
 
+/* Hit testing uses the camera's pose, so a tile drag settles its animation. */
+.board-viewport.tile-dragging,
+.board-viewport.tile-dragging .board-tiles-layer {
+    transition: none;
+}
+
 .board-tiles-layer {
     position: absolute;
     left: 50%;
@@ -156,6 +162,12 @@
 
 .hex-empty.picked polygon {
     fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 30%, transparent);
+    stroke-opacity: 1;
+    stroke-dasharray: none;
+}
+
+.hex-empty.drag-target polygon {
+    fill: color-mix(in oklch, var(--turn-color) 32%, transparent);
     stroke-opacity: 1;
     stroke-dasharray: none;
 }

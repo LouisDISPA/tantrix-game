@@ -132,6 +132,10 @@
   display: block;
   min-width: 0;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition:
     transform 0.15s ease,
     opacity 0.15s ease;
@@ -139,6 +143,10 @@
 
 .hand-tile.new-tile {
   animation: tile-enter 0.35s ease both;
+}
+
+.hand-tile[data-draggable="true"] {
+  cursor: grab;
 }
 
 @keyframes tile-enter {
@@ -191,6 +199,69 @@
 .hand-tile.disabled {
   --hand-tile-opacity: 0.3;
   cursor: not-allowed;
+}
+
+/* The rack keeps its shape while its tile is lifted out. */
+.hand-tile.lifted[data-draggable="true"] {
+  --hand-tile-opacity: 0.2;
+  transform: scale(0.94);
+  cursor: grabbing;
+}
+
+.dragged-tile {
+  position: fixed;
+  z-index: 20;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: left 65ms linear, top 65ms linear, width 100ms ease-out;
+  will-change: left, top;
+}
+
+.dragged-tile svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 9px 7px rgb(0 0 0 / 0.35));
+  transition: filter 120ms ease-out;
+  animation: tile-lift 120ms ease-out;
+}
+
+.dragged-tile.snapped {
+  transition-duration: 100ms;
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+.dragged-tile.snapped svg {
+  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 0.3));
+}
+
+.dragged-tile.returning {
+  transition: left 200ms ease-out, top 200ms ease-out, width 200ms ease-out;
+  animation: tile-return 220ms ease-out forwards;
+}
+
+@keyframes tile-lift {
+  from { transform: scale(0.94); }
+  to { transform: scale(1); }
+}
+
+@keyframes tile-return {
+  0%, 75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dragged-tile,
+  .dragged-tile.snapped,
+  .dragged-tile.returning {
+    transition: none;
+  }
+
+  .dragged-tile svg,
+  .dragged-tile.returning {
+    animation-duration: 1ms;
+  }
 }
 
 /* ===== Hex-shaped selection / forced ring ===== */

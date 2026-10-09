@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use tantrix_game::{Color, Position, Rotation};
 
 use super::gesture::Gesture;
+use super::tile_drag::TileDrag;
 use crate::svg::geometry::Rect;
 
 /// Which top-level screen inside the local-game page is showing. Orthogonal
@@ -128,6 +129,9 @@ pub struct UiState {
     // --- Selection state ---
     pub selected_tile: Option<usize>,
     pub selected_position: Option<Position>,
+    pub tile_drag: Option<TileDrag>,
+    /// Consume the click a browser sends after lifting a dragged tile.
+    pub suppress_tile_click: bool,
 
     // --- Hover (unified) ---
     pub hovered: Hovered,
@@ -170,6 +174,8 @@ impl Default for UiState {
 
             selected_tile: None,
             selected_position: None,
+            tile_drag: None,
+            suppress_tile_click: false,
 
             hovered: Hovered::None,
 
@@ -217,6 +223,7 @@ impl<Lens> Store<UiState, Lens> {
     /// Forget the selected tile and position and what is hovered; the phase
     /// and message stay as they are.
     fn clear_selection(&mut self) {
+        set_if_changed(self.tile_drag(), None);
         set_if_changed(self.selected_tile(), None);
         set_if_changed(self.selected_position(), None);
         set_if_changed(self.hovered(), Hovered::None);
