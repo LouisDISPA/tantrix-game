@@ -22,6 +22,8 @@ use state::theme::THEME;
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const BOARD_CSS: Asset = asset!("/assets/board.css");
+const GAME_CSS: Asset = asset!("/assets/game.css");
+const DESK_CSS: Asset = asset!("/assets/desk.css");
 const HAND_CSS: Asset = asset!("/assets/hand.css");
 const MENU_CSS: Asset = asset!("/assets/menu.css");
 const LEARN_CSS: Asset = asset!("/assets/learn.css");
@@ -36,6 +38,8 @@ pub fn app() -> Element {
         document::Stylesheet { href: MAIN_CSS }
         document::Stylesheet { href: BOARD_CSS }
         document::Stylesheet { href: HAND_CSS }
+        document::Stylesheet { href: GAME_CSS }
+        document::Stylesheet { href: DESK_CSS }
         document::Stylesheet { href: MENU_CSS }
         document::Stylesheet { href: LEARN_CSS }
         document::Stylesheet { href: ANIMATIONS_CSS }

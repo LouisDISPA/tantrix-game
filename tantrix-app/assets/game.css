@@ -1,0 +1,509 @@
+/* ===== The game screen =====
+   One component tree for every screen; the layout below picks how it is laid
+   out:
+
+     stack  (default)       HUD row / board / hand panel, in a column
+     side   (landscape)     the HUD row on top, the board beside a panel column
+     desk   (desk.css)      a top bar, the board, a rack under it and a rail of
+                            the other players beside it: a landscape window at
+                            least 900 x 640
+
+   In stack and side the panel is a row of tabs over the shown seat's tiles.
+
+   On every layout the board is the screen: its backdrop is the game screen's
+   own, nothing clips it but the window, and the HUD and the panel are glass
+   cards floating over it. The camera frames the board in its grid cell (the
+   space the cards leave), so a legal spot never hides under a card. */
+
+/* ===== Shell ===== */
+
+.game-layout {
+    --side-w: clamp(232px, 28vw, 360px);
+    display: grid;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+        "hud"
+        "board"
+        "panel";
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    /* The board runs past the window, so this clips and never scrolls: focus
+       or a scroll-into-view on a hex out there must not slide the screen. */
+    overflow: hidden;
+    overflow: clip;
+
+    /* The glass the cards are made of: translucent, hairline-lit. */
+    --glass: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
+    --glass-strong: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
+    --glass-line: color-mix(in srgb, var(--text-primary) 11%, transparent);
+    --glass-hi: inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
+
+    /* The board's backdrop, lit from the middle. */
+    background-color: var(--bg-board);
+    background-image:
+        var(--board-pattern),
+        radial-gradient(130% 90% at 50% 40%, color-mix(in srgb, var(--text-primary) 6%, transparent), transparent 70%);
+}
+
+.game-hud {
+    grid-area: hud;
+    z-index: 7;
+}
+
+.board-slot {
+    grid-area: board;
+    min-width: 0;
+    min-height: 0;
+    z-index: 0;
+}
+
+
+.hand-panel,
+.results-panel {
+    grid-area: panel;
+    z-index: 6;
+}
+
+.players-2 { --seats: 2; }
+.players-3 { --seats: 3; }
+.players-4 { --seats: 4; }
+
+/* ===== HUD row ===== */
+
+.game-hud {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 52px;
+    box-sizing: border-box;
+    padding: calc(env(safe-area-inset-top) + 6px) 4px 6px 12px;
+}
+
+.hud-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* The pill: whose turn, what to do, the bag. Dark in both themes, with light
+   text, so it reads on a pale board as well as a dark one. */
+.hud-chip,
+.online-hud-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-sizing: border-box;
+    height: 40px;
+    padding: 0 16px;
+    background: #262626;
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    box-shadow: var(--shadow-sm);
+    white-space: nowrap;
+    color: #fff;
+}
+
+.hud-chip {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.online-hud-badge {
+    flex: none;
+    gap: 8px;
+    padding: 0 12px;
+}
+
+.hud-chip-player {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+}
+
+.hud-chip-dot {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    clip-path: var(--clip-hex);
+    background: var(--turn-color);
+}
+
+.hud-chip-name {
+    font-size: 13px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #fff;
+}
+
+.hud-chip-sep {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.hud-chip-phase {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.8);
+    transition: color 0.2s ease;
+}
+
+.hud-chip-phase.alert {
+    color: #ff7a6b;
+    font-weight: 600;
+}
+
+/* A short hint where the pill is tight, the full one where there is room. */
+.hud-long { display: none; }
+.hud-short { display: inline; }
+
+/* Whose tiles are peeked at: said in the pill only where the hint is not
+   (desk.css); a phone's tabs already show it. */
+.hud-viewing { display: none; }
+
+.hud-chip-bag {
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.62);
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.hud-chip-conn-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.hud-chip-conn-dot.live {
+    background: oklch(0.68 0.22 150);
+    box-shadow: 0 0 8px color-mix(in oklch, oklch(0.68 0.22 150), transparent 50%);
+}
+
+.hud-chip-conn-dot.ended {
+    background: var(--text-muted);
+}
+
+.hud-chip-conn-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: #fff;
+}
+
+.hud-chip-room {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2.2px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    flex-shrink: 0;
+}
+
+/* Back, while a tile is being placed. */
+.hud-back {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+    font-size: 18px;
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+}
+
+@media (min-width: 480px) {
+    .hud-long { display: inline; }
+    .hud-short { display: none; }
+}
+
+@media (max-width: 520px) {
+    .hud-chip-conn-label { display: none; }
+}
+
+/* On a phone the online badge is just its dot: the hint needs the room. */
+@media (max-width: 480px) {
+    .online-hud-badge .hud-chip-room { display: none; }
+    .online-hud-badge { padding: 0 10px; }
+}
+
+/* A narrow phone: the pill tightens (with Back beside it) so the hint keeps its room. */
+@media (max-width: 400px) {
+    .hud-chip {
+        gap: 7px;
+        padding: 0 12px;
+    }
+
+    .hud-chip-name {
+        font-size: 12px;
+        letter-spacing: 1px;
+    }
+
+    .hud-bag-label { display: none; }
+}
+
+/* ===== Menu ===== */
+
+.hud-menu {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+}
+
+.hud-menu-toggle {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-secondary);
+    font-size: 22px;
+    cursor: pointer;
+}
+
+.hud-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+}
+
+.hud-menu-items {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 60;
+    min-width: 220px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding: 8px;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+}
+
+.hud-menu.open .hud-menu-items { display: flex; }
+
+/* Every item is a row of its own in the popover. */
+.hud-menu-items .hud-menu-item,
+.hud-menu-items .board-ctrl-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 10px;
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: none;
+    text-align: left;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.hud-menu-items .board-ctrl-btn { color: var(--color-red); }
+
+.zoom-controls {
+    display: flex;
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.hud-menu-items .zoom-controls { justify-content: space-between; }
+
+.zoom-btn {
+    min-width: 44px;
+    height: 44px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zoom-btn.zoom-label {
+    min-width: 56px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-left: 1px solid var(--border-light);
+    border-right: 1px solid var(--border-light);
+}
+
+.zoom-btn.zoom-fit {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border-left: 1px solid var(--border-light);
+}
+
+/* Fingers pinch: only Fit is left of the zoom buttons. */
+@media (pointer: coarse) {
+    .zoom-step,
+    .zoom-label { display: none; }
+}
+
+@media (hover: hover) {
+    .hud-menu-items .hud-menu-item:hover,
+    .hud-menu-items .board-ctrl-btn:hover,
+    .zoom-btn:hover { background: var(--hand-active-glow); }
+}
+
+/* A wide window has room for the menu's items in the row itself. */
+@media (min-width: 900px) {
+    .hud-menu-toggle { display: none; }
+
+    .hud-menu-items {
+        display: flex;
+        position: static;
+        flex-direction: row;
+        align-items: center;
+        min-width: 0;
+        padding: 0;
+        background: none;
+        border: 0;
+        box-shadow: none;
+    }
+
+    .hud-menu-items .hud-menu-item,
+    .hud-menu-items .board-ctrl-btn {
+        min-height: 36px;
+        border: 1px solid var(--border-subtle);
+        background: var(--surface-elevated);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .zoom-btn { height: 36px; }
+    .theme-toggle-label { display: none; }
+    .hud-menu-items .hud-menu-item { width: 36px; justify-content: center; padding: 0; border-radius: 50%; }
+}
+
+/* ===== Hand panel: a row of tabs over the shown seat's tiles ===== */
+
+.hand-panel {
+    display: grid;
+    grid-template-columns: repeat(var(--seats, 2), minmax(0, 1fr));
+    align-content: start;
+    min-width: 0;
+    margin: 0 0.6rem calc(0.6rem + env(safe-area-inset-bottom));
+    overflow: hidden;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid var(--glass-line);
+    border-radius: 1.3rem;
+    box-shadow: var(--shadow-lg), var(--glass-hi);
+}
+
+/* The seats' headers fall into the grid's first row, one column each, and
+   the shown seat's tiles span the second. */
+.hand-panel .player-hand { display: contents; }
+.hand-panel .hand-header { grid-row: 1; }
+.hand-panel .hand-tiles,
+.hand-panel .hand-empty {
+    grid-row: 2;
+    grid-column: 1 / -1;
+}
+
+/* Six tiles in a row, no bigger than a hand needs on a tablet. */
+.hand-panel .hand-tiles {
+    grid-template-columns: repeat(6, minmax(0, 96px));
+    justify-content: center;
+    padding: 10px 14px;
+}
+
+/* ===== Results panel (game over) ===== */
+
+.results-panel {
+    max-height: 60vh;
+    max-height: 60dvh;
+    overflow-y: auto;
+    margin: 0 0.6rem calc(0.6rem + env(safe-area-inset-bottom));
+    padding: 12px 16px;
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid var(--glass-line);
+    border-radius: 1.3rem;
+    box-shadow: var(--shadow-lg), var(--glass-hi);
+}
+
+.results-panel .board-results-card {
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.results-panel .results-row { padding: 6px 12px; }
+.results-panel .results-divider { margin: 8px 0 10px; }
+.results-panel .results-stats { margin-bottom: 12px; }
+
+/* ===== Side layout: landscape, with room for a panel column ===== */
+
+@media (orientation: landscape) and (min-width: 640px) {
+    .game-layout {
+        grid-template-columns: minmax(0, 1fr) var(--side-w);
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-areas:
+            "hud hud"
+            "board panel";
+    }
+
+    .hand-panel,
+    .results-panel {
+        align-self: stretch;
+        max-height: none;
+        overflow-y: auto;
+    }
+
+    .hand-panel,
+    .results-panel { margin: 0.2rem 0.6rem 0.6rem 0; }
+
+    .hand-panel .hand-tiles {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        justify-content: stretch;
+    }
+
+    /* Four tabs share a narrow column: the names give way to bigger swatches. */
+    .players-4 .hand-header-color { display: none; }
+    .players-4 .hand-header { gap: 8px; }
+    .players-4 .hand-header .color-swatch { width: 15px; height: 17px; }
+}

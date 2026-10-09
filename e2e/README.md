@@ -15,7 +15,11 @@ Playwright runs headless Chromium against either the native Axum server or
 | `online-room-lifecycle` | The creator can leave, another player can start, and a late visitor can take over a seat. |
 | `online-authority` | Invalid and stale move intents cannot mutate server game state. |
 | `online-early-end` | A seated player ends a running game; both players see results, including after reload. |
-| `board-layout` | Board controls stay clear of legal positions at several widths. |
+| `board-layout` | The cards float over the board but never over a legal position, and nothing scrolls, at several window sizes. |
+| `touch-camera` | Real touch input (DevTools protocol): a finger pans the board, two pinch it, and the lift that ends a drag plays nothing. |
+| `orientation-card` | A spot that takes two orientations opens a card of the options; pressing previews, a tap plays, a tap on the empty board closes it. |
+| `desktop-layout` | A desktop window: the rack under the board, a card per player beside it, every tool in the bar; a click on a card looks at that player; the board is the screen (a zoomed board runs under the cards, the window never scrolls); an online game's hint (the mover selects, the other waits) and room code. |
+| `mobile-play` | A phone with real touch: peeking at another tab, a move in a tile, a spot and a tap (a press previews), End Game from the menu asks first. |
 
 ## Setup
 
@@ -41,6 +45,17 @@ JOIN_ATTEMPTS=50 pnpm exec playwright test tests/online-join.spec.ts
 The Worker config starts Wrangler on port 4174; the native config starts
 `dx run` on port 4175 with an in-memory SQLite database. Those ports must be free.
 A cold Rust build can take several minutes.
+
+## Screenshots
+
+`tests/screens.spec.ts` takes screenshots of the real game screen at phone, tablet and
+desktop sizes (for looking at, not asserting). It is skipped unless asked for:
+
+```bash
+cd e2e && TANTRIX_SCREENSHOTS=1 pnpm exec playwright test tests/screens.spec.ts
+```
+
+They land in `e2e/screenshots/` (git-ignored).
 
 ## Seeded games
 

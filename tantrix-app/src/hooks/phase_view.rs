@@ -1,12 +1,12 @@
 //! The board layers' view of the current turn phase, as three separate
-//! memos: the empty hexes to click, the ghost preview, and the rotation
-//! wheel.
+//! memos: the empty hexes to click, the ghost preview, and the orientations
+//! to choose from.
 //!
 //! `Board` creates all three once and hands each to the one component that
 //! shows it as a `ReadSignal` prop, so each reader re-renders only when its
 //! own value changes: hovering a hex moves the preview, not the hex list or
-//! the wheel. Each memo also reads only the `UiState` fields its phase
-//! needs — the wheel never reads `hovered` at all.
+//! the orientation card. Each memo also reads only the `UiState` fields its
+//! phase needs — the orientations never read `hovered` at all.
 
 use dioxus::prelude::*;
 use tantrix_game::{Placement, Position, Rotation, Tile};
@@ -22,30 +22,39 @@ pub struct ValidPosition {
     pub forced: bool,
     /// True when the user is only *peeking* (hovered, not selected) — styled faintly.
     pub faint: bool,
+    /// The spot whose orientation is being chosen: marked while the card
+    /// of options is open.
+    pub picked: bool,
 }
 
-/// Rotation wheel display data: the selected tile and the rotations that
-/// fit at the selected position.
+/// What the orientation card offers: the selected tile and the rotations
+/// that fit at the selected position.
 #[derive(Debug, Clone, PartialEq)]
-pub struct WheelData {
+pub struct Orientations {
     pub tile: Tile,
     pub rotations: Vec<Rotation>,
 }
 
 /// Empty hex positions to show as click targets: the hovered hand tile's
-/// (faintly) while a tile is being chosen, then the selected tile's. Empty
-/// while the AI plays and once the game is over.
+/// (faintly) while a tile is being chosen, then the selected tile's, the
+/// one being decided marked. Empty while the AI plays and once the game is
+/// over.
 pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
     use_memo(move || {
-        let (idx, faint) = match ui_state.phase()() {
+        let phase = ui_state.phase()();
+        let (idx, faint) = match phase {
             TurnPhase::SelectTile => (ui_state.hovered()().hand_tile(), true),
             TurnPhase::SelectPosition | TurnPhase::SelectRotation => {
                 (ui_state.selected_tile()(), false)
             }
             TurnPhase::WaitingForAi | TurnPhase::GameOver => return Vec::new(),
+        };
+        let picked = match phase {
+            TurnPhase::SelectRotation => ui_state.selected_position()(),
+            _ => None,
         };
         let Some(idx) = idx else {
             return Vec::new();
@@ -60,6 +69,7 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
                 pos,
                 forced: info.has_forced,
                 faint,
+                picked: picked == Some(pos),
             })
             .collect()
     })
@@ -67,7 +77,8 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
 
 /// Ghost preview of the placement being considered: the hovered hand tile's
 /// only move, the selected tile at the hovered (or selected) position, or at
-/// the selected position in the hovered (or first) rotation.
+/// the selected position in the rotation being hovered or pressed — none
+/// until the player points at one of the options.
 pub fn use_preview_placement() -> Memo<Option<Placement>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
@@ -107,16 +118,13 @@ pub fn use_preview_placement() -> Memo<Option<Placement>> {
         }
 
         TurnPhase::SelectRotation => {
+            let rotation = ui_state.hovered()().rotation()?;
             let idx = ui_state.selected_tile()()?;
             let position = ui_state.selected_position()()?;
             let gs = ctx.game_state.read();
             let tile = *gs.hand(gs.current_player()).get(idx)?;
             let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
-            let rotation = ui_state.hovered()()
-                .rotation()
-                .or_else(|| rotations.first().copied())
-                .unwrap_or(Rotation::None);
-            Some(Placement {
+            rotations.contains(&rotation).then_some(Placement {
                 tile,
                 position,
                 rotation,
@@ -127,10 +135,10 @@ pub fn use_preview_placement() -> Memo<Option<Placement>> {
     })
 }
 
-/// The rotation wheel's tile and the rotations that fit at the selected
+/// The orientation card's tile and the rotations that fit at the selected
 /// position — only during SelectRotation. Does not depend on what is
-/// hovered: hovering a rotation changes the preview, not the wheel.
-pub fn use_rotation_wheel() -> Memo<Option<WheelData>> {
+/// hovered: hovering a rotation changes the preview, not the card.
+pub fn use_orientations() -> Memo<Option<Orientations>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
@@ -143,7 +151,7 @@ pub fn use_rotation_wheel() -> Memo<Option<WheelData>> {
         let gs = ctx.game_state.read();
         let tile = *gs.hand(gs.current_player()).get(idx)?;
         let rotations = gs.hand_info().get(idx)?.positions.get(&position)?.clone();
-        Some(WheelData { tile, rotations })
+        Some(Orientations { tile, rotations })
     })
 }
 
@@ -152,8 +160,8 @@ mod tests {
     use dioxus::prelude::*;
     use tantrix_game::{Placement, Position, Rotation, Tile};
 
-    use super::{use_preview_placement, use_rotation_wheel, use_valid_positions};
-    use super::{ValidPosition, WheelData};
+    use super::{use_orientations, use_preview_placement, use_valid_positions};
+    use super::{Orientations, ValidPosition};
     use crate::state::actions::click_position;
     use crate::state::game_state::GameState;
     use crate::state::test_games::{
@@ -167,7 +175,7 @@ mod tests {
     struct Views {
         positions: Memo<Vec<ValidPosition>>,
         preview: Memo<Option<Placement>>,
-        wheel: Memo<Option<WheelData>>,
+        orientations: Memo<Option<Orientations>>,
     }
 
     fn page(game: GameState) -> GamePage {
@@ -175,18 +183,18 @@ mod tests {
             let views = Views {
                 positions: use_valid_positions(),
                 preview: use_preview_placement(),
-                wheel: use_rotation_wheel(),
+                orientations: use_orientations(),
             };
             use_context_provider(|| views);
         })
     }
 
     /// What the board shows: the hexes to click (by position, with their
-    /// forced and faint flags), the ghost, and the wheel.
+    /// forced and faint flags), the ghost, and the orientations.
     type Shown = (
         Vec<(Position, bool, bool)>,
         Option<Placement>,
-        Option<WheelData>,
+        Option<Orientations>,
     );
 
     fn shown(page: &GamePage) -> Shown {
@@ -197,7 +205,11 @@ mod tests {
                 .iter()
                 .map(|p| (p.pos, p.forced, p.faint))
                 .collect();
-            (positions, views.preview.cloned(), views.wheel.cloned())
+            (
+                positions,
+                views.preview.cloned(),
+                views.orientations.cloned(),
+            )
         })
     }
 
@@ -238,10 +250,10 @@ mod tests {
         let forced = game.hand_info()[idx].has_forced;
         let mut page = page(game);
         hover(&mut page, Hovered::HandTile(idx));
-        let (positions, preview, wheel) = shown(&page);
+        let (positions, preview, orientations) = shown(&page);
         assert_eq!(positions, [(only.position, forced, true)]);
         assert_eq!(preview, Some(only));
-        assert_eq!(wheel, None);
+        assert_eq!(orientations, None);
     }
 
     #[test]
@@ -297,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn the_wheel_shows_the_rotations_and_the_ghost_the_hovered_one() {
+    fn the_card_offers_the_rotations_and_the_ghost_shows_the_one_pointed_at() {
         let (game, idx, at) = tile_with_positions(|rotations| rotations.len() > 1);
         let tile = tile_at(&game, idx);
         let rotations = game.hand_info()[idx].positions[&at].clone();
@@ -305,7 +317,7 @@ mod tests {
         page.act(|mut ctx| ctx.ui_state.select_tile(idx));
         page.act(|ctx| click_position(ctx, at));
 
-        let wheel = Some(WheelData {
+        let offered = Some(Orientations {
             tile,
             rotations: rotations.clone(),
         });
@@ -316,14 +328,60 @@ mod tests {
                 rotation,
             })
         };
-        let (positions, preview, shown_wheel) = shown(&page);
+        let (positions, preview, shown_orientations) = shown(&page);
         assert!(positions.iter().any(|&(hex, _, faint)| hex == at && !faint));
-        assert_eq!(preview, ghost(rotations[0]));
-        assert_eq!(shown_wheel, wheel);
+        // Nothing is previewed until an option is pointed at.
+        assert_eq!(preview, None);
+        assert_eq!(shown_orientations, offered);
 
         hover(&mut page, Hovered::Rotation(rotations[1]));
         assert_eq!(shown(&page).1, ghost(rotations[1]));
-        assert_eq!(shown(&page).2, wheel);
+        hover(&mut page, Hovered::Rotation(rotations[0]));
+        assert_eq!(shown(&page).1, ghost(rotations[0]));
+        assert_eq!(shown(&page).2, offered);
+
+        // Letting go takes the ghost away; a rotation that does not fit
+        // here shows none.
+        hover(&mut page, Hovered::None);
+        assert_eq!(shown(&page).1, None);
+        let other = [
+            Rotation::None,
+            Rotation::R60,
+            Rotation::R120,
+            Rotation::R180,
+            Rotation::R240,
+            Rotation::R300,
+        ]
+        .into_iter()
+        .find(|r| !rotations.contains(r))
+        .unwrap();
+        hover(&mut page, Hovered::Rotation(other));
+        assert_eq!(shown(&page).1, None);
+    }
+
+    #[test]
+    fn the_spot_being_decided_is_marked_until_the_card_closes() {
+        let (game, idx, at) = tile_with_positions(|rotations| rotations.len() > 1);
+        let mut page = page(game);
+        let picked = |page: &GamePage| {
+            page.with(|_| {
+                let positions = consume_context::<Views>().positions;
+                let picked: Vec<Position> = positions
+                    .read()
+                    .iter()
+                    .filter(|p| p.picked)
+                    .map(|p| p.pos)
+                    .collect();
+                picked
+            })
+        };
+        page.act(|mut ctx| ctx.ui_state.select_tile(idx));
+        assert!(picked(&page).is_empty());
+        page.act(|ctx| click_position(ctx, at));
+        assert_eq!(picked(&page), [at]);
+        // Back to choosing a spot: none is decided.
+        page.act(|mut ctx| ctx.ui_state.go_back());
+        assert!(picked(&page).is_empty());
     }
 
     #[test]

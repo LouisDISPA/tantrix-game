@@ -9,8 +9,10 @@ strings are built in Rust.
 | File | Contains |
 |---|---|
 | `main.css` | Reset, theme tokens, shared primitives (`.hex-frame`, `.btn-*`) |
-| `board.css` | Board container, layers, tiles, empty slots, rotation bar, results overlay |
-| `hand.css` | Player-hand panel, hand-tile states, outline ring |
+| `board.css` | Board container, layers, tiles, empty slots, the card of orientation options, results card |
+| `hand.css` | Player-hand header (a tab, or a card), hand-tile states, outline ring |
+| `game.css` | The game screen's shell: its backdrop and glass, HUD row, board, hand panel as a floating dock (*stack*) or a side column (*side*), the HUD pill, the menu |
+| `desk.css` | The game screen on a desktop window (landscape, ≥ 900 × 640): floating top bar, a rail of the other players on the left, a rack under the board |
 | `menu.css` | Title screen, setup card, floating hex decoration |
 | `animations.css` | All `@keyframes` + classes that apply them |
 
@@ -61,7 +63,9 @@ property (transform / left / top / …) is declared in CSS.
 | `BoardViewport` (inner) | `--center-x`, `--center-y` | `.board-tiles-layer { transform: translate(…) }` |
 | `BoardTile`, `EmptyHex` | `--hx`, `--hy`, `--hw`, `--hh` | `.board-tile { left: var(--hx); top: var(--hy); … }` |
 | `PlayerHand`, `ScoreRow` | `--player-color` | class-based usage |
-| `StatusBar` (banner) | `--turn-color` | `.turn-banner { background: var(--turn-color) }` |
+| `Board` (its `.board-container`) | `--turn-color`, via a `.color-*` class | the legal spots, the card of options |
+| `GameHud` | `--p` (how full the bag is) | `.hud-chip-bag::after`, the bag's bar on a desktop |
+| `OrientationPicker` | `--card-w`, `--card-h`, `--arrow-x`, `--arrow-y` | `.orientation-card` (its place on the stage, `left` / `top`, is worked out in Rust) |
 
 Transitions, easing, and animation live entirely in CSS — changing a
 curve doesn't touch Rust.
@@ -87,7 +91,7 @@ rsx! { div { class: "hex-frame results-hex-frame" } }
 ### `.hex-tile-fill` / `.hex-curve`
 
 Shared fill & stroke rules for every tile polygon and color curve, used
-by `BoardTile`, `HandTile`, `RotationWheel` via `HexSvg`.
+by `BoardTile`, `HandTile` and the card of options via `HexSvg`.
 
 ## Class composition in Rust
 
@@ -105,20 +109,63 @@ div {
 
 ## Layout classes
 
-- `.game-layout` + `.players-2` / `.players-3` / `.players-4` pick the
-  grid template for N players.
-- `.game-over-layout` overrides rows/columns for the end screen.
-- `.board-slot` marks `grid-area: board` for the board container.
-- `.player-hand.area-left` / `area-right` / `area-top` / `area-bottom`
-  place each hand in its grid cell.
+One component tree serves every screen. The stylesheets pick the layout and
+Rust never branches on the window size. `.game-layout` is the shell grid: the
+HUD (`.game-hud`), the board (`.board-slot`) and the panel (`.hand-panel`, or
+`.results-panel` at game over).
 
-All grid templates live in CSS — Rust only picks which class to apply.
+**The board is the screen.** `.game-layout` paints the backdrop (the hex
+grid, `--board-pattern`, lit from the middle) and clips at the window with
+`overflow: clip`, so focusing or scrolling to a hex out there never slides it.
+The board's cell (`.board-stage`) does not clip: the HUD and the panel are
+**glass cards** (`--glass`, `--glass-line`, a blur) floating over it, and a
+zoom or a pan runs the board under them. The camera frames the board in the
+cell the cards leave, so a legal spot is never left under one.
+
+| Layout | When | Panel |
+|---|---|---|
+| *stack* (`game.css`) | default | a row of tabs (one per seat) over the shown seat's tiles, under the board |
+| *side* (`game.css`) | landscape, ≥ 640px wide | the same, as a column beside the board |
+| *desk* (`desk.css`) | landscape, ≥ 900 × 640 | the shown seat is a **rack** under the board's cell, the HUD's hint in large type on its header line; every other seat is a **card** (score, readable hand) in a rail on the left; the HUD is a bar of capsules (turn, tools, room) |
+
+- Every `.player-hand` is always in the DOM. In *stack* and *side* they are
+  `display: contents`, so each seat's `.hand-header` (a tab) falls into the
+  first grid row and the `.shown` seat's `.hand-tiles` span the second.
+- A click anywhere on another seat's `.player-hand` shows its tiles (it
+  becomes `.shown`). On a phone only its header tab is visible to click.
+- `.players-2` / `.players-3` / `.players-4` set `--seats` (the number of
+  tabs) and, in *desk*, the shape of the cards.
+- *desk* sizes everything in `em` of `--fs` (`clamp(13px, min(1.05vw, 1.9vh),
+  26px)`), so the interface scales with the window; the board follows
+  through the camera's home zoom (`svg/camera_math.rs`).
+- *desk* takes the rack (the shown `.player-hand`) and the hint
+  (`.hud-chip-phase`) out of flow with `position: absolute` in the `rack`
+  grid area. Their containing block is `.game-layout`, so nothing between
+  them and it may be positioned (no `position`, `transform`, `filter`,
+  `backdrop-filter` or `contain` on `.game-hud`, `.hud-chip`, `.hand-panel`:
+  the rail has no glass of its own, and the turn chip, which holds the hint,
+  a translucent fill without the blur).
+- `.hud-menu` is a popover with a `⋯` toggle; from `min-width: 900px` its
+  items sit in the HUD row instead.
+- `--turn-color` (from the `.color-*` class on `.board-container`) colours
+  the legal spots and the card of options; the player colours otherwise
+  appear only as small swatches, the underline of the shown tab and the
+  turn dot.
+- Touch vs mouse is `@media (hover: hover)` / `(pointer: coarse)`, never
+  user-agent sniffing: hover effects are mouse-only, a touch screen keeps
+  only Fit of the zoom buttons.
+
+All grid templates live in CSS — Rust only picks which classes to apply.
 
 ## Responsive
 
-Only two breakpoints: `max-width: 600px` (hide floating hexes, smaller
-title) and `max-height: 500px` (compress title vertical gap). Set in
-`menu.css`.
+Menu screens: `max-width: 600px` (hide floating hexes, smaller title) and
+`max-height: 500px` (compress title vertical gap), in `menu.css`. The game
+screen (`game.css`): `side` at landscape ≥ 640px wide, the HUD pill's short
+hint under 480px, its tighter pill under 400px, the inline menu from 900px.
+`desk.css` takes over at landscape ≥ 900 × 640; there the room's connection
+label gives way to its code under 1100px. Heights use `100dvh` (with a
+`100vh` fallback), and the HUD and panel pad by `env(safe-area-inset-*)`.
 
 ## Animations
 
@@ -129,6 +176,6 @@ adding classes:
 |---|---|
 | `.hex-tile.just-placed` | scale-up placement |
 | `.hand-tile.new-tile` | draw-in fade |
-| `.turn-banner.forced` | pulsing brightness |
+| `.game-layout` | fade-in |
 | `.hand-hex-ring.forced` | pulsing stroke |
 | `.floating-hex.hex-*` | entry + floatBob loops |

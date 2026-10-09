@@ -24,7 +24,7 @@ pub fn use_is_game_over() -> Memo<bool> {
 }
 
 /// True when *any* tile in the current player's hand has a forced move.
-/// StatusBar uses this to toggle the urgent banner styling; extracting it
+/// The game's HUD uses this to pick its hint; extracting it
 /// keeps the scan off the render hot path.
 pub fn use_has_forced_move() -> Memo<bool> {
     let ctx = use_context::<GameCtx>();

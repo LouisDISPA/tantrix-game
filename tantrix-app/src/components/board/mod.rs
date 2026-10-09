@@ -7,42 +7,62 @@
 //! * [`BoardTilesLayer`] — placed moves (with scoring highlights).
 //! * [`BoardEmptyLayer`] — valid empty slots.
 //! * [`BoardPreview`] — the ghost of the placement being considered.
-//! * [`RotationWheel`] — shown only during SelectRotation.
-//! * [`ZoomControls`] / [`EndGameButton`] — chrome in a reserved control bar.
+//! * [`OrientationPicker`] — the card of options at the spot, shown only
+//!   during SelectRotation.
+//! * [`ZoomControls`] / [`EndGameButton`] — the camera's and the game's
+//!   buttons, which the game screen's menu hosts.
 //!
 //! The board works out the phase's derived values once — the placed moves,
-//! the valid positions, the preview, the wheel — and passes each to the
+//! the valid positions, the preview, the orientations — and passes each to the
 //! layer that shows it as a `ReadSignal`, so every layer subscribes only to
 //! its own value (hovering a hex re-renders the preview, not the hexes or
-//! the wheel). The board itself reads only whether the game is over.
+//! the card). The board itself reads only whether the game is over.
 //!
-//! Layout: the board is a two-row column. The top row (`.board-stage`) is the
-//! clipped playfield; the bottom row (`.board-control-bar`) holds the controls.
-//! The controls sit *beside* the playfield rather than floating over it, so the
-//! camera can never park a legal (clickable) position underneath them.
+//! Layout: the board is the camera's cell of the game screen (`.board-stage`),
+//! and nothing else. The HUD and the hand panel are cards floating over the
+//! screen around that cell, and the camera frames the board in the cell, so it
+//! never parks a legal (clickable) position underneath one; a zoom or a pan
+//! may still run the board under them. Only the card of options pops up on
+//! the board, at the spot it asks about.
 
 mod controls;
 mod empty_layer;
-mod rotation_wheel;
+mod orientation_picker;
 mod tiles_layer;
 mod viewport;
 
+use std::rc::Rc;
+
 use dioxus::prelude::*;
 
-use crate::components::status_bar::StatusBar;
 use crate::hooks::{
-    use_is_game_over, use_placed_moves, use_preview_placement, use_rotation_wheel,
-    use_valid_positions,
+    use_board_camera, use_current_player, use_is_game_over, use_orientations, use_placed_moves,
+    use_preview_placement, use_valid_positions,
 };
+use crate::svg::geometry::Rect;
+use crate::svg::paths::color_name as color_slug;
 
 pub use controls::{EndGameButton, ZoomControls};
 pub use empty_layer::{BoardEmptyLayer, BoardPreview};
-pub use rotation_wheel::RotationWheel;
+pub use orientation_picker::OrientationPicker;
 pub use tiles_layer::BoardTilesLayer;
 pub use viewport::BoardViewport;
 
+/// The board's box. Its class carries the colour of whoever moves
+/// (`--turn-color`: the legal spots, the card), so a change of turn re-renders
+/// this wrapper and not the board and its layers, which it only hosts.
+#[component]
+fn BoardContainer(children: Element) -> Element {
+    let turn = use_current_player();
+
+    rsx! {
+        div { class: "board-container color-{color_slug(turn())}", {children} }
+    }
+}
+
 #[component]
 pub fn Board() -> Element {
+    let camera = use_board_camera();
     let is_game_over = use_is_game_over();
     // One copy of the placed tiles, for the viewport's centering and the
     // tiles layer.
@@ -50,31 +70,40 @@ pub fn Board() -> Element {
     // The phase's view of the board, one memo per layer that shows it.
     let positions = use_valid_positions();
     let preview = use_preview_placement();
-    let wheel = use_rotation_wheel();
+    let orientations = use_orientations();
+
+    // The stage's box on the screen: the camera frames the board in it, so
+    // it is measured when the stage mounts and again whenever it resizes.
+    let mut stage = use_signal(|| None::<Rc<MountedData>>);
+    let measure = move || {
+        spawn(async move {
+            let mounted = stage.peek().clone();
+            let Some(mounted) = mounted else { return };
+            if let Ok(r) = mounted.get_client_rect().await {
+                let rect = Rect::new(r.min_x(), r.min_y(), r.max_x(), r.max_y());
+                camera.stage_measured(rect);
+            }
+        });
+    };
 
     rsx! {
-        div { class: "board-container",
-            // Playfield: clips the zoomed/panned map, hosts the HUD chip and
-            // the rotation picker (both anchored to this box).
-            div { class: "board-stage",
-                StatusBar {}
-
+        BoardContainer {
+            // Playfield: clips the zoomed/panned map and hosts the card of
+            // options (anchored to this box).
+            div {
+                class: "board-stage",
+                onmounted: move |evt| {
+                    stage.set(Some(evt.data()));
+                    measure();
+                },
+                onresize: move |_| measure(),
                 BoardViewport { placed_moves,
                     BoardTilesLayer { placed_moves, dimmed: is_game_over() }
                     BoardEmptyLayer { positions }
                     BoardPreview { placement: preview }
                 }
 
-                RotationWheel { wheel }
-            }
-
-            // Reserved strip below the playfield — never overlaps the map.
-            div { class: "board-control-bar",
-                if !is_game_over() {
-                    EndGameButton {}
-                }
-
-                ZoomControls {}
+                OrientationPicker { orientations, placed: placed_moves }
             }
         }
     }

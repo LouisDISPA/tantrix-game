@@ -30,8 +30,8 @@ test('the room survives its creator leaving and another player starts', async ({
     await second.getByRole('button', { name: /Blue.*Open/ }).click();
     await expect(first.getByRole('button', { name: 'Start game' })).toBeEnabled();
     await first.getByRole('button', { name: 'Start game' }).click();
-    await expect(first.getByText('Select a tile from your hand')).toBeVisible();
-    await expect(second.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(first.locator('.hud-chip-phase')).toBeVisible();
+    await expect(second.locator('.hud-chip-phase')).toBeVisible();
 
     const color = (await first.locator('.hud-chip-name').textContent())?.trim();
     const mover = color === 'Red' ? first : second;
@@ -70,7 +70,7 @@ test('a late visitor watches, then takes over a disconnected player\'s seat', as
     await second.getByRole('button', { name: /Blue.*Open/ }).click();
     await expect(page.getByRole('button', { name: 'Start game' })).toBeEnabled();
     await page.getByRole('button', { name: 'Start game' }).click();
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(page.locator('.hud-chip-phase')).toBeVisible();
 
     // Blue walks away mid-game, which would stall every Blue turn.
     await secondContext.close();

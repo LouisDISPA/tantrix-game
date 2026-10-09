@@ -46,8 +46,17 @@ fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
                     }
                 }
             },
-            onmouseenter: move |_| ui_state.hovered().set(Hovered::ScoringColor(color)),
-            onmouseleave: move |_| ui_state.hovered().set(Hovered::None),
+            // Only a mouse hovers: a finger's "hover" would stick after the tap.
+            onpointerenter: move |e| {
+                if e.data().pointer_type() == "mouse" {
+                    ui_state.hovered().set(Hovered::ScoringColor(color));
+                }
+            },
+            onpointerleave: move |e| {
+                if e.data().pointer_type() == "mouse" {
+                    ui_state.hovered().set(Hovered::None);
+                }
+            },
             div { class: "results-player",
                 div { class: "results-color-swatch" }
                 span { class: "results-name", "{color}" }
@@ -62,7 +71,9 @@ fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
 }
 
 /// End-of-game scores card: winner header, per-player rows, and a slot for
-/// the parent screen to inject its own action buttons (Play Again, Main Menu).
+/// the parent screen to inject its own action buttons (Play Again, Main
+/// Menu). It takes the panel's place on the game screen, under the board
+/// (beside it on a wide window).
 #[component]
 pub fn ScoresPanel(children: Element) -> Element {
     let ctx = use_context::<GameCtx>();
@@ -82,9 +93,8 @@ pub fn ScoresPanel(children: Element) -> Element {
     let winners = use_memo(move || ctx.game_state.read().winners_from(&scores.read()));
 
     rsx! {
-        div { class: "board-results-overlay",
+        section { class: "results-panel",
             div { class: "board-results-card",
-                div { class: "hex-frame results-hex-frame" }
 
                 div { class: "results-header",
                     if winners.read().len() > 1 {

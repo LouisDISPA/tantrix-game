@@ -62,9 +62,9 @@ test('an Expert AI answers in the browser', async ({ page }) => {
   // Whoever starts, Blue's AI plays one turn and hands Red the move.
   const redStarts = (await page.locator('.hud-chip-name').textContent())?.trim() === 'Red';
   if (redStarts) await playMove(page);
-  const thinking = page.getByText('Blue is thinking...');
-  await expect(thinking).toBeVisible();
-  await expect(thinking).toBeHidden({ timeout: 30_000 });
+  const hint = page.locator('.hud-chip-phase');
+  await expect(hint).toContainText('thinking');
+  await expect(hint).not.toContainText('thinking', { timeout: 30_000 });
 
   await expect(page.locator('.hud-chip-name')).toHaveText('Red');
   await expect(placedTiles(page)).toHaveCount(redStarts ? 2 : 1);

@@ -73,8 +73,8 @@ test('completes an online game with synchronized boards and final scores', async
     const startGame = page.getByRole('button', { name: 'Start game' });
     await expect(startGame).toBeEnabled();
     await startGame.click();
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible();
-    await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(page.locator('.hud-chip-phase')).toBeVisible();
+    await expect(guest.locator('.hud-chip-phase')).toBeVisible();
 
     const onlineMenu = page.getByRole('button', { name: 'Online Menu' });
     const playedColors = new Set<string>();

@@ -59,8 +59,8 @@ test('taking an occupied seat asks for confirmation, then replaces its holder', 
     const startGame = page.getByRole('button', { name: 'Start game' });
     await expect(startGame).toBeEnabled();
     await startGame.click();
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible();
-    await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(page.locator('.hud-chip-phase')).toBeVisible();
+    await expect(guest.locator('.hud-chip-phase')).toBeVisible();
 
     expect(creatorDiag.problems(), 'creator runtime problems').toEqual([]);
     expect(guestDiag.problems(), 'guest runtime problems').toEqual([]);

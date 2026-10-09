@@ -6,7 +6,7 @@
 //! * [`online_game`] — the online game page's `GameCtx`, fed by room snapshots.
 //! * [`camera`] — the board camera's controls (zoom, pan) for the viewport.
 //! * [`phase_view`] — the board layers' view of the current turn phase: valid
-//!   positions, preview, rotation wheel (one memo each).
+//!   positions, preview, orientations (one memo each).
 //! * [`scoring`] — end-of-game scoring path highlights.
 //! * [`derived`] — small memos used across multiple components.
 
@@ -21,5 +21,5 @@ pub use camera::use_board_camera;
 pub use derived::{use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves};
 pub use game_ctx::use_game_ctx;
 pub use online_game::use_online_game_ctx;
-pub use phase_view::{use_preview_placement, use_rotation_wheel, use_valid_positions};
+pub use phase_view::{use_orientations, use_preview_placement, use_valid_positions};
 pub use scoring::use_highlight_map;

@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
 use tantrix_game::{Color, Position, Rotation};
 
+use super::gesture::Gesture;
+use crate::svg::geometry::Rect;
+
 /// Which top-level screen inside the local-game page is showing. Orthogonal
 /// to `TurnPhase`: Setup shows the new-game form, Playing delegates to the
 /// active or game-over screen based on `TurnPhase`.
@@ -20,7 +23,7 @@ pub enum TurnPhase {
 }
 
 impl TurnPhase {
-    /// Human-readable banner text for the status bar. `current` is the player
+    /// Human-readable hint for the HUD. `current` is the player
     /// whose turn it is (used for the waiting-for-AI message).
     pub fn status_text(&self, current: Color, has_forced: bool) -> String {
         match self {
@@ -30,6 +33,18 @@ impl TurnPhase {
             Self::SelectRotation => "Choose a rotation".to_string(),
             Self::WaitingForAi => format!("{} is thinking...", current),
             Self::GameOver => "Game Over!".to_string(),
+        }
+    }
+
+    /// The same hint in a few words, for a narrow screen.
+    pub fn short_text(&self, has_forced: bool) -> &'static str {
+        match self {
+            Self::SelectTile if has_forced => "Forced move!",
+            Self::SelectTile => "Select a tile",
+            Self::SelectPosition => "Choose a spot",
+            Self::SelectRotation => "Which way?",
+            Self::WaitingForAi => "Thinking…",
+            Self::GameOver => "Game over",
         }
     }
 }
@@ -70,24 +85,6 @@ impl Hovered {
             Self::ScoringColor(c) => Some(*c),
             _ => None,
         }
-    }
-}
-
-/// Whether the board viewport is currently being panned, and (if so) where
-/// the last pointer-move event landed so we can compute a delta.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum Drag {
-    #[default]
-    Idle,
-    Active {
-        last_x: f64,
-        last_y: f64,
-    },
-}
-
-impl Drag {
-    pub fn is_active(&self) -> bool {
-        matches!(self, Self::Active { .. })
     }
 }
 
@@ -135,11 +132,23 @@ pub struct UiState {
     // --- Hover (unified) ---
     pub hovered: Hovered,
 
+    // --- Hand panel ---
+    /// The seat whose tiles the player is looking at instead of their own
+    /// (not `peek`: the store's accessor would shadow `Readable::peek`).
+    pub peeked: Option<Color>,
+
     // --- Camera / viewport ---
     pub zoom: f64,
     pub pan_x: f64,
     pub pan_y: f64,
-    pub drag: Drag,
+    /// The pointers on the board: a pan, a pinch, or nothing.
+    pub gesture: Gesture,
+    /// Whether the last gesture moved the board. The click that follows a
+    /// drag's lift is no tap, so it must not place a tile.
+    pub dragged: bool,
+    /// The board stage's box on the screen (client coordinates), once the
+    /// browser has measured it. The camera needs it to frame the board.
+    pub stage: Option<Rect>,
 
     // --- Animation / transition ---
     /// The most recently drawn replacement tile: (player color, hand index).
@@ -164,10 +173,14 @@ impl Default for UiState {
 
             hovered: Hovered::None,
 
+            peeked: None,
+
             zoom: 1.0,
             pan_x: 0.0,
             pan_y: 0.0,
-            drag: Drag::Idle,
+            gesture: Gesture::Idle,
+            dragged: false,
+            stage: None,
 
             new_tile: None,
             last_placed_position: None,
@@ -191,7 +204,7 @@ impl<Lens> Store<UiState, Lens> {
     }
 
     /// [`reset_selection`](UiStateStoreImplExt::reset_selection), then show
-    /// `message` in the status bar (none when empty).
+    /// `message` in the HUD (none when empty).
     fn reset_selection_with_message(&mut self, message: &str) {
         self.clear_selection();
         set_if_changed(self.phase(), TurnPhase::SelectTile);
@@ -270,7 +283,7 @@ mod tests {
     use crate::util::test_page::GamePage;
 
     #[test]
-    fn the_status_bar_says_what_to_do_next() {
+    fn the_hud_says_what_to_do_next() {
         let text = |phase: TurnPhase, forced| phase.status_text(Color::Blue, forced);
         assert_eq!(
             text(TurnPhase::SelectTile, false),
@@ -287,6 +300,16 @@ mod tests {
         assert_eq!(text(TurnPhase::SelectRotation, false), "Choose a rotation");
         assert_eq!(text(TurnPhase::WaitingForAi, false), "Blue is thinking...");
         assert_eq!(text(TurnPhase::GameOver, true), "Game Over!");
+    }
+
+    #[test]
+    fn the_short_hint_fits_a_narrow_screen() {
+        assert_eq!(TurnPhase::SelectTile.short_text(false), "Select a tile");
+        assert_eq!(TurnPhase::SelectTile.short_text(true), "Forced move!");
+        assert_eq!(TurnPhase::SelectPosition.short_text(true), "Choose a spot");
+        assert_eq!(TurnPhase::SelectRotation.short_text(false), "Which way?");
+        assert_eq!(TurnPhase::WaitingForAi.short_text(false), "Thinking…");
+        assert_eq!(TurnPhase::GameOver.short_text(false), "Game over");
     }
 
     #[test]

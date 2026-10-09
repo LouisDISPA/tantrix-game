@@ -78,8 +78,8 @@ just adds noise.
 
 `UiState` has ~10 fields that change independently: phase, hovered,
 zoom, pan_x, selected_tile, new_tile, highlighted_color, … A pan drag
-writes 3 camera fields. StatusBar reads only `phase`. PlayerHand reads
-only `selected_tile`/`new_tile`. Field-level subscription saves ~8
+writes 3 camera fields. GameHud reads only `phase` and `message`. HandTile
+reads only `selected_tile`/`new_tile`. Field-level subscription saves ~8
 re-renders per drag frame.
 
 ```rust

@@ -1,13 +1,14 @@
 use dioxus::prelude::*;
+use tantrix_game::Position;
 
 use crate::hooks::camera::zoom_percent;
 use crate::hooks::use_board_camera;
-use crate::state::actions::end_game;
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::UiStateStoreExt;
 
-/// Floating zoom buttons in the corner of the board. Reads the zoom level
-/// only, so panning the board does not re-render them.
+/// The zoom buttons, and Fit, which frames the whole board. Reads the zoom
+/// level only, so panning the board does not re-render them. On a touch
+/// screen, where fingers pinch, the stylesheet keeps only Fit.
 #[component]
 pub fn ZoomControls() -> Element {
     #[cfg(test)]
@@ -18,32 +19,58 @@ pub fn ZoomControls() -> Element {
 
     rsx! {
         div { class: "zoom-controls",
+            // The steps stop their click, so the menu they sit in stays open
+            // for the next one.
             button {
-                class: "zoom-btn",
-                title: "Zoom in",
-                onclick: move |_| camera.zoom_in(),
-                "+"
+                class: "zoom-btn zoom-step",
+                title: "Zoom out",
+                onclick: move |evt| {
+                    evt.stop_propagation();
+                    camera.zoom_out();
+                },
+                "−"
             }
             button {
                 class: "zoom-btn zoom-label",
                 title: "Reset zoom",
-                onclick: move |_| camera.reset_zoom(),
+                onclick: move |evt| {
+                    evt.stop_propagation();
+                    camera.reset_zoom();
+                },
                 "{percent}%"
             }
             button {
-                class: "zoom-btn",
-                title: "Zoom out",
-                onclick: move |_| camera.zoom_out(),
-                "−"
+                class: "zoom-btn zoom-step",
+                title: "Zoom in",
+                onclick: move |evt| {
+                    evt.stop_propagation();
+                    camera.zoom_in();
+                },
+                "+"
+            }
+            button {
+                class: "zoom-btn zoom-fit",
+                title: "Fit board",
+                onclick: move |_| {
+                    let placed: Vec<Position> = ctx
+                        .game_state
+                        .read()
+                        .board()
+                        .iter()
+                        .map(|m| m.position)
+                        .collect();
+                    camera.fit_board(&placed);
+                },
+                "Fit"
             }
         }
     }
 }
 
-/// End local play immediately, or ask the room to end online play for everyone.
-/// Hidden from someone watching a room.
+/// The End Game button: `on_click` asks for confirmation. Hidden from
+/// someone watching a room, who cannot end its game.
 #[component]
-pub fn EndGameButton() -> Element {
+pub fn EndGameButton(on_click: EventHandler<()>) -> Element {
     let ctx = use_context::<GameCtx>();
     let can_end = use_memo(move || ctx.driver.can_end_game());
 
@@ -52,13 +79,11 @@ pub fn EndGameButton() -> Element {
     }
 
     rsx! {
-        div { class: "board-controls",
-            button {
-                class: "board-ctrl-btn end-game-btn",
-                title: "End game",
-                onclick: move |_| end_game(ctx),
-                "End Game"
-            }
+        button {
+            class: "board-ctrl-btn end-game-btn",
+            title: "End game",
+            onclick: move |_| on_click.call(()),
+            "End Game"
         }
     }
 }

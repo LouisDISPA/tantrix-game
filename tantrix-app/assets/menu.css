@@ -1097,7 +1097,8 @@
 
 .seat-takeover {
   position: fixed;
-  top: 60px;
+  /* Just under the game's HUD row. */
+  top: calc(env(safe-area-inset-top) + 58px);
   /* Not left:50% + translate: that caps the shrink-to-fit width at half
      the viewport and wraps the row early. */
   left: 0;

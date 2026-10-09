@@ -31,7 +31,9 @@ test('a seated player can end an online game early for everyone', async ({ page,
     await expect(placedTiles(page)).toHaveCount(1);
     await expect(placedTiles(guest)).toHaveCount(1);
 
+    // Ending the game for everyone asks first.
     await guest.getByRole('button', { name: 'End Game' }).click();
+    await guest.getByRole('dialog').getByRole('button', { name: 'Yes, end it' }).click();
     await expect(page.getByRole('button', { name: 'Online Menu' })).toBeVisible();
     await expect(guest.getByRole('button', { name: 'Online Menu' })).toBeVisible();
     await expect(page.locator('.results-row')).toHaveCount(2);

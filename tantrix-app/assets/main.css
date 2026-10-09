@@ -194,6 +194,7 @@ body {
 .app-root {
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     background-color: var(--bg-primary);
@@ -219,6 +220,11 @@ body {
     font-size: 18px;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* The game screen has the switch in its own menu: this one would float over it. */
+.app-page:has(.game-layout) ~ .theme-toggle {
+    display: none;
 }
 
 .theme-toggle:hover {

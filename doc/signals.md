@@ -54,11 +54,14 @@ derefs to it): `ctx.game_state.read().board().len()`,
 
 | Field | Who reads |
 |---|---|
-| `phase` | StatusBar (memo), the phase-view memos, `use_is_game_over`, LocalGame (memo), actions |
-| `message` | StatusBar |
+| `phase` | GameHud (memos), the phase-view memos, `use_is_game_over`, LocalGame (memo), actions |
+| `message` | GameHud |
 | `selected_tile`, `selected_position` | the phase-view memos, HandTile, actions |
-| `hovered` (enum) | `use_valid_positions` (SelectTile), `use_preview_placement`, `use_highlight_map` (game over) — never `use_rotation_wheel` |
-| `zoom`, `pan_x`, `pan_y`, `drag` | BoardViewport (transform + dragging memos), ZoomControls (zoom memo) |
+| `hovered` (enum) | `use_valid_positions` (SelectTile), `use_preview_placement`, `use_highlight_map` (game over) — never `use_orientations` |
+| `zoom`, `pan_x`, `pan_y` | BoardViewport (transform memo), ZoomControls (zoom memo), OrientationPicker (while its card is open) |
+| `gesture`, `dragged` | BoardViewport (dragging memo); `dragged` is only peeked, by click handlers |
+| `stage` | the camera (peeked), OrientationPicker (while its card is open); written by `BoardCamera::stage_measured` when `Board` measures the stage (a camera still at its home zoom follows the new stage's) |
+| `peeked` | `GamePlay`'s `shown` memo, and `GameHud`'s `viewing` memo (the desktop hint says whose tiles are looked at); cleared by an effect when the turn changes |
 | `new_tile` | HandTile (just-drawn animation) |
 | `last_placed_position` | BoardTilesLayer (just-placed animation, one memo for all tiles) |
 | `highlighted_color` | `use_highlight_map`, ScoreRow |
@@ -94,7 +97,7 @@ no one maintains hand-synced signals.
 | `use_has_forced_move` | `Memo<bool>` | `game_state.hand_info()` |
 | `use_valid_positions` | `Memo<Vec<ValidPosition>>` | phase; hovered hand tile (SelectTile) or `selected_tile`; `hand_info` |
 | `use_preview_placement` | `Memo<Option<Placement>>` | phase, selection, hover, `game_state` |
-| `use_rotation_wheel` | `Memo<Option<WheelData>>` | phase, selection, `game_state` — not hover |
+| `use_orientations` | `Memo<Option<Orientations>>` | phase, selection, `game_state` — not hover |
 | `use_highlight_map` | `Memo<BTreeMap<Position, Vec<Color>>>` | phase, board, highlight/hover color |
 
 `use_board_camera` returns a `BoardCamera` — the zoom/pan controls, which
@@ -102,10 +105,10 @@ write the camera fields — and reads nothing: BoardViewport and
 ZoomControls memo the camera fields they show themselves.
 
 The three phase-view memos used to be one `PhaseView` bundle that each
-board layer recomputed itself, so a hover woke the rotation wheel. `Board`
+board layer recomputed itself, so a hover woke the orientation card. `Board`
 now creates each once and passes it to the one layer that shows it as a
 `ReadSignal` prop (`BoardEmptyLayer { positions }`, `BoardPreview {
-placement }`, `RotationWheel { wheel }`): hovering a hex re-renders the
+placement }`, `OrientationPicker { orientations, placed }`): hovering a hex re-renders the
 preview ghost and nothing else.
 
 ## Reading rules
@@ -114,8 +117,8 @@ preview ghost and nothing else.
   `ui.read().phase`.
 - **Read in a memo or inline, not at the top.** A component that reads a
   signal while rendering re-renders on *every* write to it; reading a memo
-  re-renders it only when the memo's value changes. `StatusBar` shows
-  memos (`phase_text`, `bag_count`, the current player) so a hover, a drag
+  re-renders it only when the memo's value changes. `GameHud` shows
+  memos (the hints, `bag_count`, the current player) so a hover, a drag
   or an AI picking its tile leaves it alone; `PlayerHand` memos its tiles
   and turn, so a move re-renders only the hands it changes.
 - **Derived state → `use_memo`.** Never a shadow `Signal` you hand-sync.
@@ -143,10 +146,11 @@ preview ghost and nothing else.
   camera, the animation hints, the scoring overlay — and wakes all their
   readers. Only a full reset (`ui.set(UiState::default())` on Start Game
   and Play Again) writes the whole store.
-- **Hot paths write the fewest fields.** A drag's mousemove writes
-  `pan_x`, `pan_y` and `drag` only; the AI loop leaves the phase alone (it
+- **Hot paths write the fewest fields.** A drag's pointer move writes
+  `pan_x`, `pan_y` and `gesture` only; the AI loop leaves the phase alone (it
   already is `WaitingForAi`); an online snapshot resets the selection and
-  `last_placed_position`, never the camera.
+  `last_placed_position`, and frames the board (the camera's zoom and pan
+  only) when a move arrived.
 - **`after_move`** is the single "a move landed" change: resets pan,
   records `new_tile` + `last_placed_position` for animations. Called from
   both the human (`execute_move`) and the AI (`run_ai_loop`) paths.

@@ -72,42 +72,45 @@ tantrix-app/src/           # Dioxus frontend (lib + bin)
     game_state.rs          # GameState (wraps Game + hand_info cache) + GameCtx (game_state, ui_state, driver)
     game_driver.rs         # GameDriver: Local (every seat played here) | Online(RoomLink: moves go to the room)
     ui_state.rs            # UiState, TurnPhase, Hovered enum, HandTileState enum; per-field #[store] methods (reset_selection, after_move…), set_if_changed
-    actions.rs             # Turn actions: start_game, click_tile, click_position, pick_rotation, execute_move, end_game, advance_turn; auto_move (a tile played without a choice)
+    gesture.rs             # Gesture: one or two pointers on the board (pan, pinch, tap vs drag) as plain data
+    actions.rs             # Turn actions: start_game, click_tile, click_position, pick_rotation, execute_move, end_game, advance_turn; auto_move (a tile played without a choice); they also frame the camera
     ai_service.rs          # Async AI turn loop
     config.rs              # GameConfig (seats, AI difficulty per seat)
     theme.rs               # Global light/dark theme signal
     test_games.rs          # (tests) seeded games: the e2e fixture, find_game, tiles with one move / several positions
   hooks/                   # Reactive derived values
-    camera.rs              # use_board_camera → BoardCamera (zoom/pan controls; writes camera fields one by one)
+    camera.rs              # use_board_camera → BoardCamera (zoom, pointer pan/pinch, stage_measured, frame_board / frame_spots; writes camera fields one by one)
     derived.rs             # use_placed_moves, use_current_player, use_is_game_over, use_has_forced_move
     game_ctx.rs            # use_game_ctx: builds + provides a game page's GameCtx, runs its AI seats
     online_game.rs         # use_online_game_ctx: the online GameCtx, fed by room snapshots
-    phase_view.rs          # use_valid_positions, use_preview_placement, use_rotation_wheel (one memo per board layer)
+    phase_view.rs          # use_valid_positions, use_preview_placement, use_orientations (one memo per board layer)
     scoring.rs             # use_highlight_map (scoring overlay)
   pages/                   # Route-level pages
     main_menu.rs           # Title screen
-    game/                  # Game screens shared by local + online play: GamePlay, GameOver (results + exits)
+    game/                  # Game screens shared by local + online play: GamePlay (HUD + board + hand panel), GameHud, PlayerHand, shown_hand, GameOver (results + exits)
     local_game/            # LocalGame: Setup (player_setup.rs) → Playing → GameOver
     online/                # Online entry, lobby, room; game.rs: OnlineGameView
   components/              # Pure UI
     board/                 # Board composer + submodules
-      mod.rs               # Board composes layers + chrome
-      viewport.rs          # Zoom/pan host, children slot
+      mod.rs               # Board composes layers, measures the stage
+      viewport.rs          # Pointer/wheel camera host, children slot
       tiles_layer.rs       # Placed tiles + highlights
       empty_layer.rs       # Click targets + ghost preview
-      controls.rs          # ZoomControls, EndGameButton
-      rotation_wheel.rs    # Rotation picker
+      controls.rs          # ZoomControls (zoom, Fit), EndGameButton
+      orientation_picker.rs # The card of options at the picked spot
     tile/                  # Tile-shaped components
       hex_svg.rs           # Shared SVG primitive (polygon + curves)
       board_tile.rs        # Placed or preview tile on the board
       empty_hex.rs         # Empty hex slot (click target)
       hand_tile.rs         # Interactive hand tile
-    player_hand.rs         # Hand display per player
+    hud_menu.rs            # The game's ⋯ menu (popover; inline on a wide window)
     scores_panel.rs        # End-of-game scores card
-    status_bar.rs          # Phase banner + counters
+    theme_toggle.rs        # Light/dark switch
     title_decoration.rs    # Menu background decoration
   svg/                     # SVG geometry & path utilities
-    geometry.rs            # axial_to_pixel, hex_vertices, bounding box
+    geometry.rs            # axial_to_pixel, hex_vertices, Rect, bounding box
+    camera_math.rs         # Camera arithmetic: fit, pinch, framing the spots, the home zoom of a stage (pure, on plain numbers)
+    card_placement.rs      # Which side of the spot the orientation card sits on (pure)
     paths.rs               # Color curves (arc/bezier/line), hex polygon
 
 tantrix-ai/src/            # AI players behind TantrixAi: baselines (Greedy, Smart…), Strategist/Builder (line evaluation, eval.rs), Lookahead, MonteCarlo; seeded via with_seed (doc/ai.md)
@@ -122,7 +125,7 @@ tantrix-worker/src/        # Cloudflare Worker (workers-rs): SSR + Room Durable 
 cloudflare/                # Worker entry (index.js), wrangler.toml
 vendor/dioxus-server/      # dioxus-server 0.7.10 patched for wasm32 (PATCHES.md)
 
-assets/                    # CSS: main.css, board.css, hand.css, menu.css, animations.css
+assets/                    # CSS: main.css, board.css, hand.css, game.css (the game screen's layout: phone), desk.css (… on a desktop window), menu.css, animations.css
 doc/                       # game_rules.md
 
 tantrix-net/src/           # Browser WebSocket client for server-authoritative rooms
@@ -163,7 +166,7 @@ e2e/                       # Playwright browser tests (see e2e/README.md)
 - **GameState**: Wraps core `Game` (the single source of truth; reads via its accessors) with a `hand_info` cache of `Game::moves_by_tile()` (per hand tile: positions → valid rotations)
 - **SVG rendering**: All board graphics are SVG with axial-to-pixel conversion; color curves use arc/bezier/line based on edge separation
 - **Theme**: Global `THEME` store (light/dark), CSS custom properties with OKLCH colors
-- **Layout**: CSS Grid adapts to player count (2–4 players, hands positioned left/right/top/bottom)
+- **Layout**: one component tree for every screen size; `game.css` lays it out (HUD row / board / hand panel in a column, or a side panel in landscape), the hands being tabs over the shown seat's tiles, and `desk.css` unfolds it on a desktop window (a bar of capsules, the shown seat as a rack under the board, a card per other player in a rail on the left). The board is the screen: it is the full-bleed backdrop and the HUD, rack and cards are glass cards floating over it (the camera frames it in the cell they leave). Responsiveness is CSS only — Rust never branches on the window size; the camera's home zoom follows the stage's size, not the device
 - **Naming**: PascalCase enums/structs, snake_case functions, UPPER_SNAKE_CASE constants
 
 ## Performance Rules

@@ -1,93 +1,42 @@
-/* ===== Game Layout (grid) ===== */
-
-.game-layout {
-    display: grid;
-    gap: 2px;
-    background: var(--border-subtle);
-    height: 100vh;
-    width: 100vw;
+/* The board's backdrop: a faint hex grid, painted by the game screen. */
+:root {
+    --board-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230'%3E%3Cpolygon points='100,0 173.2,37.5 173.2,112.5 100,150 26.8,112.5 26.8,37.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='200,115 273.2,152.5 273.2,227.5 200,265 126.8,227.5 126.8,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='0,115 73.2,152.5 73.2,227.5 0,265 -73.2,227.5 -73.2,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3C/svg%3E");
 }
-
-.game-layout.players-2 {
-    grid-template-rows: 0px 1fr 0px;
-    grid-template-columns: 140px 1fr 140px;
-    grid-template-areas:
-        ". board ."
-        "left board right"
-        ". board .";
-}
-
-.game-layout.players-3 {
-    grid-template-rows: 0px 1fr 140px;
-    grid-template-columns: 140px 1fr 140px;
-    grid-template-areas:
-        "left board right"
-        "left board right"
-        "left bottom right";
-}
-
-.game-layout.players-4 {
-    grid-template-rows: 140px 1fr 140px;
-    grid-template-columns: 140px 1fr 140px;
-    grid-template-areas:
-        "left top right"
-        "left board right"
-        "left bottom right";
-}
-
-.game-over-layout {
-    grid-template-rows: 1fr;
-    grid-template-columns: 1fr;
-    grid-template-areas: "board";
-}
-
-.board-slot {
-    grid-area: board;
-    min-width: 0;
-    min-height: 0;
-}
-
-/* Player-hand grid areas, paired with .player-hand.area-* */
-.player-hand.area-left   { grid-area: left; }
-.player-hand.area-right  { grid-area: right; }
-.player-hand.area-top    { grid-area: top; }
-.player-hand.area-bottom { grid-area: bottom; }
 
 /* ===== Board Container ===== */
 
-/* Two rows: the clipped playfield (.board-stage) and a reserved control bar.
-   The controls live in their own row instead of floating over the map, so a
-   legal position can never end up underneath them at any zoom/pan. */
+/* The playfield (.board-stage) is the camera's cell of the game screen. It
+   does not clip and paints no backdrop: the game screen carries the backdrop
+   (`--board-pattern`, see game.css) and the HUD and the hand panel float over
+   the board, so a zoom or a pan runs the board under them. The camera frames
+   the board in the cell, so a legal position is never left under one. */
 .board-container {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     grid-template-columns: minmax(0, 1fr);
-    /* Lets the control bar adapt to the board column width (narrow on phones,
-       where the hands eat most of the screen), not the viewport width. */
-    container-type: inline-size;
-    container-name: board;
     width: 100%;
     height: 100%;
-    overflow: hidden;
-    background-color: var(--bg-board);
 }
 
-/* The playfield: positioning + clipping context for the zoom/pan viewport,
-   the HUD chip and the rotation bar. Everything clickable on the map is
-   confined to (and clipped by) this box. */
+/* The playfield: the positioning context of the zoom/pan viewport and the
+   card of options. */
 .board-stage {
     position: relative;
     min-width: 0;
     min-height: 0;
-    overflow: hidden;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230'%3E%3Cpolygon points='100,0 173.2,37.5 173.2,112.5 100,150 26.8,112.5 26.8,37.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='200,115 273.2,152.5 273.2,227.5 200,265 126.8,227.5 126.8,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='0,115 73.2,152.5 73.2,227.5 0,265 -73.2,227.5 -73.2,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3C/svg%3E");
-    background-repeat: repeat;
+    /* The camera owns every gesture on the map: a finger pans it, two
+       pinch it, and the browser must not scroll or zoom the page instead. */
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .board-viewport {
     width: 100%;
     height: 100%;
     cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
     transform-origin: center center;
     transform: scale(var(--zoom, 1)) translate(calc(-1 * var(--pan-x, 0px)), calc(-1 * var(--pan-y, 0px)));
     transition: transform 0.4s ease-out;
@@ -164,170 +113,57 @@
 
 /* ===== Empty Positions ===== */
 
+/* A legal spot wears the mover's colour (--turn-color, set by the board's
+   .color-* class): a light tint and a dashed outline, visible on a phone where
+   a grey dash would vanish. */
 .hex-empty {
     cursor: pointer;
     transition: opacity 0.2s ease;
 }
 
 .hex-empty polygon {
-    fill: var(--hex-empty);
-    stroke: var(--hex-outline-light);
-    stroke-width: 1;
-    stroke-dasharray: 4 3;
-    transition: stroke 0.15s ease, fill 0.15s ease, stroke-width 0.15s ease;
+    fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 16%, transparent);
+    stroke: var(--turn-color, var(--text-secondary));
+    stroke-opacity: 0.85;
+    stroke-width: 3;
+    stroke-dasharray: 7 4;
+    transition: stroke-opacity 0.15s ease, fill 0.15s ease;
 }
 
-.hex-empty:hover polygon {
-    stroke-width: 2;
-    fill: rgba(255, 255, 255, 0.08);
-    stroke: var(--text-secondary);
-    stroke-dasharray: none;
+/* Hover is a mouse thing: on a touch screen it would stick after a tap. */
+@media (hover: hover) {
+    .hex-empty:hover polygon {
+        fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 30%, transparent);
+        stroke-opacity: 1;
+        stroke-dasharray: none;
+    }
 }
 
 .hex-empty.forced polygon {
+    fill: color-mix(in oklch, var(--color-red) 16%, transparent);
     stroke: var(--color-red);
-    stroke-width: 2;
-    stroke-dasharray: none;
 }
 
+/* Only hovered, not selected: a hint of where the tile would go. */
 .hex-empty.faint polygon {
     opacity: 0.4;
-    stroke-dasharray: 6 4;
 }
 
-/* ===== Board Control Bar ===== */
-
-/* Reserved strip under the playfield: End Game on the left, zoom on the
-   right. Wraps (End Game above zoom) when the board column is very narrow. */
-.board-control-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px 10px;
-    padding: 8px 12px;
-    background: var(--surface-secondary);
-    border-top: 1px solid var(--border-subtle);
+/* The spot whose orientation is being chosen, while its card is open. */
+.hex-empty.picked {
+    pointer-events: none;
 }
 
-.board-controls {
-    display: flex;
-}
-
-.board-ctrl-btn {
-    min-height: 32px;
-    padding: 6px 14px;
-    border: 1px solid var(--border-subtle);
-    border-radius: 12px;
-    background: var(--surface-elevated);
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
-}
-
-.board-ctrl-btn:hover {
-    background: var(--color-red);
-    color: white;
-    border-color: transparent;
-    box-shadow: var(--shadow-md);
-}
-
-.board-ctrl-btn:active {
-    transform: translateY(1px);
-    box-shadow: none;
-}
-
-/* ===== Zoom Controls ===== */
-
-.zoom-controls {
-    display: flex;
-    flex-direction: row;
-    /* Stays on the right even when End Game is absent (game over). */
-    margin-left: auto;
-    gap: 0;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    box-shadow: var(--shadow-sm);
-    overflow: hidden;
-}
-
-.zoom-btn {
-    width: 36px;
-    height: 32px;
-    border: none;
-    background: transparent;
-    color: var(--text-primary);
-    font-size: 18px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.12s ease;
-}
-
-.zoom-btn:hover {
-    background: rgba(128, 128, 128, 0.15);
-}
-
-.zoom-btn:active {
-    background: rgba(128, 128, 128, 0.25);
-}
-
-.zoom-btn.zoom-label {
-    width: 52px;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-left: 1px solid var(--border-light);
-    border-right: 1px solid var(--border-light);
-}
-
-.zoom-btn.zoom-label:hover {
-    color: var(--text-primary);
-}
-
-/* Narrow board column (phones: the hands take most of the width). Center the
-   controls and shrink the zoom buttons so both rows fit without overflow. */
-@container board (max-width: 260px) {
-    .board-control-bar {
-        justify-content: center;
-        padding: 6px;
-    }
-
-    .board-controls,
-    .board-ctrl-btn {
-        width: 100%;
-    }
-
-    .board-ctrl-btn {
-        padding: 6px 8px;
-    }
-
-    .zoom-controls {
-        margin-left: 0;
-    }
-
-    .zoom-btn {
-        width: 28px;
-    }
-
-    .zoom-btn.zoom-label {
-        width: 40px;
-    }
+.hex-empty.picked polygon {
+    fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 30%, transparent);
+    stroke-opacity: 1;
+    stroke-dasharray: none;
 }
 
 /* ===== Tile Preview ===== */
 
 .tile-preview {
-    opacity: 0.45;
+    opacity: 0.85;
     pointer-events: none;
 }
 
@@ -342,169 +178,118 @@
     stroke-dasharray: 4 3;
 }
 
-/* ===== HUD Chip ===== */
+/* ===== Orientation card (the options, at the spot) ===== */
 
-.status-bar {
+/* A neutral card with the tile in each of the ways it fits the picked spot.
+   Rust places it (left/top/--arrow-*, in stage pixels) on the side of the spot
+   that hides the fewest tiles, and gives its size as --card-w/--card-h. */
+.orientation-card {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 10;
-    pointer-events: none;
+    z-index: 30;
+    box-sizing: border-box;
+    width: var(--card-w);
+    height: var(--card-h);
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    /* Glass, nearly opaque: the arrow at its edge is the same fill. */
+    background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid var(--glass-line, var(--border-subtle));
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    /* Appears once the camera has settled on the spot. */
+    animation: card-in 0.18s ease-out 0.25s both;
 }
 
-.hud-chip {
-    position: absolute;
+/* Until the stage has been measured: top, centred. */
+.orientation-card.unplaced {
     top: 12px;
     left: 50%;
     transform: translateX(-50%);
-    pointer-events: none;
-
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 20px;
-    height: 40px;
-
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-radius: 999px;
-    border: 1px solid var(--border-subtle);
-    box-shadow: var(--shadow-md);
-    white-space: nowrap;
-    animation: fadeIn 0.3s ease;
 }
 
-
-.hud-chip-player {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    flex-shrink: 0;
+@keyframes card-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
-.hud-chip-dot {
+.orientation-option {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 12px;
+    border: 1.5px solid var(--border-color);
+    background: var(--surface-elevated);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.orientation-option svg {
+    height: 64px;
+    width: auto;
+    overflow: visible;
+    filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* Pressed (or hovered, with a mouse): the colour of whoever moves. */
+.orientation-option:active {
+    border-color: var(--turn-color, var(--text-primary));
+    background: color-mix(in oklch, var(--turn-color, var(--text-primary)) 14%, var(--surface-elevated));
+}
+
+@media (hover: hover) {
+    .orientation-option:hover {
+        border-color: var(--turn-color, var(--text-primary));
+        background: color-mix(in oklch, var(--turn-color, var(--text-primary)) 14%, var(--surface-elevated));
+    }
+}
+
+/* The arrow points from the card at the spot. */
+.orientation-card::after {
+    content: "";
+    display: none;
+    position: absolute;
     width: 14px;
     height: 14px;
-    flex-shrink: 0;
-    clip-path: var(--clip-hex);
-    background: var(--turn-color);
+    background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+    border-right: 1px solid var(--glass-line, var(--border-subtle));
+    border-bottom: 1px solid var(--glass-line, var(--border-subtle));
 }
 
-.hud-chip-name {
-    font-size: 13px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: white;
-}
-
-.hud-chip-sep {
-    font-size: 11px;
-    color: var(--text-muted);
-    opacity: 0.4;
-    flex-shrink: 0;
-    user-select: none;
-}
-
-.hud-chip-phase {
-    font-size: 13px;
-    font-weight: 400;
-    color: var(--text-secondary);
-    transition: color 0.2s ease;
-}
-
-.hud-chip-phase.alert {
-    color: var(--color-red);
-    font-weight: 600;
-}
-
-.hud-chip-bag {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-muted);
-    letter-spacing: 0.5px;
-    flex-shrink: 0;
-}
-
-.hud-chip-conn-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-}
-
-.hud-chip-conn-dot.live {
-    background: oklch(0.68 0.22 150);
-    box-shadow: 0 0 8px color-mix(in oklch, oklch(0.68 0.22 150), transparent 50%);
-}
-
-.hud-chip-conn-dot.ended {
-    background: var(--text-muted);
-}
-
-.hud-chip-conn-label {
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-    color: white;
-}
-
-.hud-chip-room {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 2.2px;
-    padding: 2px 7px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.12);
-    color: white;
-    flex-shrink: 0;
-}
-
-/* ===== Rotation Bar (top of board) ===== */
-
-.rotation-bar {
-    position: absolute;
-    top: 80px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 12px;
-    box-shadow: var(--shadow-md);
-    animation: fadeIn 0.5s ease;
-}
-
-.rotation-bar-slot {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 8px;
-    transition: background 0.12s ease, transform 0.12s ease;
-}
-
-.rotation-bar-slot:hover {
-    background: var(--hand-active-glow);
-    transform: scale(1.08);
-}
-
-.rotation-bar-slot:active {
-    transform: scale(0.97);
-}
-
-.rotation-bar-svg {
-    width: 66px;
-    height: 66px;
+.orientation-card.side-top::after {
     display: block;
+    bottom: -8px;
+    left: calc(var(--arrow-x) - 7px);
+    transform: rotate(45deg);
+}
+
+.orientation-card.side-bottom::after {
+    display: block;
+    top: -8px;
+    left: calc(var(--arrow-x) - 7px);
+    transform: rotate(225deg);
+}
+
+.orientation-card.side-left::after {
+    display: block;
+    right: -8px;
+    top: calc(var(--arrow-y) - 7px);
+    transform: rotate(-45deg);
+}
+
+.orientation-card.side-right::after {
+    display: block;
+    left: -8px;
+    top: calc(var(--arrow-y) - 7px);
+    transform: rotate(135deg);
 }
 
 /* ===== Game Over: Tile Dimming ===== */
@@ -528,29 +313,11 @@
 .scoring-curve-yellow { stroke: var(--color-yellow); filter: drop-shadow(0 0 2px var(--color-yellow)); }
 .scoring-curve-green { stroke: var(--color-green); filter: drop-shadow(0 0 2px var(--color-green)); }
 
-/* ===== Game Over: Results Overlay ===== */
+/* ===== Game Over: Results ===== */
 
-.board-results-overlay {
-    position: absolute;
-    top: 60px;
-    right: 16px;
-    z-index: 20;
-    width: 320px;
-    animation: slideInRight 0.5s ease;
-}
-
+/* The results card sits in the game screen's panel slot (see game.css). */
 .board-results-card {
     position: relative;
-    background: var(--bg-card);
-    border: none;
-    border-radius: 28px;
-    padding: 28px 24px 24px;
-    box-shadow: var(--shadow-lg);
-}
-
-.results-hex-frame {
-    width: 340px;
-    height: 340px;
 }
 
 .results-header {
@@ -568,7 +335,7 @@
 }
 
 .results-winner-name {
-    font-size: 40px;
+    font-size: 32px;
     font-weight: 900;
     text-transform: uppercase;
     letter-spacing: 4px;

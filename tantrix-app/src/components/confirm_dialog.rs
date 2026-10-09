@@ -24,6 +24,9 @@ pub fn ConfirmDialog(
                 // Keep clicks inside the dialog from reaching the backdrop.
                 onclick: move |e| e.stop_propagation(),
                 onkeydown: move |e| {
+                    // The keys are the dialog's: Escape must not also step the
+                    // game back behind it.
+                    e.stop_propagation();
                     if e.key() == Key::Escape {
                         on_cancel.call(());
                     }

@@ -37,9 +37,8 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
     }
 
     rsx! {
-        GamePlay {}
+        GamePlay { OnlineHudBadge { state } }
         OnlineSeatTakeover { state, sender }
-        OnlineHudBadge { state }
     }
 }
 
@@ -77,11 +76,13 @@ mod tests {
         config.cycle_player(Color::Yellow);
         let mut game = GameState::new(&config);
         let before = snapshot_of(&game);
+        let scores_before = game.scores();
         let mover = game.current_player();
         let m = game.legal_moves()[0];
         game.play_move(m.placement()).unwrap();
         let next = game.current_player();
         let after = snapshot_of(&game);
+        let scores_after = game.scores();
 
         let mut dom = VirtualDom::new_with_props(
             |snapshot: GameSnapshot| {
@@ -118,15 +119,21 @@ mod tests {
         assert_eq!(render_count::of("BoardTile", m.position), 1);
         assert_eq!(render_count::of("PlayerHand", mover), 1);
         assert_eq!(render_count::of("PlayerHand", next), 1);
-        // …but the view itself, the third hand and the camera stay as they
-        // were: the snapshot rebuilt the whole game, not what they show.
+        // …but the view itself, the third hand (unless its line grew, which
+        // its header shows) and the camera stay as they were: the snapshot
+        // rebuilt the whole game, not what they show.
         assert_eq!(render_count::total("OnlineGameView"), 0);
         for bystander in [Color::Red, Color::Blue, Color::Yellow] {
             if bystander != mover && bystander != next {
-                assert_eq!(render_count::of("PlayerHand", bystander), 0, "{bystander}");
+                let rescored = scores_before[bystander].score != scores_after[bystander].score;
+                assert_eq!(
+                    render_count::of("PlayerHand", bystander),
+                    usize::from(rescored),
+                    "{bystander}"
+                );
             }
         }
         assert_eq!(render_count::total("ZoomControls"), 0);
-        assert_eq!(render_count::total("RotationWheel"), 0);
+        assert_eq!(render_count::total("OrientationPicker"), 0);
     }
 }

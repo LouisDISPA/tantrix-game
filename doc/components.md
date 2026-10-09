@@ -13,7 +13,7 @@ Three rules for this codebase:
 
 ```
 App (lib.rs)
-└── AppLayout                        theme toggle
+└── AppLayout                        theme toggle (hidden on the game screen, which has its own)
     └── Router
         ├── MainMenu                 title screen, nav to LocalGame
         ├── LocalGame                use_game_ctx(Local) provides GameCtx
@@ -21,22 +21,27 @@ App (lib.rs)
         │   ├── GamePlay             (shared, below)
         │   └── GameOver             (shared) Play Again / Main Menu
         └── OnlineRoom → OnlineGameView   use_online_game_ctx provides GameCtx (Online driver)
-            ├── GamePlay + OnlineSeatTakeover + OnlineHudBadge
-            └── GameOver             Online Menu / Main Menu, OnlineHudBadge as child
+            ├── GamePlay + OnlineSeatTakeover   OnlineHudBadge goes in GamePlay's HUD slot
+            └── GameOver             Online Menu / Main Menu, OnlineHudBadge as child (HUD slot)
 
-GamePlay                             grid: Board + PlayerHand × N
+GamePlay                             one tree for every screen size (game.css lays it out)
+├── GameHud                          turn pill, hint, bag, back (✕), online badge slot; on a desktop the top bar,
+│   │                                with the hint over the rack
+│   └── HudMenu                      ⋯ popover (inline on a wide window)
+│       ├── ZoomControls             zoom ± / % / Fit
+│       ├── EndGameButton            (hidden on game over, and from watchers) → ConfirmDialog
+│       └── ThemeToggle
 ├── Board                            memos the phase view once, one per layer
-│   ├── StatusBar                    phase banner + counters
-│   ├── EndGameButton                (hidden on game over, and from watchers)
-│   ├── ZoomControls                 +/- zoom buttons
-│   ├── BoardViewport                pan/zoom host (children slot)
+│   ├── BoardViewport                pointer/wheel camera host (children slot)
 │   │   ├── BoardTilesLayer          placed moves
-│   │   ├── BoardEmptyLayer          click targets
+│   │   ├── BoardEmptyLayer          click targets (EmptyHex)
 │   │   └── BoardPreview             ghost of the placement considered
-│   └── RotationWheel                only renders in SelectRotation phase
-└── PlayerHand × N                   one per active color
+│   └── OrientationPicker            the card of options at the spot, only in SelectRotation
+└── hand panel                       PlayerHand × N: a tab (header) + the tiles; one is `shown`
+                                     (a phone: tabs over its tiles; a desktop: it is the rack, the others cards
+                                     in a rail; a click on a card shows it)
     └── HandTile × hand_size
-GameOver                             Board (reused) + ScoresPanel + exit buttons
+GameOver                             GameHud + Board (reused) + ScoresPanel (in the panel slot)
 ```
 
 `GamePlay` and `GameOver` live in `pages/game/` and serve both pages. They
@@ -52,26 +57,29 @@ actions (`execute_move`, `end_game`) that dispatch on it, so nothing under
 ```
 pages/
   game/                game screens shared by local + online play
-    game_play.rs       GamePlay: board + hands grid
+    game_play.rs       GamePlay: HUD + board + hand panel (the shell game.css lays out)
+    game_hud.rs        GameHud: turn pill, hint, bag, back, menu
+    player_hand.rs     PlayerHand: one seat's tab + tiles
+    shown_hand.rs      whose tiles the panel shows (a pure function)
     game_over.rs       GameOver: final board + scores + exit buttons
   local_game/          LocalGame (Setup → Playing → GameOver), player_setup.rs
   online/game.rs       OnlineGameView: the game screens fed by room snapshots
 components/
-  board/               Board submodule — 5 layers + the rotation wheel
-    mod.rs             Board composer (5 children, no logic)
-    viewport.rs        zoom/pan host
+  board/               Board submodule — the layers and the card of options
+    mod.rs             Board composer (measures the stage; no logic)
+    viewport.rs        pointer/wheel camera host
     tiles_layer.rs     placed tiles
     empty_layer.rs     empty hex slots (BoardEmptyLayer) + preview ghost (BoardPreview)
-    controls.rs        zoom buttons, end-game button
-    rotation_wheel.rs  conditional rotation picker
+    controls.rs        ZoomControls (zoom, Fit), EndGameButton
+    orientation_picker.rs  the card of options at the picked spot
   tile/                Shared tile primitives
     hex_svg.rs         pure SVG primitive (polygon + color curves)
     board_tile.rs      BoardTile (Placed | Preview variant)
     empty_hex.rs       empty hex slot + click/hover dispatch
     hand_tile.rs       interactive tile in a player's hand
-  player_hand.rs       one player's hand panel
+  hud_menu.rs          HudMenu: the ⋯ popover (owns its open flag)
+  theme_toggle.rs      ThemeToggle
   scores_panel.rs      end-of-game scores card
-  status_bar.rs        phase banner + counters
   title_decoration.rs  floating-hex decoration for title screens
 ```
 
@@ -87,19 +95,21 @@ a memo.
 | `BoardTilesLayer` | `placed_moves: ReadSignal<Vec<Move>>`, `dimmed: bool` |
 | `BoardEmptyLayer` | `positions: ReadSignal<Vec<ValidPosition>>` |
 | `BoardPreview` | `placement: ReadSignal<Option<Placement>>` |
-| `ZoomControls`, `EndGameButton` | — |
-| `RotationWheel` | `wheel: ReadSignal<Option<WheelData>>` |
+| `ZoomControls` | — |
+| `EndGameButton` | `on_click: EventHandler<()>` |
+| `OrientationPicker` | `orientations: ReadSignal<Option<Orientations>>`, `placed: ReadSignal<Vec<Move>>` |
+| `HudMenu`, `GameHud`, `GamePlay` | `children: Element` (menu items / the page's HUD badge) |
+| `ThemeToggle` | `class: String`, `labelled: bool` |
 | `BoardTile` | `placement: Placement`, `hex_size: f64`, `variant: BoardTileVariant`, `highlight_colors: Vec<Color>`, `just_placed: bool`, `dimmed: bool` |
-| `EmptyHex` | `position: Position`, `hex_size: f64`, `forced: bool`, `faint: bool` |
+| `EmptyHex` | `position: Position`, `hex_size: f64`, `forced: bool`, `faint: bool`, `picked: bool` |
 | `HandTile` | `color: Color`, `index: usize` |
 | `HexSvg` | `tile: Tile`, `rotation: Rotation`, `cx: f64`, `cy: f64`, `hex_size: f64`, `base_class`, `highlight_colors` |
-| `PlayerHand` | `color: Color`, `position: HandPosition` |
+| `PlayerHand` | `color: Color`, `shown: ReadSignal<Color>` |
 | `ScoresPanel` | `children: Element` (action buttons) |
 | `GameOver` | `again_label: String`, `on_again: EventHandler<()>`, `children: Element` (page overlays) |
 | `PlayerSetup` | `seed: Option<u64>`, `on_start: EventHandler<GameConfig>` |
 | `DifficultyPicker` | `level: Difficulty`, `on_change: EventHandler<Difficulty>` |
 | `ScoreRow` | `color: Color`, `score: usize`, `is_winner: bool` |
-| `StatusBar` | — |
 
 Plain `T` by default. `ReadSignal<T>` where a parent derives a value once
 for a child that should re-render on its own when it changes: `Board`
@@ -110,20 +120,21 @@ hands each layer its memo (Pattern 3 of the `dioxus-hoisting` skill), and
 
 | Component | Reads | Via |
 |---|---|---|
-| `Board` | is-game-over; creates the placed-moves and phase-view memos for its layers | `use_is_game_over`, `use_placed_moves`, `use_valid_positions`, `use_preview_placement`, `use_rotation_wheel` |
-| `StatusBar` | phase text, message, bag count, current player | memos (`use_current_player`, `use_has_forced_move`) + `message` inline |
-| `BoardViewport` | camera transform, dragging, center of the placed moves | memos; `use_board_camera` for the handlers |
+| `Board` | is-game-over; creates the placed-moves and phase-view memos for its layers | `use_is_game_over`, `use_placed_moves`, `use_valid_positions`, `use_preview_placement`, `use_orientations`, `use_current_player` (the turn's colour) |
+| `GameHud` | phase hints, message, bag count, current player, can go back | memos (`use_current_player`, `use_has_forced_move`) + `message` inline |
+| `BoardViewport` | camera transform, dragging, center of the placed moves | memos; `use_board_camera` for the pointer handlers |
 | `ZoomControls` | zoom level | memo; `use_board_camera` for the handlers |
 | `BoardTilesLayer` | highlights, last placed | `use_highlight_map` + one `last_placed` memo for every tile |
-| `BoardEmptyLayer`, `BoardPreview`, `RotationWheel` | their `ReadSignal` prop (+ `hovered` write for the wheel) | props from `Board` |
+| `BoardEmptyLayer`, `BoardPreview` | their `ReadSignal` prop | props from `Board` |
+| `OrientationPicker` | its `ReadSignal` props; the camera and stage only while the card is open (+ `hovered` write on press) | props from `Board`, memo over `UiState` |
 | `BoardTile`, `HexSvg` | nothing | props only |
 | `EmptyHex` | hovered (write), dispatches `click_position` | direct |
 | `HandTile` | hand, hand_info, selected_tile, new_tile, phase, `driver.controls` | memos from `GameCtx` |
-| `PlayerHand` | is_current, hand, `driver.my_color` / `player_name` | one memo each |
-| `EndGameButton` | `driver.can_end_game`, dispatches `end_game` | memo |
+| `PlayerHand` | is_current, is_shown, hand, score, `driver.my_color` / `player_name` | one memo each |
+| `EndGameButton` | `driver.can_end_game` | memo (`GameHud` confirms, then dispatches `end_game`) |
 | `ScoresPanel` | scores, rows, winners | memos (the board is scored once) |
 | `ScoreRow` | highlighted_color | memo |
-| `GamePlay` | where each hand sits | memo |
+| `GamePlay` | the seats, whose tiles show (`shown_hand`) | memos; an effect ends a peek when the turn changes |
 | `LocalGame`, `OnlineGameView`, `OnlineRoomSession` | which screen to show | memos over the phase (game over? started? which room screen?) |
 
 ## Event dispatch
@@ -164,7 +175,7 @@ or click makes.
 ## HexSvg — the one primitive
 
 All four tile-shaped components (`BoardTile`, `EmptyHex`'s polygon,
-`HandTile`, each rotation-wheel slot) render a hex via `HexSvg`. Wrappers
+`HandTile`, each option of the orientation card) render a hex via `HexSvg`. Wrappers
 own positioning + state classes; `HexSvg` owns geometry.
 
 ## When in doubt

@@ -18,6 +18,7 @@
 use dioxus::prelude::*;
 use tantrix_game::{Color, Placement, Player, Position, Rotation, TileMoveInfo};
 
+use crate::hooks::camera::BoardCamera;
 use crate::state::config::GameConfig;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
@@ -84,7 +85,43 @@ fn play_here(ctx: GameCtx, player: Color, placement: Placement) {
     };
 
     ui_state.after_move(player, played.hand_index, placement.position);
+    frame_board(ctx);
     advance_turn(ctx);
+}
+
+/// Put the board back in the camera: in the middle, zoomed out if it has
+/// outgrown the stage. Nothing happens until the stage has been measured.
+pub fn frame_board(ctx: GameCtx) {
+    let placed = placed_positions(ctx);
+    BoardCamera::new(ctx.ui_state).frame_board(&placed);
+}
+
+/// Bring every place the selected tile fits into the camera.
+fn frame_spots(ctx: GameCtx, tile_idx: usize) {
+    let (placed, spots) = {
+        let gs = ctx.game_state.read();
+        let spots: Vec<Position> = gs
+            .hand_info()
+            .get(tile_idx)
+            .map(|info| info.positions.keys().copied().collect())
+            .unwrap_or_default();
+        (
+            gs.board().iter().map(|m| m.position).collect::<Vec<_>>(),
+            spots,
+        )
+    };
+    BoardCamera::new(ctx.ui_state).frame_spots(&placed, &spots);
+}
+
+/// Make sure the card of options has room beside the spot `at`.
+fn make_room_for_card(ctx: GameCtx, at: Position) {
+    let placed = placed_positions(ctx);
+    BoardCamera::new(ctx.ui_state).make_room_for_card(&placed, at);
+}
+
+fn placed_positions(ctx: GameCtx) -> Vec<Position> {
+    let gs = ctx.game_state.read();
+    gs.board().iter().map(|m| m.position).collect()
 }
 
 /// The rotation a tile is played in at a position without the rotation
@@ -148,19 +185,23 @@ pub fn click_tile(ctx: GameCtx, color: Color, idx: usize) {
     };
     match auto {
         Some((pos, rotation)) => execute_move(ctx, idx, pos, rotation),
-        None => ui_state.select_tile(idx),
+        None => {
+            ui_state.select_tile(idx);
+            frame_spots(ctx, idx);
+        }
     }
 }
 
 /// React to a click on an empty board position. If the tile only fits in one
 /// rotation at this position ([`auto_rotation`]), commit immediately;
-/// otherwise advance to `SelectRotation` phase and let the wheel pick.
+/// otherwise advance to `SelectRotation` phase and let the card of options
+/// at the spot pick. While that card is open, another spot moves it there.
 pub fn click_position(ctx: GameCtx, pos: Position) {
     let ui_state = ctx.ui_state;
     let game_state = ctx.game_state;
 
     let phase = *ui_state.phase().read();
-    if phase != TurnPhase::SelectPosition {
+    if !matches!(phase, TurnPhase::SelectPosition | TurnPhase::SelectRotation) {
         return;
     }
     let Some(tile_idx) = *ui_state.selected_tile().read() else {
@@ -181,13 +222,14 @@ pub fn click_position(ctx: GameCtx, pos: Position) {
     match auto_rotation(&rotations, board_empty) {
         Some(rotation) => execute_move(ctx, tile_idx, pos, rotation),
         None => {
-            ui_state.selected_position().set(Some(pos));
-            ui_state.phase().set(TurnPhase::SelectRotation);
+            set_if_changed(ui_state.selected_position(), Some(pos));
+            set_if_changed(ui_state.phase(), TurnPhase::SelectRotation);
+            make_room_for_card(ctx, pos);
         }
     }
 }
 
-/// Commit the move after the user picks a rotation from the wheel.
+/// Commit the move after the user picks a rotation from the card of options.
 pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
     let ui_state = ctx.ui_state;
     let tile_idx = *ui_state.selected_tile().read();
@@ -284,11 +326,22 @@ mod tests {
         advance_turn, auto_move, auto_rotation, click_position, click_tile, end_game, execute_move,
         pick_rotation,
     };
+    use crate::hooks::camera::BoardCamera;
     use crate::state::config::GameConfig;
     use crate::state::game_state::GameState;
     use crate::state::test_games::{find_game, seeded, tile_with_one_move, tile_with_positions};
     use crate::state::ui_state::{TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
+    use crate::svg::camera_math::{rect_to_stage, shows, Size, FIT_PAD, MIN_SPOT_ZOOM};
+    use crate::svg::geometry::{board_center, hex_rect, hexes_rect, Rect, HEX_SIZE};
     use crate::util::test_page::GamePage;
+
+    /// A phone's board stage on the screen.
+    const STAGE: Rect = Rect {
+        min_x: 0.0,
+        min_y: 52.0,
+        max_x: 390.0,
+        max_y: 652.0,
+    };
 
     /// Red has no tiles, while Blue can still make a move.
     fn red_stuck_before_blue() -> GameState {
@@ -462,6 +515,71 @@ mod tests {
     }
 
     #[test]
+    fn selecting_a_tile_brings_its_places_into_the_camera() {
+        let (game, idx, _) = several_positions();
+        let mover = game.current_player();
+        let placed: Vec<Position> = game.board().iter().map(|m| m.position).collect();
+        let spots: Vec<Position> = game.hand_info()[idx].positions.keys().copied().collect();
+        let mut page = GamePage::local(game);
+        // The stage is measured, the camera zoomed in on nothing in particular.
+        page.act(|ctx| {
+            ctx.ui_state.stage().set(Some(STAGE));
+            ctx.ui_state.zoom().set(3.0);
+            ctx.ui_state.pan_x().set(900.0);
+        });
+
+        page.act(|ctx| click_tile(ctx, mover, idx));
+        let pose = page.with(|ctx| BoardCamera::new(ctx.ui_state).pose());
+        assert!(
+            shows(
+                hexes_rect(&spots, HEX_SIZE).unwrap(),
+                pose,
+                board_center(&placed, HEX_SIZE),
+                Size::of(&STAGE),
+                FIT_PAD
+            ),
+            "{pose:?}"
+        );
+    }
+
+    #[test]
+    fn a_camera_without_a_measured_stage_stays_where_it_is() {
+        let (game, idx, _) = several_positions();
+        let mover = game.current_player();
+        let mut page = GamePage::local(game);
+        page.act(|ctx| ctx.ui_state.zoom().set(3.0));
+
+        page.act(|ctx| click_tile(ctx, mover, idx));
+        assert_eq!(
+            page.with(|ctx| BoardCamera::new(ctx.ui_state).pose().zoom),
+            3.0
+        );
+    }
+
+    #[test]
+    fn a_move_that_outgrows_the_stage_zooms_the_board_out() {
+        // A long game: its board no longer fits a phone's stage at 100%.
+        let mut game = seeded(3);
+        for _ in 0..30 {
+            game.skip_stuck_players();
+            let Some(m) = game.legal_moves().first().copied() else {
+                break;
+            };
+            game.play_move(m.placement()).unwrap();
+        }
+        let mover = game.current_player();
+        let m = game.legal_moves()[0];
+        let idx = game.hand(mover).iter().position(|&t| t == m.tile).unwrap();
+        let mut page = GamePage::local(game);
+        page.act(|ctx| ctx.ui_state.stage().set(Some(STAGE)));
+
+        page.act(|ctx| execute_move(ctx, idx, m.position, m.rotation));
+        let pose = page.with(|ctx| BoardCamera::new(ctx.ui_state).pose());
+        assert!((MIN_SPOT_ZOOM..1.0).contains(&pose.zoom), "{pose:?}");
+        assert_eq!((pose.pan_x, pose.pan_y), (0.0, 0.0));
+    }
+
+    #[test]
     fn clicking_another_tile_moves_the_selection() {
         // Two tiles of the hand to move that fit at several positions.
         let (game, (first, second)) = find_game(|game| {
@@ -494,7 +612,7 @@ mod tests {
         page.act(|ctx| click_tile(ctx, mover, idx));
         assert_eq!(selection(&page), (TurnPhase::SelectTile, None, None));
 
-        // From the rotation wheel too: the tile and its position go.
+        // From the card of options too: the tile and its position go.
         page.act(|ctx| click_tile(ctx, mover, idx));
         page.act(|ctx| click_position(ctx, at));
         assert_eq!(
@@ -604,6 +722,73 @@ mod tests {
 
         page.act(|ctx| pick_rotation(ctx, picked));
         assert_eq!(placed_at(&page, at), Some((tile, picked)));
+    }
+
+    #[test]
+    fn another_spot_moves_the_open_card_there() {
+        // A tile that fits two ways at two places.
+        let (game, (idx, first, second)) = find_game(|game| {
+            if game.board().is_empty() {
+                return None;
+            }
+            game.hand_info().iter().enumerate().find_map(|(idx, info)| {
+                let mut two_way = info
+                    .positions
+                    .iter()
+                    .filter(|(_, rotations)| rotations.len() > 1)
+                    .map(|(&at, _)| at);
+                Some((idx, two_way.next()?, two_way.next()?))
+            })
+        });
+        let mover = game.current_player();
+        let board = game.board().len();
+        let mut page = GamePage::local(game);
+        page.act(|ctx| click_tile(ctx, mover, idx));
+
+        page.act(|ctx| click_position(ctx, first));
+        assert_eq!(
+            selection(&page),
+            (TurnPhase::SelectRotation, Some(idx), Some(first))
+        );
+        // Another spot: the card moves, nothing is played.
+        page.act(|ctx| click_position(ctx, second));
+        assert_eq!(
+            selection(&page),
+            (TurnPhase::SelectRotation, Some(idx), Some(second))
+        );
+        assert_eq!(page.game(|game| game.board().len()), board);
+        // A tap on empty board closes it: back to choosing a spot.
+        page.act(|mut ctx| ctx.ui_state.go_back());
+        assert_eq!(
+            selection(&page),
+            (TurnPhase::SelectPosition, Some(idx), None)
+        );
+    }
+
+    #[test]
+    fn picking_a_spot_gives_the_card_room_beside_it() {
+        let (game, idx, at) = tile_with_positions(|rotations| rotations.len() > 1);
+        let mover = game.current_player();
+        let placed: Vec<Position> = game.board().iter().map(|m| m.position).collect();
+        let tight = Rect::new(0.0, 52.0, 140.0, 252.0);
+        let mut page = GamePage::local(game);
+        page.act(|ctx| ctx.ui_state.stage().set(Some(tight)));
+        page.act(|ctx| click_tile(ctx, mover, idx));
+
+        page.act(|ctx| click_position(ctx, at));
+        let pose = page.with(|ctx| BoardCamera::new(ctx.ui_state).pose());
+        let center = board_center(&placed, HEX_SIZE);
+        let spot = rect_to_stage(hex_rect(at, HEX_SIZE), pose, center, Size::of(&tight));
+        // On a stage this small the spot is centred and kept tappable.
+        assert!(pose.zoom >= MIN_SPOT_ZOOM);
+        assert!(shows(
+            hex_rect(at, HEX_SIZE),
+            pose,
+            center,
+            Size::of(&tight),
+            0.0
+        ));
+        assert!((spot.center().0 - 70.0).abs() < 1.0 && (spot.center().1 - 100.0).abs() < 1.0);
     }
 
     #[test]

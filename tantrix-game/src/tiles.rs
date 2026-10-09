@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::Direction;
 
 pub(crate) const NUMBER_OF_COLOR: usize = enum_iterator::cardinality::<Color>();
-pub(crate) const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
+/// How many different tiles there are: what the bag holds before the deal.
+pub const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
 
 #[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Color {

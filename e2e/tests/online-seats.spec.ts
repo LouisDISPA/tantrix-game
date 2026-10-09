@@ -68,7 +68,7 @@ test('five people share four seats: a released seat goes to the fifth, the rest 
     // The newly seated player can start; the unseated one stays to watch.
     await fifth.getByRole('button', { name: 'Start game' }).click();
     for (const seated of [fifth, blue, yellow, green]) {
-      await expect(seated.getByText('Select a tile from your hand')).toBeVisible();
+      await expect(seated.locator('.hud-chip-phase')).toBeVisible();
     }
     const watcher = red;
     await expect(watcher.locator('.hud-chip-name')).toBeVisible();
@@ -126,16 +126,16 @@ test('the session cookie keeps the seat across a reload, and a second tab takes 
     await expect(chip(page, 'Blue')).toHaveClass(/taken/);
 
     await page.getByRole('button', { name: 'Start game' }).click();
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(page.locator('.hud-chip-phase')).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.hud-chip-phase')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.hand-tile')).toHaveCount(12);
 
     // The same person opening the room in a second tab takes it over.
     const second = await page.context().newPage();
     await second.goto(`/online/${code}`);
-    await expect(second.getByText('Select a tile from your hand')).toBeVisible({ timeout: 20_000 });
+    await expect(second.locator('.hud-chip-phase')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText('This room was opened in another tab.')).toBeVisible();
 
     expect(creatorDiag.problems()).toEqual([]);

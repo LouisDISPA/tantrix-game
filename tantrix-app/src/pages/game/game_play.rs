@@ -1,50 +1,52 @@
 use dioxus::prelude::*;
+use tantrix_game::Player;
 
+use super::game_hud::GameHud;
+use super::player_hand::PlayerHand;
+use super::shown_hand::shown_hand;
 use crate::components::board::Board;
-use crate::components::player_hand::{HandPosition, PlayerHand};
+use crate::hooks::use_current_player;
 use crate::state::game_state::GameCtx;
-use crate::state::ui_state::UiStateStoreImplExt;
-use tantrix_game::Color;
+use crate::state::ui_state::{set_if_changed, UiStateStoreExt, UiStateStoreImplExt};
 
-/// Determine hand positions based on player count.
-fn assign_hand_positions(colors: &[Color]) -> Vec<(Color, HandPosition)> {
-    match colors.len() {
-        2 => vec![
-            (colors[0], HandPosition::Left),
-            (colors[1], HandPosition::Right),
-        ],
-        3 => vec![
-            (colors[0], HandPosition::Left),
-            (colors[1], HandPosition::Right),
-            (colors[2], HandPosition::Bottom),
-        ],
-        4 => vec![
-            (colors[0], HandPosition::Top),
-            (colors[1], HandPosition::Right),
-            (colors[2], HandPosition::Bottom),
-            (colors[3], HandPosition::Left),
-        ],
-        _ => vec![],
-    }
-}
-
-/// The board and every player's hand. Changes no state while rendering: a
-/// local game's first turn is handed on by the setup screen's Start Game
-/// (`actions::start_game`), an online one by the room.
+/// The HUD row, the board and the hand panel. One tree for every screen:
+/// the stylesheet lays it out as a column on a phone (HUD, board, panel) and
+/// as a board with a side panel where there is room. Changes no state while
+/// rendering: a local game's first turn is handed on by the setup screen's
+/// Start Game (`actions::start_game`), an online one by the room.
+///
+/// `children` go in the HUD: the online room's badge.
 #[component]
-pub fn GamePlay() -> Element {
+pub fn GamePlay(children: Element) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("GamePlay", ());
     let ctx = use_context::<GameCtx>();
     let mut ui = ctx.ui_state;
+    let current = use_current_player();
 
-    // Where each hand sits — player colors never change during a game, so
-    // this memo keeps its value (and the layout its render) for the game.
-    let hands = use_memo(move || assign_hand_positions(ctx.game_state.read().playing_colors()));
+    // The seats in turn order — player colors never change during a game,
+    // so this memo keeps its value (and the screen its render) for the game.
+    let seats = use_memo(move || ctx.game_state.read().playing_colors().to_vec());
+    // Whose tiles the panel shows. Only the hands it concerns read it.
+    let shown = use_memo(move || {
+        let gs = ctx.game_state.read();
+        shown_hand(
+            ui.peeked()(),
+            gs.current_player(),
+            ctx.driver.my_color(),
+            gs.playing_colors(),
+            |seat| !matches!(gs.player(seat), Player::Ai(_)),
+        )
+    });
+    // A peek lasts for one turn.
+    use_effect(move || {
+        current();
+        set_if_changed(ui.peeked(), None);
+    });
 
     rsx! {
         div {
-            class: "game-layout players-{hands.read().len()}",
+            class: "game-layout players-{seats.read().len()}",
             tabindex: "0",
             autofocus: true,
             onkeydown: move |evt: KeyboardEvent| {
@@ -53,37 +55,18 @@ pub fn GamePlay() -> Element {
                 }
             },
 
+            GameHud { {children} }
+
             div { class: "board-slot", Board {} }
 
-            for (color , position) in hands.read().iter().copied() {
-                PlayerHand { key: "{color:?}", color, position }
+            section {
+                class: "hand-panel",
+                role: "tablist",
+                aria_label: "Players' tiles",
+                for color in seats.read().iter().copied() {
+                    PlayerHand { key: "{color:?}", color, shown }
+                }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tantrix_game::Color::{Blue, Green, Red, Yellow};
-
-    use super::assign_hand_positions;
-    use crate::components::player_hand::HandPosition::{Bottom, Left, Right, Top};
-
-    #[test]
-    fn the_hands_sit_around_the_board_by_player_count() {
-        assert_eq!(
-            assign_hand_positions(&[Blue, Red]),
-            [(Blue, Left), (Red, Right)]
-        );
-        assert_eq!(
-            assign_hand_positions(&[Red, Yellow, Green]),
-            [(Red, Left), (Yellow, Right), (Green, Bottom)]
-        );
-        assert_eq!(
-            assign_hand_positions(&[Red, Blue, Yellow, Green]),
-            [(Red, Top), (Blue, Right), (Yellow, Bottom), (Green, Left)]
-        );
-        // A game always has two to four players.
-        assert!(assign_hand_positions(&[Red]).is_empty());
     }
 }

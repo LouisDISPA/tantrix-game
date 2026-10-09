@@ -1,7 +1,7 @@
-//! In-game floating badge showing room code + connection state.
-//! Sits next to the local-game `StatusBar` so that component stays pure.
-//! Only `OnlineGameView` mounts it, so the room is playing or the game is
-//! over: on any other phase the room shows another screen.
+//! The online game's badge in the HUD row: room code + connection state.
+//! `OnlineGameView` hands it to the shared game screens, so they stay
+//! independent of `OnlineState`. It is only mounted while the room is playing
+//! or the game is over: on any other phase the room shows another screen.
 
 use dioxus::prelude::*;
 

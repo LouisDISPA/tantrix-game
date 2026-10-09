@@ -38,7 +38,7 @@ async function playFixtureMove(page: Page, m: FixtureMove) {
   const before = await placed.count();
   const at = `${m.position.x},${m.position.y}`;
   const position = page.locator(`.board-empty:not(.faint)[data-position="${at}"]`);
-  const rotation = page.locator(`.rotation-bar-slot[data-rotation="${m.rotation}"]`);
+  const rotation = page.locator(`.orientation-option[data-rotation="${m.rotation}"]`);
 
   await page.locator(`.player-hand.active .hand-tile[data-tile="${m.tile}"]`).click();
 
@@ -71,7 +71,7 @@ test('a free move that creates a forced space keeps the turn until it is filled'
     await test.step(`${m.player} ${kind} at ${m.position.x},${m.position.y}`, async () => {
       await expect(currentPlayer).toHaveText(m.player);
       if (m.forced) {
-        await expect(page.getByText('Forced move! You must fill a forced space.')).toBeVisible();
+        await expect(page.locator('.hud-chip-phase.alert')).toContainText('Forced move!');
         await expect(activeHand.locator(`.hand-tile.forced[data-tile="${m.tile}"]`)).toBeVisible();
       }
 

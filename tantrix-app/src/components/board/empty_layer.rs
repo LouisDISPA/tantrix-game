@@ -22,6 +22,7 @@ pub fn BoardEmptyLayer(positions: ReadSignal<Vec<ValidPosition>>) -> Element {
                 hex_size: HEX_SIZE,
                 forced: vp.forced,
                 faint: vp.faint,
+                picked: vp.picked,
             }
         }
     }

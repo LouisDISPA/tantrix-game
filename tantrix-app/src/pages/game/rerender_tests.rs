@@ -17,24 +17,26 @@ use crate::state::actions::{click_position, execute_move, start_game};
 use crate::state::config::{Difficulty, GameConfig, PlayerKind};
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
+use crate::state::gesture::TOUCH_SLOP;
 use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::util::render_count;
 use crate::util::test_page::settle;
 
 /// Recorded by a memo of the test page each time it recomputes: it reads
 /// every `UiState` field but the camera's (`zoom`, `pan_x`, `pan_y`,
-/// `drag`), so it counts the writes that reach any of them.
+/// `gesture`, `dragged`, `stage`), so it counts the writes that reach any
+/// of them.
 const NON_CAMERA_FIELDS: &str = "non-camera UiState fields";
 
 /// The components of the board and hands that record their renders.
 const BOARD_AND_HANDS: [&str; 9] = [
     "GamePlay",
-    "StatusBar",
+    "GameHud",
     "BoardViewport",
     "BoardTilesLayer",
     "BoardEmptyLayer",
     "BoardPreview",
-    "RotationWheel",
+    "OrientationPicker",
     "ZoomControls",
     "PlayerHand",
 ];
@@ -58,6 +60,7 @@ impl Page {
                         ui.selected_tile()(),
                         ui.selected_position()(),
                         ui.hovered()(),
+                        ui.peeked()(),
                         ui.new_tile()(),
                         ui.last_placed_position()(),
                         ui.highlighted_color()(),
@@ -177,7 +180,7 @@ fn hovering_a_hex_re_renders_only_the_preview() {
     // The ghost tile appears at the hovered hex…
     assert_eq!(render_count::total("BoardPreview"), 1);
     assert_eq!(render_count::of("BoardTile", at), 1);
-    // …and nothing else re-renders: not the hexes, not the rotation wheel.
+    // …and nothing else re-renders: not the hexes, not the card of options.
     assert_quiet(&all_but(&["BoardPreview"]));
 
     page.act(|ctx| ctx.ui_state.hovered().set(Hovered::None));
@@ -193,16 +196,16 @@ fn hovering_a_rotation_re_renders_only_the_preview() {
     render_count::reset();
     page.act(|ctx| click_position(ctx, at));
     assert_eq!(page.phase(), TurnPhase::SelectRotation);
-    // The wheel opened.
-    assert_eq!(render_count::total("RotationWheel"), 1);
+    // The card of options opened.
+    assert_eq!(render_count::total("OrientationPicker"), 1);
 
     let rotations = page.game(|game| game.hand_info()[idx].positions[&at].clone());
     for &rotation in &rotations {
         render_count::reset();
         page.act(|ctx| ctx.ui_state.hovered().set(Hovered::Rotation(rotation)));
         page.act(|ctx| ctx.ui_state.hovered().set(Hovered::None));
-        // The ghost turns (or keeps the first rotation, already shown);
-        // the wheel and the rest of the board stay as they are.
+        // The ghost shows the option pointed at, and goes when it is let go;
+        // the card and the rest of the board stay as they are.
         assert!(render_count::total("BoardPreview") <= 2);
         assert_quiet(&all_but(&["BoardPreview"]));
     }
@@ -215,17 +218,18 @@ fn dragging_the_board_re_renders_only_the_viewport() {
     let placed = page.game(|game| game.board().iter().map(|m| m.position).collect::<Vec<_>>());
 
     render_count::reset();
-    page.act(|ctx| BoardCamera::new(ctx.ui_state).drag_start(100.0, 100.0));
+    page.act(|ctx| BoardCamera::new(ctx.ui_state).pointer_down(1, 100.0, 100.0, TOUCH_SLOP));
     for step in 1..=3 {
         let x = 100.0 + 10.0 * f64::from(step);
-        page.act(move |ctx| BoardCamera::new(ctx.ui_state).drag_to(x, 90.0));
+        page.act(move |ctx| BoardCamera::new(ctx.ui_state).pointer_move(1, x, 90.0));
     }
-    page.act(|ctx| BoardCamera::new(ctx.ui_state).drag_end());
+    page.act(|ctx| BoardCamera::new(ctx.ui_state).pointer_up(1));
 
     assert_eq!(*page.ctx().ui_state.pan_x().peek(), -30.0);
     assert_eq!(*page.ctx().ui_state.pan_y().peek(), 10.0);
-    // Once as the drag starts and ends (its class), once per pan step.
-    assert_eq!(render_count::total("BoardViewport"), 5);
+    // Once per pan step (the first, past the slop of a tap, also adds the
+    // drag's class) and once as the drag ends.
+    assert_eq!(render_count::total("BoardViewport"), 4);
     assert_quiet(&all_but(&["BoardViewport"]));
     for at in placed {
         assert_eq!(render_count::of("BoardTile", at), 0);
@@ -258,19 +262,53 @@ fn a_move_re_renders_only_the_hands_it_changes() {
     let three = [Color::Red, Color::Blue, Color::Yellow];
     let mut page = Page::new(GameState::new(&humans(&three, 3)));
     let mover = page.game(|game| game.current_player());
+    let scores_before = page.game(|game| game.scores());
 
     render_count::reset();
     play_first_legal_move(&mut page);
     let next = page.game(|game| game.current_player());
+    let scores_after = page.game(|game| game.scores());
     assert_ne!(next, mover);
 
     // The mover drew a tile, and the turn passed from them to `next`…
     assert_eq!(render_count::of("PlayerHand", mover), 1);
     assert_eq!(render_count::of("PlayerHand", next), 1);
-    // …while the third hand is just as it was.
+    // …while the third hand is just as it was, unless the tile put down
+    // lengthened (or cut) its line: its header shows the score.
     for bystander in three.into_iter().filter(|&c| c != mover && c != next) {
-        assert_eq!(render_count::of("PlayerHand", bystander), 0, "{bystander}");
+        let rescored = scores_before[bystander].score != scores_after[bystander].score;
+        assert_eq!(
+            render_count::of("PlayerHand", bystander),
+            usize::from(rescored),
+            "{bystander}"
+        );
     }
+}
+
+#[test]
+fn peeking_at_a_seat_re_renders_only_the_two_hands_whose_tab_flips_and_the_hud() {
+    let three = [Color::Red, Color::Blue, Color::Yellow];
+    let mut page = Page::new(GameState::new(&humans(&three, 3)));
+    let mover = page.game(|game| game.current_player());
+    let peeked = three.into_iter().find(|&c| c != mover).unwrap();
+    let third = three
+        .into_iter()
+        .find(|&c| c != mover && c != peeked)
+        .unwrap();
+
+    render_count::reset();
+    page.act(|ctx| ctx.ui_state.peeked().set(Some(peeked)));
+    assert_eq!(render_count::of("PlayerHand", mover), 1);
+    assert_eq!(render_count::of("PlayerHand", peeked), 1);
+    assert_eq!(render_count::of("PlayerHand", third), 0);
+    // The HUD says whose tiles are looked at (on a wide window); no tab, tile
+    // or board layer beyond those two hands and it wakes.
+    assert_eq!(render_count::total("GameHud"), 1);
+    assert_quiet(&all_but(&["PlayerHand", "GameHud"]));
+
+    // The peek lasts for one turn.
+    play_first_legal_move(&mut page);
+    assert_eq!(*page.ctx().ui_state.peeked().peek(), None);
 }
 
 #[test]

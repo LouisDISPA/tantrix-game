@@ -6,10 +6,14 @@
 //! device plays and the players' nicknames are memos over the online state.
 //! One effect fans each inbound snapshot out into `game_state` / `ui_state`.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use dioxus::prelude::*;
 use tantrix_game::{Color, EnumMap};
 use tantrix_proto::{GameSnapshot, Seat};
 
+use crate::hooks::camera::BoardCamera;
 use crate::hooks::use_game_ctx;
 use crate::state::game_driver::{GameDriver, RoomLink};
 use crate::state::game_state::{GameCtx, GameState};
@@ -44,6 +48,15 @@ pub fn use_online_game_ctx(
     ctx
 }
 
+/// Whether two games are at the same point: the same tiles down, the same
+/// player to move at the same step, the same bag.
+fn same_position(a: &GameState, b: &GameState) -> bool {
+    a.board().len() == b.board().len()
+        && a.current_player() == b.current_player()
+        && a.turn_step() == b.turn_step()
+        && a.bag_count() == b.bag_count()
+}
+
 /// The Playing/Ended snapshot in `phase`, if any.
 fn snapshot_in(phase: &OnlinePhase) -> Option<&GameSnapshot> {
     match phase {
@@ -59,6 +72,8 @@ fn fan_out_snapshots(
     mut game_state: Signal<GameState>,
     mut ui_state: Store<UiState>,
 ) {
+    // The seat this device held when the last snapshot came in.
+    let last_seat = use_hook(|| Rc::new(Cell::new(None::<Option<Color>>)));
     use_effect(move || {
         let phase = state.phase();
         let phase = phase.read();
@@ -72,7 +87,14 @@ fn fan_out_snapshots(
             _ => return,
         };
 
-        *game_state.write() = GameState::from_snapshot(snapshot);
+        let game = GameState::from_snapshot(snapshot);
+        let placed: Vec<_> = game.board().iter().map(|m| m.position).collect();
+        // A snapshot that changes nothing about the game (someone joined or
+        // left the room) must not close the card the player is choosing from.
+        let seat = queries::my_color_of(state);
+        let unchanged =
+            same_position(&game_state.peek(), &game) && last_seat.replace(Some(seat)) == Some(seat);
+        *game_state.write() = game;
 
         // Field by field (and never reading `ui_state`, which would make this
         // effect rerun on its own writes): a snapshot leaves the camera, the
@@ -81,9 +103,14 @@ fn fan_out_snapshots(
             ui_state.clear_selection();
             set_if_changed(ui_state.phase(), TurnPhase::GameOver);
         } else {
-            ui_state.reset_selection();
+            if !unchanged {
+                ui_state.reset_selection();
+            }
             if let Some(m) = last_move {
                 set_if_changed(ui_state.last_placed_position(), Some(m.position));
+                // The camera follows a move that arrives, as it does one
+                // played here.
+                BoardCamera::new(ui_state).frame_board(&placed);
             }
         }
     });
@@ -110,9 +137,21 @@ mod tests {
     use tantrix_game::Color::{self, Blue, Green, Red, Yellow};
     use tantrix_proto::EndReason;
 
-    use super::{names_from_seats, snapshot_in};
+    use super::{names_from_seats, same_position, snapshot_in};
     use crate::state::online_state::test_rooms::{lobby, snapshot};
     use crate::state::online_state::{FailureReason, OnlinePhase};
+    use crate::state::test_games::seeded;
+
+    #[test]
+    fn a_snapshot_that_moves_nothing_is_the_same_position() {
+        let before = seeded(3);
+        assert!(same_position(&before, &seeded(3)));
+
+        let mut after = before.clone();
+        let m = after.legal_moves()[0];
+        after.play_move(m.placement()).unwrap();
+        assert!(!same_position(&before, &after));
+    }
 
     #[test]
     fn the_game_comes_from_a_running_or_finished_room() {

@@ -1,111 +1,126 @@
-/* ===== Player Hand Panel ===== */
+/* ===== Player hands =====
+   One .player-hand per seat, all always in the DOM. game.css lays the panel
+   out: a row of tabs (the .hand-header of each seat) over the tiles of the
+   .shown seat. */
 
 .player-hand {
-  display: flex;
-  flex-direction: column;
-  background: var(--hand-bg);
-  border: 1px solid var(--border-subtle);
-  overflow: hidden;
+  min-width: 0;
 }
 
-.player-hand.active {
-  border-color: var(--player-color);
-  border-width: 3px;
-  box-shadow: 0 0 20px color-mix(in oklch, var(--player-color) 30%, transparent);
-}
-
-/* Side (left/right) + edge (top/bottom) hands share the same fill behaviour. */
-.player-hand.side,
-.player-hand.edge {
-  border-radius: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* ===== Hand Header ===== */
+/* ===== Hand Header (a seat's tab) ===== */
 
 .hand-header {
-  padding: 6px 10px;
-  background: var(--player-color);
-  color: white;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 2px;
+  position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  flex-shrink: 0;
   min-width: 0;
+  height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* The player's colour is a small hex and a line under the shown tab: the
+   header itself stays neutral. */
+.hand-header .color-swatch {
+  width: 11px;
+  height: 12px;
+  opacity: 0.75;
+}
+
+.player-hand.shown .hand-header {
+  color: var(--text-primary);
+  box-shadow: inset 0 -3px 0 var(--player-color);
+}
+
+.player-hand.shown .hand-header .color-swatch {
+  opacity: 1;
 }
 
 .hand-header-color {
   flex-shrink: 0;
 }
 
-.hand-header-name {
+/* The colour's name, and under it (online) who sits there: a nickname, and
+   "you" on this device's own seat. */
+.hand-header-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.hand-header-who {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.3px;
   text-transform: none;
-  font-size: 12px;
-  opacity: 0.9;
+}
+
+.hand-header-name {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
 }
 
-.hand-header-name::before {
-  content: "· ";
-  opacity: 0.5;
-  margin-right: 2px;
-}
-
 .hand-header-you {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.4px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.22);
   flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--hand-active-glow);
+  color: var(--text-primary);
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
 }
 
+/* The line a seat's colour has built: shown where there is room. */
+.hand-score {
+  display: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Whose turn it is. */
 .hand-header .active-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: white;
+  background: var(--player-color);
   animation: pulse-glow-dot 1.5s ease-in-out infinite;
   flex-shrink: 0;
-}
-
-.player-hand.mine {
-  box-shadow: 0 0 0 2px var(--player-color), var(--shadow-md);
 }
 
 /* ===== Tile List ===== */
 
 .hand-tiles {
-  flex: 1;
-  display: flex;
-  padding: 6px;
-  gap: 4px;
-  overflow: hidden;
-  min-height: 0;
+  display: none;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px;
   min-width: 0;
 }
 
-.hand-tiles.vertical {
-  flex-direction: column;
-  align-items: center;
-}
-
-.hand-tiles.horizontal {
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
+.player-hand.shown .hand-tiles {
+  display: grid;
 }
 
 /* ===== Hand Tile ===== */
@@ -113,17 +128,13 @@
 .hand-tile {
   --hand-tile-opacity: 1;
   opacity: var(--hand-tile-opacity);
-  flex: 1 1 0;
-  min-height: 0;
+  position: relative;
+  display: block;
   min-width: 0;
   cursor: pointer;
   transition:
     transform 0.15s ease,
     opacity 0.15s ease;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .hand-tile.new-tile {
@@ -142,46 +153,44 @@
 }
 
 .hand-tile svg {
-  width: 100%;
-  height: 100%;
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: contain;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 51.96 / 60;
   overflow: visible;
   filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.35));
 }
 
-/* Vertical hands */
-.hand-tiles.vertical .hand-tile {
-  width: 100%;
-  max-width: 120px;
+/* Only the seat to move plays its tiles: the others are there to look at
+   (or, in a card of the rail, to click through to). */
+.player-hand:not(.active) .hand-tile {
+  cursor: inherit;
 }
 
-/* Horizontal hands */
-.hand-tiles.horizontal .hand-tile {
-  height: 100%;
-  max-height: 120px;
-}
+/* Hover is a mouse thing: on a touch screen it would stick after a tap. */
+@media (hover: hover) {
+  .hand-tile:hover {
+    transform: scale(1.1);
+    z-index: 1;
+  }
 
-.hand-tile:hover {
-  transform: scale(1.1);
-  z-index: 1;
+  .player-hand:not(.active) .hand-tile:hover {
+    transform: none;
+  }
+
+  .hand-tile.disabled:hover {
+    transform: none;
+  }
 }
 
 .hand-tile.selected {
-  transform: scale(1.15);
+  transform: translateY(-3px) scale(1.07);
   z-index: 2;
 }
 
 .hand-tile.disabled {
   --hand-tile-opacity: 0.3;
   cursor: not-allowed;
-}
-
-.hand-tile.disabled:hover {
-  transform: none;
 }
 
 /* ===== Hex-shaped selection / forced ring ===== */
@@ -215,23 +224,25 @@
 
 /* Empty hand */
 .hand-empty {
-  flex: 1;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
+  padding: 18px 10px;
   color: var(--text-muted);
   font-size: 13px;
   font-style: italic;
+}
+
+.player-hand.shown .hand-empty {
+  display: flex;
 }
 
 @keyframes pulse-glow-dot {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 4px white;
   }
   50% {
-    opacity: 0.6;
-    box-shadow: 0 0 8px white;
+    opacity: 0.5;
   }
 }

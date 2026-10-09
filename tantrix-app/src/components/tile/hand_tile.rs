@@ -5,14 +5,12 @@ use crate::components::tile::hex_svg::HexSvg;
 use crate::state::actions::click_tile;
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::ui_state::{HandTileState, Hovered, UiStateStoreExt};
+use crate::svg::geometry::{TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
 use crate::svg::paths::hex_polygon_points;
 
-/// Fixed viewBox size for hand tiles — the SVG internal coordinate space.
-/// Actual rendered size is controlled entirely by CSS.
-const TILE_VB: f64 = 56.0;
-const TILE_HEX: f64 = 22.0;
-/// Slightly larger hex used for selection/forced outline rings.
-const OUTLINE_HEX: f64 = 25.0;
+/// Slightly larger hex used for selection/forced outline rings. It spills
+/// outside the tile's tight viewBox, which the stylesheet lets show.
+const OUTLINE_HEX: f64 = TILE_HEX + 3.0;
 
 /// A tile in a player's hand. Takes only `(color, index)` — every piece of
 /// render state (the tile itself, selected/forced/disabled flags, the
@@ -49,15 +47,13 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
     rsx! {
         if let Some(tile) = tile() {
             {
-                let cx = TILE_VB / 2.0;
-                let cy = TILE_VB / 2.0;
                 let state = state();
                 let show_outline = matches!(state, HandTileState::Selected | HandTileState::Forced);
                 let outline_class = match state {
                     HandTileState::Selected => "hand-hex-ring selected",
                     _ => "hand-hex-ring forced",
                 };
-                let outline_points = hex_polygon_points(cx, cy, OUTLINE_HEX);
+                let outline_points = hex_polygon_points(TILE_CX, TILE_CY, OUTLINE_HEX);
                 let state_class = state.css_class();
                 let interactive = state.is_interactive() && can_play();
 
@@ -83,25 +79,27 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                                 click_tile(ctx, color, index());
                             }
                         },
-                        onmouseenter: move |_| {
-                            if is_active_seat() {
+                        // Only a mouse hovers: a finger's "hover" would stick
+                        // after the tap.
+                        onpointerenter: move |e| {
+                            if is_active_seat() && e.data().pointer_type() == "mouse" {
                                 hovered.set(Hovered::HandTile(index()));
                             }
                         },
-                        onmouseleave: move |_| {
-                            if is_active_seat() {
+                        onpointerleave: move |e| {
+                            if is_active_seat() && e.data().pointer_type() == "mouse" {
                                 hovered.set(Hovered::None);
                             }
                         },
-                        svg { view_box: "0 0 {TILE_VB:.0} {TILE_VB:.0}",
+                        svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                             if show_outline {
                                 polygon { points: outline_points, class: outline_class }
                             }
                             HexSvg {
                                 tile,
                                 rotation: Rotation::None,
-                                cx,
-                                cy,
+                                cx: TILE_CX,
+                                cy: TILE_CY,
                                 hex_size: TILE_HEX,
                             }
                         }

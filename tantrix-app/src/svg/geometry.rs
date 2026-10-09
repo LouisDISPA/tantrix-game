@@ -87,25 +87,106 @@ pub fn hex_position_style(position: Position, hex_size: f64) -> String {
 /// Compute the bounding box of all placed tiles in pixel coordinates.
 /// Returns (min_x, min_y, max_x, max_y) or None if no tiles.
 pub fn board_bounding_box(positions: &[Position], hex_size: f64) -> Option<(f64, f64, f64, f64)> {
-    if positions.is_empty() {
-        return None;
+    hexes_rect(positions, hex_size).map(|r| (r.min_x, r.min_y, r.max_x, r.max_y))
+}
+
+/// The centre of the placed tiles' bounding box, or the origin on an empty
+/// board: the point the board's layer is centred on.
+pub fn board_center(positions: &[Position], hex_size: f64) -> (f64, f64) {
+    hexes_rect(positions, hex_size).map_or((0.0, 0.0), |bounds| bounds.center())
+}
+
+/// An axis-aligned rectangle in pixels (y grows downwards).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub min_x: f64,
+    pub min_y: f64,
+    pub max_x: f64,
+    pub max_y: f64,
+}
+
+impl Rect {
+    pub fn new(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
+        Self {
+            min_x,
+            min_y,
+            max_x,
+            max_y,
+        }
     }
 
-    let mut min_x = f64::MAX;
-    let mut min_y = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut max_y = f64::MIN;
-
-    for &pos in positions {
-        let (px, py) = axial_to_pixel(pos, hex_size);
-        let half_w = hex_size * SQRT3 / 2.0;
-        min_x = min_x.min(px - half_w);
-        max_x = max_x.max(px + half_w);
-        min_y = min_y.min(py - hex_size);
-        max_y = max_y.max(py + hex_size);
+    /// The rectangle `width` × `height` whose top-left corner is (`x`, `y`).
+    pub fn at(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self::new(x, y, x + width, y + height)
     }
 
-    Some((min_x, min_y, max_x, max_y))
+    pub fn width(&self) -> f64 {
+        self.max_x - self.min_x
+    }
+
+    pub fn height(&self) -> f64 {
+        self.max_y - self.min_y
+    }
+
+    pub fn center(&self) -> (f64, f64) {
+        (
+            (self.min_x + self.max_x) / 2.0,
+            (self.min_y + self.max_y) / 2.0,
+        )
+    }
+
+    /// The smallest rectangle holding both.
+    pub fn union(self, other: Rect) -> Rect {
+        Rect::new(
+            self.min_x.min(other.min_x),
+            self.min_y.min(other.min_y),
+            self.max_x.max(other.max_x),
+            self.max_y.max(other.max_y),
+        )
+    }
+
+    /// Each side moved in by `fraction` of the rectangle's width (left and
+    /// right) or height (top and bottom).
+    pub fn shrunk(self, fraction: f64) -> Rect {
+        let (dx, dy) = (self.width() * fraction, self.height() * fraction);
+        Rect::new(
+            self.min_x + dx,
+            self.min_y + dy,
+            self.max_x - dx,
+            self.max_y - dy,
+        )
+    }
+
+    /// The area the two share (zero when they only touch or are apart).
+    pub fn overlap_area(self, other: Rect) -> f64 {
+        let w = self.max_x.min(other.max_x) - self.min_x.max(other.min_x);
+        let h = self.max_y.min(other.max_y) - self.min_y.max(other.min_y);
+        w.max(0.0) * h.max(0.0)
+    }
+
+    /// Whether `other` lies wholly inside this rectangle.
+    pub fn contains(&self, other: &Rect) -> bool {
+        other.min_x >= self.min_x
+            && other.max_x <= self.max_x
+            && other.min_y >= self.min_y
+            && other.max_y <= self.max_y
+    }
+}
+
+/// The pixel box of the hex at `pos`: the tile's bounding rectangle.
+pub fn hex_rect(pos: Position, hex_size: f64) -> Rect {
+    let (px, py) = axial_to_pixel(pos, hex_size);
+    let half_w = hex_size * SQRT3 / 2.0;
+    Rect::new(px - half_w, py - hex_size, px + half_w, py + hex_size)
+}
+
+/// The bounding box of the hexes at `positions` in pixel coordinates, or
+/// `None` for none.
+pub fn hexes_rect(positions: &[Position], hex_size: f64) -> Option<Rect> {
+    positions
+        .iter()
+        .map(|&pos| hex_rect(pos, hex_size))
+        .reduce(Rect::union)
 }
 
 #[cfg(test)]
@@ -113,7 +194,8 @@ mod tests {
     use tantrix_game::{Direction, Position};
 
     use super::{
-        axial_to_pixel, board_bounding_box, direction_edge, edge_separation, HEX_SIZE, SQRT3,
+        axial_to_pixel, board_bounding_box, board_center, direction_edge, edge_separation,
+        hex_rect, hexes_rect, Rect, HEX_SIZE, SQRT3,
     };
 
     const DIRECTIONS: [Direction; 6] = [
@@ -175,16 +257,57 @@ mod tests {
 
     #[test]
     fn the_bounding_box_hugs_the_tiles() {
-        assert_eq!(board_bounding_box(&[], HEX_SIZE), None);
+        assert_eq!(hexes_rect(&[], HEX_SIZE), None);
         let half_w = SQRT3 * HEX_SIZE / 2.0;
-        let (min_x, min_y, max_x, max_y) =
-            board_bounding_box(&[Position::CENTER], HEX_SIZE).unwrap();
-        assert!(close((min_x, min_y), (-half_w, -HEX_SIZE)));
-        assert!(close((max_x, max_y), (half_w, HEX_SIZE)));
+        let one = hexes_rect(&[Position::CENTER], HEX_SIZE).unwrap();
+        assert_eq!(one, hex_rect(Position::CENTER, HEX_SIZE));
+        assert!(close((one.min_x, one.min_y), (-half_w, -HEX_SIZE)));
+        assert!(close((one.max_x, one.max_y), (half_w, HEX_SIZE)));
 
         let right = Position::CENTER.neighbor(Direction::Right);
-        let (min_x, _, max_x, _) =
-            board_bounding_box(&[right, Position::CENTER], HEX_SIZE).unwrap();
-        assert!(close((min_x, max_x), (-half_w, SQRT3 * HEX_SIZE + half_w)));
+        let two = hexes_rect(&[right, Position::CENTER], HEX_SIZE).unwrap();
+        assert!(close(
+            (two.min_x, two.max_x),
+            (-half_w, SQRT3 * HEX_SIZE + half_w)
+        ));
+        // The tuple form is the same box.
+        assert_eq!(
+            board_bounding_box(&[right, Position::CENTER], HEX_SIZE),
+            Some((two.min_x, two.min_y, two.max_x, two.max_y))
+        );
+        assert_eq!(board_bounding_box(&[], HEX_SIZE), None);
+    }
+
+    #[test]
+    fn the_board_is_centred_on_its_tiles() {
+        assert_eq!(board_center(&[], HEX_SIZE), (0.0, 0.0));
+        assert_eq!(board_center(&[Position::CENTER], HEX_SIZE), (0.0, 0.0));
+        let right = Position::CENTER.neighbor(Direction::Right);
+        let (x, y) = board_center(&[Position::CENTER, right], HEX_SIZE);
+        assert!(close((x, y), (SQRT3 * HEX_SIZE / 2.0, 0.0)));
+    }
+
+    #[test]
+    fn rectangles_overlap_by_the_area_they_share() {
+        let a = Rect::at(0.0, 0.0, 10.0, 10.0);
+        assert_eq!((a.width(), a.height()), (10.0, 10.0));
+        assert_eq!(a.center(), (5.0, 5.0));
+        assert_eq!(a.overlap_area(Rect::at(5.0, 5.0, 10.0, 10.0)), 25.0);
+        // Touching edges and distant rectangles share nothing.
+        assert_eq!(a.overlap_area(Rect::at(10.0, 0.0, 4.0, 4.0)), 0.0);
+        assert_eq!(a.overlap_area(Rect::at(30.0, 30.0, 4.0, 4.0)), 0.0);
+        assert_eq!(a.overlap_area(a), 100.0);
+
+        let b = Rect::at(20.0, -5.0, 10.0, 10.0);
+        assert_eq!(a.union(b), Rect::new(0.0, -5.0, 30.0, 10.0));
+        assert!(a.union(b).contains(&a) && a.union(b).contains(&b));
+        assert!(!a.contains(&b));
+    }
+
+    #[test]
+    fn shrinking_moves_each_side_in_by_a_share_of_the_size() {
+        let r = Rect::at(0.0, 0.0, 100.0, 50.0).shrunk(0.1);
+        assert!(close((r.min_x, r.min_y), (10.0, 5.0)));
+        assert!(close((r.max_x, r.max_y), (90.0, 45.0)));
     }
 }

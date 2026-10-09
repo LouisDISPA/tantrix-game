@@ -41,22 +41,6 @@
     animation: fadeIn 0.3s ease;
 }
 
-.player-hand.left-hand {
-    animation: slideInLeft 0.3s ease;
-}
-
-.player-hand.right-hand {
-    animation: slideInRight 0.3s ease;
-}
-
-.player-hand.top-hand {
-    animation: slideDown 0.3s ease;
-}
-
-.player-hand.bottom-hand {
-    animation: slideUp 0.3s ease;
-}
-
 /* ===== Tile Placement ===== */
 
 .hex-tile.just-placed {

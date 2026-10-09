@@ -1,0 +1,651 @@
+/* ===== The game screen on a desktop: the board is the screen =====
+   The same tree as the phone's (see game.css): only the stylesheet differs.
+   The board fills the window and everything else is a card floating over it:
+
+     ┌─────────────────────────────────────────────────────────────┐
+     │ ⬢ RED to move  17 in bag ▬▬         − 100% +  FIT  END GAME │   the bar
+     │ ┌──────────┐                                                │
+     │ │ BLUE   2 │                                                │   the rail: a card
+     │ │ ▢ ▢ ▢    │                   board                        │   for every other
+     │ │ ▢ ▢ ▢    │                                                │   player
+     │ └──────────┘          ┌──────────────────────────┐          │
+     │                       │ Select a tile    RED ● 3 │          │   the rack: the shown
+     │                       │ ▢  ▢  ▢  ▢  ▢  ▢         │          │   seat, with the hint
+     └─────────────────────────────────────────────────────────────┘
+
+   The cards sit in the grid's cells around the board's: the camera frames
+   the board in its own cell, so a legal spot never hides under a card, and
+   a board zoomed or panned past it runs under the glass.
+
+   It takes a landscape window at least 900 × 640. Smaller, the phone's side
+   layout (game.css) is what fits.
+
+   The interface scales with the window: every size below is in `em` of --fs
+   (13px on a laptop, 20px on a full HD screen), or a calc of it. The board
+   follows through the camera's home zoom (svg/camera_math.rs).
+
+   Two things are pulled out of their parents with `position: absolute` and
+   put in the rack's grid area: the shown seat (the rack) and the HUD's hint
+   (above its tiles, in large type). Their containing block is `.game-layout`:
+   nothing between them and it may be positioned, or filtered (a `filter` or
+   `backdrop-filter` makes its element the containing block of what is
+   positioned inside it: the turn chip, which holds the hint, gets a plain
+   translucent fill for that reason). */
+
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 640px) {
+    /* ===== Shell ===== */
+
+    /* On the root, so what sits outside the game's grid (the seat takeover)
+       can use it too. */
+    :root { --fs: clamp(13px, min(1.05vw, 1.9vh), 26px); }
+
+    .game-layout {
+        --rail-w: clamp(280px, calc(22 * var(--fs)), 480px);
+        /* The space kept between a card and the window's edge. */
+        --gap: calc(0.9 * var(--fs));
+        /* A rack tile: as big as the height allows, and never so wide that
+           the rack outgrows the board's column. */
+        --rack-t: clamp(60px, min(calc(7 * var(--fs)), 17vh, calc((100vw - var(--rail-w) - 3 * var(--fs)) / 6.7)), 124px);
+        --rack-gap: calc(var(--rack-t) * 0.09);
+        --rack-w: calc(var(--rack-t) * 6 + var(--rack-gap) * 5 + 2.8 * var(--fs));
+        /* Its height: padding, header row and gap (5.4em), the tiles (60:51.96), the border. */
+        --rack-card-h: calc(var(--rack-t) * 1.1548 + 5.4 * var(--fs) + 2px);
+        --rack-h: calc(var(--rack-card-h) + 1.3 * var(--fs));
+        --top-h: calc(3.7 * var(--fs));
+        --btn-h: calc(2.75 * var(--fs));
+        /* A tile of another player's hand in the rail. */
+        --mini: 3.15em;
+        position: relative;
+        font-size: var(--fs);
+        grid-template-columns: var(--rail-w) minmax(0, 1fr);
+        grid-template-rows: var(--top-h) minmax(0, 1fr) var(--rack-h);
+        grid-template-areas:
+            "hud hud"
+            "rail board"
+            "rail rack";
+    }
+
+    .game-layout.players-4 {
+        --rail-w: clamp(310px, calc(25 * var(--fs)), 540px);
+        --mini: 3.75em;
+    }
+
+    /* Nothing is played at the end: the board takes the rack's height. */
+    .game-over-layout {
+        grid-template-rows: var(--top-h) minmax(0, 1fr);
+        grid-template-areas:
+            "hud hud"
+            "rail board";
+    }
+
+    /* ===== Top bar: whose turn, the bag, the tools ===== */
+
+    .game-hud {
+        height: var(--top-h);
+        min-height: 0;
+        gap: 1.2em;
+        padding: 0 var(--gap);
+    }
+
+    /* The turn: a capsule. */
+    .hud-chip {
+        height: var(--btn-h);
+        gap: 1.2em;
+        padding: 0 1.3em;
+        overflow: visible;
+        background: var(--glass-strong);
+        border: 1px solid var(--glass-line);
+        border-radius: 999px;
+        box-shadow: var(--shadow-md), var(--glass-hi);
+        color: var(--text-primary);
+    }
+
+    .hud-chip-sep { display: none; }
+
+    .hud-chip-dot {
+        width: 1.15em;
+        height: 1.3em;
+        filter: drop-shadow(0 0 0.5em color-mix(in srgb, var(--turn-color) 70%, transparent));
+    }
+
+    .hud-chip-name {
+        font-size: 0.95em;
+        letter-spacing: 0.18em;
+        color: var(--text-primary);
+    }
+
+    .hud-chip-name::after {
+        content: " to move";
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: none;
+        color: var(--text-secondary);
+    }
+
+    /* The bag, as a number and a thin bar as long as the bag is full. */
+    .hud-chip-bag {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        font-size: 1em;
+        font-weight: 400;
+        letter-spacing: 0.02em;
+        color: var(--text-secondary);
+    }
+
+    .hud-bag-count {
+        font-weight: 700;
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .hud-chip-bag::after {
+        content: "";
+        width: 4.5em;
+        height: 0.3em;
+        border-radius: 1em;
+        background: linear-gradient(90deg, var(--text-secondary) calc(var(--p, 1) * 100%), var(--border-light) 0);
+    }
+
+
+    /* ----- The hint: in large type above the rack's tiles, where the eyes
+       are. It sits on the rack's header line, to the left of the seat's name
+       and score. It says whose tiles are looked at while another seat is
+       peeked at. ----- */
+
+    .hud-chip-phase,
+    .hud-viewing {
+        position: absolute;
+        grid-area: rack;
+        left: calc(50% - var(--rack-w) / 2 + 1.4 * var(--fs));
+        bottom: calc(var(--rack-card-h) - 2.2 * var(--fs));
+        z-index: 40;
+        height: calc(2.4 * var(--fs));
+        display: flex;
+        align-items: center;
+        overflow: visible;
+        font-size: 2.05em;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        white-space: nowrap;
+        color: var(--text-primary);
+    }
+
+    .hud-chip-phase.alert { color: var(--color-red); }
+
+    /* A few words are all the line has room for. */
+    .hud-long { display: none; }
+    .hud-short { display: inline; }
+
+    .hud-chip.viewing .hud-chip-phase { display: none; }
+
+    .hud-viewing {
+        display: flex;
+        font-size: 1.7em;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+
+    /* ----- Tools: one capsule, flat buttons in it ----- */
+
+    .hud-menu-toggle { display: none; }
+
+    .hud-menu-items {
+        display: flex;
+        position: static;
+        flex-direction: row;
+        align-items: center;
+        gap: 0.15em;
+        min-width: 0;
+        padding: 0.3em;
+        background: var(--glass);
+        -webkit-backdrop-filter: blur(18px) saturate(1.5);
+        backdrop-filter: blur(18px) saturate(1.5);
+        border: 1px solid var(--glass-line);
+        border-radius: 999px;
+        box-shadow: var(--shadow-md), var(--glass-hi);
+    }
+
+    .zoom-controls {
+        background: none;
+        border: 0;
+        border-radius: 999px;
+        box-shadow: none;
+        overflow: visible;
+    }
+
+    .zoom-btn {
+        min-width: var(--btn-h);
+        height: var(--btn-h);
+        padding: 0;
+        border-radius: 999px;
+        background: none;
+        font-size: 1.3em;
+        line-height: 1;
+    }
+
+    .zoom-btn.zoom-label {
+        min-width: 3.9em;
+        border: 0;
+        font-size: 0.82em;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .zoom-btn.zoom-fit {
+        padding: 0 1.1em;
+        font-size: 0.82em;
+        letter-spacing: 0.08em;
+    }
+
+    .hud-menu-items .board-ctrl-btn,
+    .hud-menu-items .hud-menu-item {
+        height: var(--btn-h);
+        min-height: 0;
+        border: 0;
+        border-radius: 999px;
+        background: none;
+        box-shadow: none;
+    }
+
+    .zoom-controls + .board-ctrl-btn { margin-left: 0.3em; }
+
+    .hud-menu-items .board-ctrl-btn {
+        justify-content: center;
+        gap: 0.5em;
+        padding: 0 1.1em;
+        color: var(--text-secondary);
+        font-size: 0.82em;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .hud-menu-items .hud-menu-item {
+        width: var(--btn-h);
+        padding: 0;
+        font-size: 1.45em;
+        line-height: 1;
+        color: var(--text-primary);
+    }
+
+    @media (hover: hover) {
+        .zoom-btn:hover,
+        .hud-menu-items .hud-menu-item:hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+
+        .hud-menu-items .board-ctrl-btn:hover {
+            background: var(--color-red);
+            color: #fff;
+        }
+    }
+
+    /* The online room's badge: another capsule. */
+    .online-hud-badge {
+        height: var(--btn-h);
+        gap: 0.7em;
+        padding: 0 1.1em;
+        background: var(--glass);
+        -webkit-backdrop-filter: blur(18px) saturate(1.5);
+        backdrop-filter: blur(18px) saturate(1.5);
+        border: 1px solid var(--glass-line);
+        border-radius: 999px;
+        box-shadow: var(--shadow-md), var(--glass-hi);
+        font-size: 0.82em;
+        color: var(--text-secondary);
+    }
+
+    .online-hud-badge .hud-chip-conn-dot {
+        width: 0.7em;
+        height: 0.7em;
+    }
+
+    .online-hud-badge .hud-chip-conn-label {
+        font-size: 1em;
+        color: var(--text-secondary);
+    }
+
+    .online-hud-badge .hud-chip-room {
+        padding: 0.3em 0.65em;
+        border: 1px solid var(--glass-line);
+        border-radius: 0.5em;
+        background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+        font-size: 1em;
+        color: var(--text-primary);
+    }
+
+    /* Back, while a tile is being placed: a glass circle. */
+    .hud-back {
+        width: var(--btn-h);
+        height: var(--btn-h);
+        font-size: 1.1em;
+        color: var(--text-primary);
+        background: var(--glass);
+        -webkit-backdrop-filter: blur(18px) saturate(1.5);
+        backdrop-filter: blur(18px) saturate(1.5);
+        border: 1px solid var(--glass-line);
+        box-shadow: var(--shadow-md), var(--glass-hi);
+    }
+
+    /* The end screen has no rack to put the hint over, and no one to move:
+       its line stays in the bar. */
+    .game-over-layout .hud-chip-name::after { content: none; }
+
+    .game-over-layout .hud-chip-phase {
+        position: static;
+        height: auto;
+        font-size: 1.25em;
+    }
+
+    /* Online, a member watching is offered the seats, under the top bar. */
+    .seat-takeover { top: calc(3.7 * var(--fs) + 8px); }
+
+    /* ===== Seats: one card each in the rail, the shown one a rack ===== */
+
+    .hand-panel,
+    .results-panel { grid-area: rail; }
+
+    /* The rail is only a column to put the cards in: it has no glass of its
+       own (a filter would make it the rack's containing block). */
+    .hand-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8em;
+        min-height: 0;
+        margin: 0;
+        padding: 0.2em calc(var(--gap) * 0.6) var(--gap) var(--gap);
+        overflow-y: auto;
+        background: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .hand-panel .player-hand {
+        display: grid;
+        flex: none;
+    }
+
+    /* ----- The header, in the card and in the rack ----- */
+
+    .hand-panel .player-hand .hand-header {
+        grid-row: auto;
+        display: flex;
+        justify-content: flex-start;
+        gap: 0.6em;
+        width: 100%;
+        height: auto;
+        min-height: max(2.4em, 32px);
+        padding: 0;
+        font-size: 1em;
+        letter-spacing: 0;
+        text-transform: none;
+        text-align: left;
+        color: var(--text-secondary);
+        box-shadow: none;
+    }
+
+    .hand-panel .player-hand.active .hand-header,
+    .hand-panel .player-hand.shown .hand-header { color: var(--text-primary); }
+
+    .hand-panel .hand-header .color-swatch {
+        grid-area: sw;
+        width: 1.1em;
+        height: 1.25em;
+        opacity: 1;
+    }
+
+    .hand-header-label { grid-area: nm; }
+
+    /* A card has the room for the name the side layout drops. */
+    .players-4 .hand-header-color { display: inline; }
+
+    .hand-header-color {
+        font-size: 0.82em;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+    }
+
+    .hand-header-who {
+        font-size: 0.72em;
+        letter-spacing: 0.04em;
+    }
+
+    .hand-panel .hand-header .active-dot {
+        grid-area: dot;
+        order: 2;
+        width: 0.6em;
+        height: 0.6em;
+        justify-self: center;
+    }
+
+    /* The score: big, and what it is made of under it. */
+    .hand-panel .hand-score {
+        grid-area: sc;
+        order: 3;
+        display: flex;
+        align-items: baseline;
+        gap: 0.55em;
+        min-width: 0;
+        margin-left: auto;
+        color: var(--text-primary);
+    }
+
+    .hand-score-points {
+        font-size: 2em;
+        font-weight: 700;
+        line-height: 1.05;
+        letter-spacing: -0.01em;
+    }
+
+    .hand-score-detail {
+        font-size: 0.78em;
+        font-weight: 500;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+        color: var(--text-secondary);
+    }
+
+    /* Tiles rest on the glass with a soft shadow of their own. */
+    .hand-panel .hand-tile svg { filter: drop-shadow(0 0.18em 0.3em rgba(0, 0, 0, 0.45)); }
+    .hand-panel .hand-tile.selected svg { filter: drop-shadow(0 0.35em 0.6em rgba(0, 0, 0, 0.55)); }
+
+    /* ----- Another player's card: its identity on the left, its hand as
+       three tiles by two on the right. ----- */
+
+    .hand-panel .player-hand:not(.shown) {
+        grid-template-columns: minmax(0, 1fr) auto;
+        column-gap: 1em;
+        align-items: center;
+        padding: 0.9em 1em;
+        background: var(--glass);
+        -webkit-backdrop-filter: blur(18px) saturate(1.5);
+        backdrop-filter: blur(18px) saturate(1.5);
+        border: 1px solid var(--glass-line);
+        border-radius: 1.3em;
+        box-shadow: var(--shadow-md), var(--glass-hi);
+        cursor: pointer;
+        transition: border-color 0.15s ease;
+    }
+
+    /* Whose turn: a thread of their colour along the top. */
+    .hand-panel .player-hand.active:not(.shown) {
+        box-shadow: var(--shadow-md), var(--glass-hi), inset 0 2px 0 var(--player-color);
+    }
+
+    @media (hover: hover) {
+        .hand-panel .player-hand:not(.shown):hover { border-color: var(--text-muted); }
+    }
+
+    .hand-panel .player-hand:not(.shown) .hand-header {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            "sw nm nm"
+            "sc sc sc"
+            "dot to to";
+        align-items: center;
+        align-self: center;
+        column-gap: 0.55em;
+        row-gap: 0.1em;
+    }
+
+    .hand-panel .player-hand:not(.shown) .hand-score { margin-left: 0; }
+
+    .hand-panel .player-hand.active:not(.shown) .hand-header::after {
+        grid-area: to;
+        content: "to move";
+        margin-top: 0.15em;
+        font-size: 0.7em;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+    }
+
+    .hand-panel .player-hand:not(.shown) .hand-tiles {
+        display: grid;
+        grid-row: auto;
+        grid-column: auto;
+        grid-template-columns: repeat(3, var(--mini));
+        justify-content: stretch;
+        gap: 0.35em;
+        padding: 0;
+    }
+
+    /* Two players (and three, when the window is tall enough for it): the
+       card has room for its header on one line over a bigger hand. */
+    .players-2 .player-hand:not(.shown) { grid-template-columns: minmax(0, 1fr); row-gap: 0.8em; }
+
+    .players-2 .player-hand:not(.shown) .hand-header {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        grid-template-areas: "sw nm dot sc";
+    }
+
+    .players-2 .hand-panel .player-hand.active:not(.shown) .hand-header::after { content: none; }
+
+    .players-2 .player-hand:not(.shown) .hand-score {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0;
+        margin-left: 0.5em;
+    }
+
+    .players-2 .player-hand:not(.shown) .hand-score-points { font-size: 2.3em; }
+
+    .players-2 .player-hand:not(.shown) .hand-tiles {
+        grid-template-columns: repeat(3, minmax(0, 5.6em));
+        justify-content: center;
+        gap: 0.5em;
+    }
+
+    @media (min-height: 701px) {
+        .players-3 .player-hand:not(.shown) { grid-template-columns: minmax(0, 1fr); row-gap: 0.8em; }
+
+        .players-3 .player-hand:not(.shown) .hand-header {
+            grid-template-columns: auto minmax(0, 1fr) auto auto;
+            grid-template-areas: "sw nm dot sc";
+        }
+
+        .players-3 .hand-panel .player-hand.active:not(.shown) .hand-header::after { content: none; }
+
+        .players-3 .player-hand:not(.shown) .hand-score {
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0;
+            margin-left: 0.5em;
+        }
+
+        .players-3 .player-hand:not(.shown) .hand-score-points { font-size: 2.3em; }
+
+        .players-3 .player-hand:not(.shown) .hand-tiles {
+            grid-template-columns: repeat(3, minmax(0, 5.6em));
+            justify-content: center;
+            gap: 0.5em;
+        }
+    }
+
+    /* ----- The rack: the shown seat, along the bottom of the board ----- */
+
+    .hand-panel .player-hand.shown {
+        position: absolute;
+        grid-area: rack;
+        left: 50%;
+        bottom: var(--gap);
+        transform: translateX(-50%);
+        box-sizing: border-box;
+        width: var(--rack-w);
+        grid-template-rows: 2.4em auto;
+        row-gap: 0.8em;
+        padding: 1em 1.4em 1.2em;
+        background: var(--glass-strong);
+        -webkit-backdrop-filter: blur(18px) saturate(1.5);
+        backdrop-filter: blur(18px) saturate(1.5);
+        border: 1px solid var(--glass-line);
+        border-radius: 1.5em;
+        box-shadow: var(--shadow-lg), var(--glass-hi);
+        cursor: default;
+    }
+
+    /* The name and score to the right: the hint has the left. */
+    .hand-panel .player-hand.shown .hand-header {
+        grid-row: 1;
+        justify-self: end;
+        align-items: center;
+        width: auto;
+        cursor: default;
+    }
+
+    .hand-panel .player-hand.shown .hand-score { gap: 0.5em; }
+    .hand-panel .player-hand.shown .hand-score-points { font-size: 1.8em; }
+
+    .hand-panel .player-hand.shown .hand-tiles,
+    .hand-panel .player-hand.shown .hand-empty {
+        grid-row: 2;
+        grid-column: 1;
+    }
+
+    .hand-panel .player-hand.shown .hand-tiles {
+        grid-template-columns: repeat(6, var(--rack-t));
+        justify-content: center;
+        gap: var(--rack-gap);
+        padding: 0;
+    }
+
+    .hand-tile.selected { transform: translateY(-0.45em) scale(1.06); }
+
+    /* ===== Results: a card in the rail's place ===== */
+
+    .results-panel {
+        align-self: stretch;
+        max-height: none;
+        margin: 0;
+        padding: 0.2em calc(var(--gap) * 0.6) var(--gap) var(--gap);
+        background: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .results-panel .board-results-card {
+        max-width: none;
+        margin: 0;
+        padding: 1.1em;
+        background: var(--glass-strong);
+        -webkit-backdrop-filter: blur(18px) saturate(1.5);
+        backdrop-filter: blur(18px) saturate(1.5);
+        border: 1px solid var(--glass-line);
+        border-radius: 1.3em;
+        box-shadow: var(--shadow-lg), var(--glass-hi);
+    }
+}
+
+/* The room's connection state gives way before the code when the bar is full. */
+@media (orientation: landscape) and (min-width: 900px) and (max-width: 1099px) and (min-height: 640px) {
+    .online-hud-badge .hud-chip-conn-label { display: none; }
+}

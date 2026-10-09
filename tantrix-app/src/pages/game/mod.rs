@@ -5,10 +5,13 @@
 //! driver says who plays: `LocalGame` plays every seat on this device,
 //! `OnlineGameView` mirrors a server-authoritative room.
 
+mod game_hud;
 mod game_over;
 mod game_play;
+mod player_hand;
 #[cfg(test)]
 mod rerender_tests;
+mod shown_hand;
 
 pub use game_over::GameOver;
 pub use game_play::GamePlay;

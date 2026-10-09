@@ -33,8 +33,8 @@ test('starts an online game with two browsers', async ({ page, browser }) => {
     await expect(startGame).toBeEnabled();
     await startGame.click();
 
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible();
-    await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(page.locator('.hud-chip-phase')).toBeVisible();
+    await expect(guest.locator('.hud-chip-phase')).toBeVisible();
   } finally {
     await guestContext.close();
   }

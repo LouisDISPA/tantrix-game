@@ -58,8 +58,8 @@ test('plays a fully instrumented online game', async ({ page, browser }, testInf
     const startGame = page.getByRole('button', { name: 'Start game' });
     await expect(startGame).toBeEnabled();
     await startGame.click();
-    await expect(page.getByText('Select a tile from your hand')).toBeVisible();
-    await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(page.locator('.hud-chip-phase')).toBeVisible();
+    await expect(guest.locator('.hud-chip-phase')).toBeVisible();
     await expect(page.getByText('44 in bag')).toBeVisible();
     await expect(guest.getByText('44 in bag')).toBeVisible();
 
@@ -149,7 +149,7 @@ test('guest can reload mid-game and resume with the same seat', async ({ page, b
     await page.getByRole('button', { name: /Red.*Open/ }).click();
     await guest.getByRole('button', { name: /Blue.*Open/ }).click();
     await page.getByRole('button', { name: 'Start game' }).click();
-    await expect(guest.getByText('Select a tile from your hand')).toBeVisible();
+    await expect(guest.locator('.hud-chip-phase')).toBeVisible();
 
     // One player moves so the board is non-empty when the guest reloads.
     const firstColor = (await page.locator('.hud-chip-name').textContent())?.trim();
