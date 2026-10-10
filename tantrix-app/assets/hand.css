@@ -1,319 +1,330 @@
-/* ===== Player hands =====
-   One .player-hand per seat, all always in the DOM. game.css lays the panel
-   out: a row of tabs (the .hand-header of each seat) over the tiles of the
-   .shown seat. */
+@layer features {
+  /* ===== Player hands =====
+     One .player-hand per seat, all always in the DOM. game.css lays the panel
+     out: a row of tabs (the .hand-header of each seat) over the tiles of the
+     .shown seat. */
 
-.player-hand {
-  min-width: 0;
-}
-
-/* ===== Hand Header (a seat's tab) ===== */
-
-.hand-header {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
-  height: 44px;
-  padding: 0 4px;
-  border: 0;
-  background: none;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  white-space: nowrap;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* The player's colour is a small hex and a line under the shown tab: the
-   header itself stays neutral. */
-.hand-header .color-swatch {
-  width: 11px;
-  height: 12px;
-  opacity: 0.75;
-}
-
-.player-hand.shown .hand-header {
-  color: var(--text-primary);
-  box-shadow: inset 0 -3px 0 var(--player-color);
-}
-
-.player-hand.shown .hand-header .color-swatch {
-  opacity: 1;
-}
-
-.hand-header-color {
-  flex-shrink: 0;
-}
-
-/* The colour's name, and under it (online) who sits there: a nickname, and
-   "you" on this device's own seat. */
-.hand-header-label {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-  line-height: 1.2;
-}
-
-.hand-header-who {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  min-width: 0;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  text-transform: none;
-}
-
-.hand-header-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-
-.hand-header-you {
-  flex-shrink: 0;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: var(--hand-active-glow);
-  color: var(--text-primary);
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
-}
-
-/* The line a seat's colour has built: shown where there is room. */
-.hand-score {
-  display: none;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-}
-
-/* Whose turn it is. */
-.hand-header .active-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--player-color);
-  animation: pulse-glow-dot 1.5s ease-in-out infinite;
-  flex-shrink: 0;
-}
-
-/* ===== Tile List ===== */
-
-.hand-tiles {
-  display: none;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  padding: 10px;
-  min-width: 0;
-}
-
-.player-hand.shown .hand-tiles {
-  display: grid;
-}
-
-/* ===== Hand Tile ===== */
-
-.hand-tile {
-  --hand-tile-opacity: 1;
-  opacity: var(--hand-tile-opacity);
-  position: relative;
-  display: block;
-  min-width: 0;
-  cursor: pointer;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  transition:
-    transform 0.15s ease,
-    opacity 0.15s ease;
-}
-
-.hand-tile.new-tile {
-  animation: tile-enter 0.35s ease both;
-}
-
-.hand-tile[data-draggable="true"] {
-  cursor: grab;
-}
-
-@keyframes tile-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  to {
-    opacity: var(--hand-tile-opacity);
-    transform: scale(1);
-  }
-}
-
-.hand-tile svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 51.96 / 60;
-  overflow: visible;
-  filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.35));
-}
-
-/* Only the seat to move plays its tiles: the others are there to look at
-   (or, in a card of the rail, to click through to). */
-.player-hand:not(.active) .hand-tile {
-  cursor: inherit;
-}
-
-/* Hover is a mouse thing: on a touch screen it would stick after a tap. */
-@media (hover: hover) {
-  .hand-tile:hover {
-    transform: scale(1.1);
-    z-index: 1;
+  .player-hand {
+    min-width: 0;
   }
 
-  .player-hand:not(.active) .hand-tile:hover {
-    transform: none;
+  /* ===== Hand Header (a seat's tab) ===== */
+
+  .hand-header {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    height: 44px;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .hand-tile.disabled:hover {
-    transform: none;
-  }
-}
-
-.hand-tile.selected {
-  transform: translateY(-3px) scale(1.07);
-  z-index: 2;
-}
-
-.hand-tile.disabled {
-  --hand-tile-opacity: 0.3;
-  cursor: not-allowed;
-}
-
-/* The rack keeps its shape while its tile is lifted out. */
-.hand-tile.lifted[data-draggable="true"] {
-  --hand-tile-opacity: 0.2;
-  transform: scale(0.94);
-  cursor: grabbing;
-}
-
-.dragged-tile {
-  position: fixed;
-  z-index: 20;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  transition: left 65ms linear, top 65ms linear, width 100ms ease-out;
-  will-change: left, top;
-}
-
-.dragged-tile svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  overflow: visible;
-  filter: drop-shadow(0 9px 7px rgb(0 0 0 / 0.35));
-  transition: filter 120ms ease-out;
-  animation: tile-lift 120ms ease-out;
-}
-
-.dragged-tile.snapped {
-  transition-duration: 100ms;
-  transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
-}
-
-.dragged-tile.snapped svg {
-  filter: drop-shadow(0 3px 3px rgb(0 0 0 / 0.3));
-}
-
-.dragged-tile.returning {
-  transition: left 200ms ease-out, top 200ms ease-out, width 200ms ease-out;
-  animation: tile-return 220ms ease-out forwards;
-}
-
-@keyframes tile-lift {
-  from { transform: scale(0.94); }
-  to { transform: scale(1); }
-}
-
-@keyframes tile-return {
-  0%, 75% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dragged-tile,
-  .dragged-tile.snapped,
-  .dragged-tile.returning {
-    transition: none;
+  /* The player's colour is a small hex and a line under the shown tab: the
+     header itself stays neutral. */
+  .hand-header .color-swatch {
+    width: 11px;
+    height: 12px;
+    opacity: 0.75;
   }
 
-  .dragged-tile svg,
-  .dragged-tile.returning {
-    animation-duration: 1ms;
+  .player-hand.shown .hand-header {
+    color: var(--text-primary);
+    box-shadow: inset 0 -3px 0 var(--player-color);
   }
-}
 
-/* ===== Hex-shaped selection / forced ring ===== */
-
-.hand-hex-ring {
-  fill: none;
-  stroke-width: 2;
-}
-
-.hand-hex-ring.selected {
-  stroke: var(--text-secondary);
-  stroke-width: 2.5;
-}
-
-.hand-hex-ring.forced {
-  stroke: var(--color-red);
-  stroke-width: 2;
-  animation: pulse-ring 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-ring {
-  0%,
-  100% {
-    stroke-opacity: 0.6;
-  }
-  50% {
-    stroke-opacity: 1;
-    stroke-width: 3;
-  }
-}
-
-/* Empty hand */
-.hand-empty {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 18px 10px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-style: italic;
-}
-
-.player-hand.shown .hand-empty {
-  display: flex;
-}
-
-@keyframes pulse-glow-dot {
-  0%,
-  100% {
+  .player-hand.shown .hand-header .color-swatch {
     opacity: 1;
   }
-  50% {
-    opacity: 0.5;
+
+  .hand-header-color {
+    flex-shrink: 0;
+  }
+
+  /* The colour's name, and under it (online) who sits there: a nickname, and
+     "you" on this device's own seat. */
+  .hand-header-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    line-height: 1.2;
+  }
+
+  .hand-header-who {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    text-transform: none;
+  }
+
+  .hand-header-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .hand-header-you {
+    padding: 0 4px;
+    letter-spacing: 0.8px;
+  }
+
+  /* The line a seat's colour has built: shown where there is room. */
+  .hand-score {
+    display: none;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  /* Whose turn it is. */
+  .hand-header .active-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--player-color);
+    animation: pulse-glow-dot 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  /* ===== Tile List ===== */
+
+  .hand-tiles {
+    display: none;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+    padding: 10px;
+    min-width: 0;
+  }
+
+  .player-hand.shown .hand-tiles {
+    display: grid;
+  }
+
+  /* ===== Hand Tile ===== */
+
+  .hand-tile {
+    --hand-tile-opacity: 1;
+    opacity: var(--hand-tile-opacity);
+    position: relative;
+    display: block;
+    min-width: 0;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    transition:
+      transform 0.15s ease,
+      opacity 0.15s ease;
+  }
+
+  .hand-tile.new-tile {
+    animation: tile-enter 0.35s ease both;
+  }
+
+  .hand-tile[data-draggable="true"] {
+    cursor: grab;
+  }
+
+  @keyframes tile-enter {
+    from {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    to {
+      opacity: var(--hand-tile-opacity);
+      transform: scale(1);
+    }
+  }
+
+  .hand-tile svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 51.96 / 60;
+    overflow: visible;
+    filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.35));
+  }
+
+  /* Only the seat to move plays its tiles: the others are there to look at
+     (or, in a card of the rail, to click through to). */
+  .player-hand:not(.active) .hand-tile {
+    cursor: inherit;
+  }
+
+  /* Hover is a mouse thing: on a touch screen it would stick after a tap. */
+  @media (hover: hover) {
+    .hand-tile:hover {
+      transform: scale(1.1);
+      z-index: 1;
+    }
+
+    .player-hand:not(.active) .hand-tile:hover {
+      transform: none;
+    }
+
+    .hand-tile.disabled:hover {
+      transform: none;
+    }
+  }
+
+  .hand-tile.selected {
+    transform: translateY(-3px) scale(1.07);
+    z-index: 2;
+  }
+
+  .hand-tile.disabled {
+    --hand-tile-opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* The rack keeps its shape while its tile is lifted out. */
+  .hand-tile.lifted[data-draggable="true"] {
+    --hand-tile-opacity: 0.2;
+    transform: scale(0.94);
+    cursor: grabbing;
+  }
+
+  .dragged-tile {
+    position: fixed;
+    z-index: 20;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    transition:
+      left 65ms linear,
+      top 65ms linear,
+      width 100ms ease-out;
+    will-change: left, top;
+  }
+
+  .dragged-tile svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    filter: drop-shadow(0 9px 7px rgb(0 0 0 / 0.35));
+    transition: filter 120ms ease-out;
+    animation: tile-lift 120ms ease-out;
+  }
+
+  .dragged-tile.snapped {
+    transition-duration: 100ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+
+  .dragged-tile.snapped svg {
+    filter: drop-shadow(0 3px 3px rgb(0 0 0 / 0.3));
+  }
+
+  .dragged-tile.returning {
+    transition:
+      left 200ms ease-out,
+      top 200ms ease-out,
+      width 200ms ease-out;
+    animation: tile-return 220ms ease-out forwards;
+  }
+
+  @keyframes tile-lift {
+    from {
+      transform: scale(0.94);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes tile-return {
+    0%,
+    75% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dragged-tile,
+    .dragged-tile.snapped,
+    .dragged-tile.returning {
+      transition: none;
+    }
+
+    .dragged-tile svg,
+    .dragged-tile.returning {
+      animation-duration: 1ms;
+    }
+  }
+
+  /* ===== Hex-shaped selection / forced ring ===== */
+
+  .hand-hex-ring {
+    fill: none;
+    stroke-width: 2;
+  }
+
+  .hand-hex-ring.selected {
+    stroke: var(--text-secondary);
+    stroke-width: 2.5;
+  }
+
+  .hand-hex-ring.forced {
+    stroke: var(--color-red);
+    stroke-width: 2;
+    animation: pulse-ring 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse-ring {
+    0%,
+    100% {
+      stroke-opacity: 0.6;
+    }
+    50% {
+      stroke-opacity: 1;
+      stroke-width: 3;
+    }
+  }
+
+  /* Empty hand */
+  .hand-empty {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px 10px;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  .player-hand.shown .hand-empty {
+    display: flex;
+  }
+
+  @keyframes pulse-glow-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
   }
 }

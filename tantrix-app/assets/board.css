@@ -1,36 +1,32 @@
-/* The board's backdrop: a faint hex grid, painted by the game screen. */
-:root {
-    --board-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230'%3E%3Cpolygon points='100,0 173.2,37.5 173.2,112.5 100,150 26.8,112.5 26.8,37.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='200,115 273.2,152.5 273.2,227.5 200,265 126.8,227.5 126.8,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='0,115 73.2,152.5 73.2,227.5 0,265 -73.2,227.5 -73.2,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3C/svg%3E");
-}
+@layer features {
+  /* ===== Board Container ===== */
 
-/* ===== Board Container ===== */
-
-/* The playfield (.board-stage) is the camera's cell of the game screen. It
-   does not clip and paints no backdrop: the game screen carries the backdrop
-   (`--board-pattern`, see game.css) and the HUD and the hand panel float over
-   the board, so a zoom or a pan runs the board under them. The camera frames
-   the board in the cell, so a legal position is never left under one. */
-.board-container {
+  /* The playfield (.board-stage) is the camera's cell of the game screen. It
+    does not clip and paints no backdrop: the game screen carries the backdrop
+    (`--board-pattern`, see game.css) and the HUD and the hand panel float over
+    the board, so a zoom or a pan runs the board under them. The camera frames
+    the board in the cell, so a legal position is never left under one. */
+  .board-container {
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
     height: 100%;
-}
+  }
 
-/* The playfield: the positioning context of the zoom/pan viewport and the
-   card of options. */
-.board-stage {
+  /* The playfield: the positioning context of the zoom/pan viewport and the
+    card of options. */
+  .board-stage {
     position: relative;
     min-width: 0;
     min-height: 0;
     /* The camera owns every gesture on the map: a finger pans it, two
-       pinch it, and the browser must not scroll or zoom the page instead. */
+      pinch it, and the browser must not scroll or zoom the page instead. */
     touch-action: none;
     -webkit-tap-highlight-color: transparent;
-}
+  }
 
-.board-viewport {
+  .board-viewport {
     width: 100%;
     height: 100%;
     cursor: grab;
@@ -38,164 +34,193 @@
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     transform-origin: center center;
-    transform: scale(var(--zoom, 1)) translate(calc(-1 * var(--pan-x, 0px)), calc(-1 * var(--pan-y, 0px)));
+    transform: scale(var(--zoom, 1))
+      translate(calc(-1 * var(--pan-x, 0px)), calc(-1 * var(--pan-y, 0px)));
     transition: transform 0.4s ease-out;
-}
+  }
 
-.board-viewport.dragging {
+  .board-viewport.dragging {
     cursor: grabbing;
     transition: none;
-}
+  }
 
-/* Hit testing uses the camera's pose, so a tile drag settles its animation. */
-.board-viewport.tile-dragging,
-.board-viewport.tile-dragging .board-tiles-layer {
+  /* Hit testing uses the camera's pose, so a tile drag settles its animation. */
+  .board-viewport.tile-dragging,
+  .board-viewport.tile-dragging .board-tiles-layer {
     transition: none;
-}
+  }
 
-.board-tiles-layer {
+  .board-tiles-layer {
     position: absolute;
     left: 50%;
     top: 50%;
-    filter: drop-shadow(2px 3px 6px rgba(0,0,0,0.6));
-    transform: translate(calc(-1 * var(--center-x, 0px)), calc(-1 * var(--center-y, 0px)));
+    filter: drop-shadow(2px 3px 6px rgba(0, 0, 0, 0.6));
+    transform: translate(
+      calc(-1 * var(--center-x, 0px)),
+      calc(-1 * var(--center-y, 0px))
+    );
     transition: transform 0.4s ease-out;
-}
+  }
 
-/* Board tiles / empty slots are positioned via --hx/--hy/--hw/--hh set inline
-   by `hex_position_style`, keeping CSS static and the dynamic part minimal. */
-.board-tile,
-.board-empty {
+  /* Board tiles / empty slots are positioned via --hx/--hy/--hw/--hh set inline
+    by `hex_position_style`, keeping CSS static and the dynamic part minimal. */
+  .board-tile,
+  .board-empty {
     position: absolute;
     left: var(--hx);
     top: var(--hy);
     width: var(--hw);
     height: var(--hh);
-}
+  }
 
-.board-tile svg {
+  .board-tile svg {
     width: 100%;
     height: 100%;
     display: block;
     overflow: visible;
-}
+  }
 
-.board-empty {
+  .board-empty {
     cursor: pointer;
     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-}
+  }
 
-.board-empty svg {
+  .board-empty svg {
     width: 100%;
     height: 100%;
     display: block;
     overflow: visible;
-}
+  }
 
-/* ===== Shared tile styles (board + hand) — black with subtle border ===== */
+  /* ===== Shared tile styles (board + hand) — black with subtle border ===== */
 
-.hex-tile-fill {
+  .hex-tile-fill {
     fill: var(--tile-fill);
     stroke: var(--tile-stroke);
     stroke-width: 0.8;
-}
+  }
 
-.hex-curve {
+  .hex-curve {
     fill: none;
     stroke-width: 3.5;
     stroke-linecap: butt;
-}
+  }
 
-/* ===== Hex Tiles (board) ===== */
+  /* ===== Hex Tiles (board) ===== */
 
-.hex-tile {
+  .hex-tile {
     cursor: default;
-}
+  }
 
-.hex-curve-red { stroke: var(--color-red); }
-.hex-curve-blue { stroke: var(--color-blue); }
-.hex-curve-yellow { stroke: var(--color-yellow); }
-.hex-curve-green { stroke: var(--color-green); }
+  .hex-curve-red {
+    stroke: var(--color-red);
+  }
+  .hex-curve-blue {
+    stroke: var(--color-blue);
+  }
+  .hex-curve-yellow {
+    stroke: var(--color-yellow);
+  }
+  .hex-curve-green {
+    stroke: var(--color-green);
+  }
 
-/* ===== Empty Positions ===== */
+  /* ===== Empty Positions ===== */
 
-/* A legal spot wears the mover's colour (--turn-color, set by the board's
-   .color-* class): a light tint and a dashed outline, visible on a phone where
-   a grey dash would vanish. */
-.hex-empty {
+  /* A legal spot wears the mover's colour (--turn-color, set by the board's
+    .color-* class): a light tint and a dashed outline, visible on a phone where
+    a grey dash would vanish. */
+  .hex-empty {
     cursor: pointer;
     transition: opacity 0.2s ease;
-}
+  }
 
-.hex-empty polygon {
-    fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 16%, transparent);
+  .hex-empty polygon {
+    fill: color-mix(
+      in oklch,
+      var(--turn-color, var(--text-secondary)) 16%,
+      transparent
+    );
     stroke: var(--turn-color, var(--text-secondary));
     stroke-opacity: 0.85;
     stroke-width: 3;
     stroke-dasharray: 7 4;
-    transition: stroke-opacity 0.15s ease, fill 0.15s ease;
-}
+    transition:
+      stroke-opacity 0.15s ease,
+      fill 0.15s ease;
+  }
 
-/* Hover is a mouse thing: on a touch screen it would stick after a tap. */
-@media (hover: hover) {
+  /* Hover is a mouse thing: on a touch screen it would stick after a tap. */
+  @media (hover: hover) {
     .hex-empty:hover polygon {
-        fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 30%, transparent);
-        stroke-opacity: 1;
-        stroke-dasharray: none;
+      fill: color-mix(
+        in oklch,
+        var(--turn-color, var(--text-secondary)) 30%,
+        transparent
+      );
+      stroke-opacity: 1;
+      stroke-dasharray: none;
     }
-}
+  }
 
-.hex-empty.forced polygon {
+  .hex-empty.forced polygon {
     fill: color-mix(in oklch, var(--color-red) 16%, transparent);
     stroke: var(--color-red);
-}
+  }
 
-/* Only hovered, not selected: a hint of where the tile would go. */
-.hex-empty.faint polygon {
+  /* Only hovered, not selected: a hint of where the tile would go. */
+  .hex-empty.faint polygon {
     opacity: 0.4;
-}
+  }
 
-/* The spot whose orientation is being chosen, while its card is open. */
-.hex-empty.picked {
+  /* The spot whose orientation is being chosen, while its card is open. */
+  .hex-empty.picked {
     pointer-events: none;
-}
+  }
 
-.hex-empty.picked polygon {
-    fill: color-mix(in oklch, var(--turn-color, var(--text-secondary)) 30%, transparent);
+  .hex-empty.picked polygon {
+    fill: color-mix(
+      in oklch,
+      var(--turn-color, var(--text-secondary)) 30%,
+      transparent
+    );
     stroke-opacity: 1;
     stroke-dasharray: none;
-}
+  }
 
-.hex-empty.drag-target polygon {
+  .hex-empty.drag-target polygon {
     fill: color-mix(in oklch, var(--turn-color) 32%, transparent);
     stroke-opacity: 1;
     stroke-dasharray: none;
-}
+  }
 
-/* ===== Tile Preview ===== */
+  /* ===== Tile Preview ===== */
 
-.tile-preview {
+  .tile-preview {
     opacity: 0.85;
     pointer-events: none;
-}
+  }
 
-.tile-preview svg {
+  .tile-preview svg {
     filter: none;
-}
+  }
 
-.tile-preview polygon {
+  .tile-preview polygon {
     fill: var(--tile-fill);
     stroke: var(--text-secondary);
     stroke-width: 1.5;
     stroke-dasharray: 4 3;
-}
+  }
 
-/* ===== Orientation card (the options, at the spot) ===== */
+  /* ===== Orientation card (the options, at the spot) ===== */
 
-/* A neutral card with the tile in each of the ways it fits the picked spot.
-   Rust places it (left/top/--arrow-*, in stage pixels) on the side of the spot
-   that hides the fewest tiles, and gives its size as --card-w/--card-h. */
-.orientation-card {
+  /* A neutral card with the tile in each of the ways it fits the picked spot.
+    Rust places it (left/top/--arrow-*, in stage pixels) on the side of the spot
+    that hides the fewest tiles, and gives its size as --card-w/--card-h. */
+  .orientation-card {
+    --surface-bg: var(--glass-solid);
+    --surface-shadow: var(--shadow-lg);
+    --surface-radius: var(--radius-panel);
     position: absolute;
     z-index: 30;
     box-sizing: border-box;
@@ -205,312 +230,312 @@
     gap: 8px;
     padding: 8px;
     /* Glass, nearly opaque: the arrow at its edge is the same fill. */
-    background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
-    -webkit-backdrop-filter: blur(18px) saturate(1.5);
-    backdrop-filter: blur(18px) saturate(1.5);
-    border: 1px solid var(--glass-line, var(--border-subtle));
-    border-radius: 16px;
-    box-shadow: var(--shadow-lg);
+
     /* Appears once the camera has settled on the spot. */
     animation: card-in 0.18s ease-out 0.25s both;
-}
+  }
 
-/* Until the stage has been measured: top, centred. */
-.orientation-card.unplaced {
+  /* Until the stage has been measured: top, centred. */
+  .orientation-card.unplaced {
     top: 12px;
     left: 50%;
     transform: translateX(-50%);
-}
+  }
 
-@keyframes card-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
+  @keyframes card-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
 
-.orientation-option {
+  .orientation-option {
+    --button-padding: 0;
+    --button-bg: var(--surface-elevated);
+    --button-hover-bg: color-mix(
+      in oklch,
+      var(--turn-color, var(--text-primary)) 14%,
+      var(--surface-elevated)
+    );
+    --button-shadow: none;
+    --button-line: var(--border-color);
     flex: 1 1 0;
     min-width: 0;
     height: 100%;
     display: grid;
     place-items: center;
     padding: 0;
-    border-radius: 12px;
-    border: 1.5px solid var(--border-color);
-    background: var(--surface-elevated);
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
+
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-}
+  }
 
-.orientation-option svg {
+  .orientation-option svg {
     height: 64px;
     width: auto;
     overflow: visible;
     filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.35));
-}
+  }
 
-/* Pressed (or hovered, with a mouse): the colour of whoever moves. */
-.orientation-option:active {
+  /* Pressed (or hovered, with a mouse): the colour of whoever moves. */
+  .orientation-option:active {
     border-color: var(--turn-color, var(--text-primary));
-    background: color-mix(in oklch, var(--turn-color, var(--text-primary)) 14%, var(--surface-elevated));
-}
+    background: color-mix(
+      in oklch,
+      var(--turn-color, var(--text-primary)) 14%,
+      var(--surface-elevated)
+    );
+  }
 
-@media (hover: hover) {
+  @media (hover: hover) {
     .orientation-option:hover {
-        border-color: var(--turn-color, var(--text-primary));
-        background: color-mix(in oklch, var(--turn-color, var(--text-primary)) 14%, var(--surface-elevated));
+      border-color: var(--turn-color, var(--text-primary));
+      background: color-mix(
+        in oklch,
+        var(--turn-color, var(--text-primary)) 14%,
+        var(--surface-elevated)
+      );
     }
-}
+  }
 
-/* The arrow points from the card at the spot. */
-.orientation-card::after {
+  /* The arrow points from the card at the spot. */
+  .orientation-card::after {
     content: "";
     display: none;
     position: absolute;
     width: 14px;
     height: 14px;
-    background: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+    background: var(--surface-bg);
     border-right: 1px solid var(--glass-line, var(--border-subtle));
     border-bottom: 1px solid var(--glass-line, var(--border-subtle));
-}
+  }
 
-.orientation-card.side-top::after {
+  .orientation-card.side-top::after {
     display: block;
     bottom: -8px;
     left: calc(var(--arrow-x) - 7px);
     transform: rotate(45deg);
-}
+  }
 
-.orientation-card.side-bottom::after {
+  .orientation-card.side-bottom::after {
     display: block;
     top: -8px;
     left: calc(var(--arrow-x) - 7px);
     transform: rotate(225deg);
-}
+  }
 
-.orientation-card.side-left::after {
+  .orientation-card.side-left::after {
     display: block;
     right: -8px;
     top: calc(var(--arrow-y) - 7px);
     transform: rotate(-45deg);
-}
+  }
 
-.orientation-card.side-right::after {
+  .orientation-card.side-right::after {
     display: block;
     left: -8px;
     top: calc(var(--arrow-y) - 7px);
     transform: rotate(135deg);
-}
+  }
 
-/* ===== Game Over: Tile Dimming ===== */
+  /* ===== Game Over: Tile Dimming ===== */
 
-.hex-tile.dimmed-tile .tile-base {
+  .hex-tile.dimmed-tile .tile-base {
     opacity: 0.7;
     filter: saturate(0.3);
-    transition: opacity 0.6s ease, filter 0.6s ease;
-}
+    transition:
+      opacity 0.6s ease,
+      filter 0.6s ease;
+  }
 
-/* ===== Game Over: Scoring Path Highlights ===== */
+  /* ===== Game Over: Scoring Path Highlights ===== */
 
-.scoring-curve {
+  .scoring-curve {
     fill: none;
     stroke-width: 4.5;
     stroke-linecap: butt;
-}
+  }
 
-.scoring-curve-red { stroke: var(--color-red); filter: drop-shadow(0 0 2px var(--color-red)); }
-.scoring-curve-blue { stroke: var(--color-blue); filter: drop-shadow(0 0 2px var(--color-blue)); }
-.scoring-curve-yellow { stroke: var(--color-yellow); filter: drop-shadow(0 0 2px var(--color-yellow)); }
-.scoring-curve-green { stroke: var(--color-green); filter: drop-shadow(0 0 2px var(--color-green)); }
+  .scoring-curve-red {
+    stroke: var(--color-red);
+    filter: drop-shadow(0 0 2px var(--color-red));
+  }
+  .scoring-curve-blue {
+    stroke: var(--color-blue);
+    filter: drop-shadow(0 0 2px var(--color-blue));
+  }
+  .scoring-curve-yellow {
+    stroke: var(--color-yellow);
+    filter: drop-shadow(0 0 2px var(--color-yellow));
+  }
+  .scoring-curve-green {
+    stroke: var(--color-green);
+    filter: drop-shadow(0 0 2px var(--color-green));
+  }
 
-/* ===== Game Over: Results ===== */
+  /* ===== Game Over: Results ===== */
 
-/* The results card sits in the game screen's panel slot (see game.css). */
-.board-results-card {
+  /* The results card sits in the game screen's panel slot (see game.css). */
+  .board-results-card {
     position: relative;
-}
+  }
 
-.results-header {
+  .results-header {
     text-align: center;
     margin-bottom: 6px;
-}
+  }
 
-.results-winner-label {
+  .results-winner-label {
     font-size: 12px;
     font-weight: 500;
     letter-spacing: 4px;
     text-transform: uppercase;
     color: var(--text-secondary);
     margin-bottom: 4px;
-}
+  }
 
-.results-winner-name {
+  .results-winner-name {
     font-size: 32px;
     font-weight: 900;
     text-transform: uppercase;
     letter-spacing: 4px;
     text-shadow: 0 0 24px var(--glow-color);
     animation: winner-glow 2s ease-in-out infinite;
-}
+  }
 
-.results-tie-names {
+  .results-tie-names {
     display: flex;
     align-items: baseline;
     justify-content: center;
     flex-wrap: wrap;
     gap: 0;
-}
+  }
 
-.results-tie-names .results-winner-name {
+  .results-tie-names .results-winner-name {
     font-size: 24px;
     letter-spacing: 2px;
-}
+  }
 
-.results-tie-separator {
+  .results-tie-separator {
     font-size: 16px;
     font-weight: 600;
     color: var(--text-secondary);
     margin: 0 4px;
-}
+  }
 
-.results-divider {
+  .results-divider {
     height: 1px;
     margin: 10px 0 14px;
     background: linear-gradient(
-        90deg,
-        transparent,
-        var(--border-subtle) 20%,
-        var(--border-subtle) 80%,
-        transparent
+      90deg,
+      transparent,
+      var(--border-subtle) 20%,
+      var(--border-subtle) 80%,
+      transparent
     );
-}
+  }
 
-/* ===== Results Stats ===== */
+  /* ===== Results Stats ===== */
 
-.results-stats {
+  .results-stats {
     display: flex;
     flex-direction: column;
     gap: 6px;
     margin-bottom: 16px;
-}
+  }
 
-.results-row {
+  .results-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 8px 12px;
-    border-radius: 12px;
+    border-radius: var(--radius-control);
     background: var(--bg-secondary);
     cursor: pointer;
-    transition: background 0.2s ease, box-shadow 0.2s ease;
-}
+    transition:
+      background 0.2s ease,
+      box-shadow 0.2s ease;
+  }
 
-.results-row:hover {
-    background: color-mix(in oklch, var(--player-color) 8%, var(--bg-secondary));
-}
+  .results-row:hover {
+    background: color-mix(
+      in oklch,
+      var(--player-color) 8%,
+      var(--bg-secondary)
+    );
+  }
 
-.results-row-winner {
-    background: color-mix(in oklch, var(--player-color) 10%, var(--bg-secondary));
-    box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--player-color) 30%, transparent);
-}
+  .results-row-winner {
+    background: color-mix(
+      in oklch,
+      var(--player-color) 10%,
+      var(--bg-secondary)
+    );
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in oklch, var(--player-color) 30%, transparent);
+  }
 
-.results-row-active {
+  .results-row-active {
     box-shadow: inset 0 0 0 2px var(--player-color);
-    background: color-mix(in oklch, var(--player-color) 15%, var(--bg-secondary));
-}
+    background: color-mix(
+      in oklch,
+      var(--player-color) 15%,
+      var(--bg-secondary)
+    );
+  }
 
-.results-player {
+  .results-player {
     display: flex;
     align-items: center;
     gap: 10px;
-}
+  }
 
-.results-color-swatch {
+  .results-color-swatch {
     width: 22px;
     height: 22px;
-    flex-shrink: 0;
-    clip-path: var(--clip-hex);
-    background-color: var(--player-color);
-}
+  }
 
-.results-points.winner {
+  .results-points.winner {
     color: var(--player-color);
-}
+  }
 
-/* Winner name + glow inherit from --player-color so the text and its glow
-   stay in sync with the row's color. */
-.results-winner-name,
-.results-tie-names .results-winner-name {
+  /* Winner name + glow inherit from --player-color so the text and its glow
+    stay in sync with the row's color. */
+  .results-winner-name,
+  .results-tie-names .results-winner-name {
     color: var(--player-color);
     --glow-color: var(--player-color);
-}
+  }
 
-.results-name {
+  .results-name {
     font-size: 14px;
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--text-primary);
-}
+  }
 
-.results-points {
+  .results-points {
     font-size: 22px;
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     color: var(--text-primary);
-}
+  }
 
-/* ===== Results Buttons ===== */
+  /* ===== Results Buttons ===== */
 
-.results-buttons {
+  .results-buttons {
     display: flex;
     gap: 8px;
-}
+  }
 
-.results-btn {
+  .results-btn {
+    --button-size: 13px;
+    --button-padding: 12px 16px;
     flex: 1;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    transition: filter 0.2s ease, transform 0.15s ease;
-}
-
-.results-btn:active {
-    transform: scale(0.97);
-}
-
-.results-btn-primary {
-    padding: 14px 20px;
-    background: #333333;
-    color: #ffffff;
-    clip-path: var(--clip-btn-tight);
-}
-
-[data-theme="dark"] .results-btn-primary {
-    background: #e0e0e0;
-    color: #121212;
-}
-
-.results-btn-primary:hover {
-    filter: drop-shadow(0 0 10px var(--glow-red))
-        drop-shadow(0 0 10px var(--glow-blue))
-        drop-shadow(0 0 10px var(--glow-yellow));
-}
-
-.results-btn-secondary {
-    padding: 12px 16px;
-    background: var(--btn-secondary-bg);
-    color: var(--btn-secondary-text);
-    border-radius: 12px;
-    box-shadow: var(--shadow-sm);
-}
-
-.results-btn-secondary:hover {
-    background: var(--btn-secondary-hover);
-    box-shadow: var(--shadow-md);
+  }
 }

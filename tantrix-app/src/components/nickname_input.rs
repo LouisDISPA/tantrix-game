@@ -27,7 +27,7 @@ pub fn NicknameInput(
 
     rsx! {
         input {
-            class: "lobby-nickname-input",
+            class: "field lobby-nickname-input",
             r#type: "text",
             maxlength: "{max_len}",
             value: "{draft}",

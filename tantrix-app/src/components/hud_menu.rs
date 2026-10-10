@@ -26,14 +26,14 @@ pub fn HudMenu(children: Element) -> Element {
                 div { class: "hud-menu-backdrop", onclick: move |_| open.set(false) }
             }
             button {
-                class: "hud-menu-toggle",
+                class: "button button-icon button-ghost hud-menu-toggle",
                 aria_label: "Menu",
                 aria_haspopup: "true",
                 aria_expanded: "{open()}",
                 onclick: move |_| open.set(!open()),
                 "⋯"
             }
-            div { class: "hud-menu-items", onclick: move |_| open.set(false), {children} }
+            div { class: "surface surface-blur hud-menu-items", onclick: move |_| open.set(false), {children} }
         }
     }
 }

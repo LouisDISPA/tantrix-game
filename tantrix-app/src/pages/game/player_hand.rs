@@ -51,7 +51,7 @@ pub fn PlayerHand(color: Color, shown: ReadSignal<Color>) -> Element {
 
     rsx! {
         div {
-            class: "player-hand {color_class}",
+            class: "surface surface-blur player-hand {color_class}",
             class: if is_current() { "active" },
             class: if is_mine() { "mine" },
             class: if is_shown() { "shown" },
@@ -78,7 +78,7 @@ pub fn PlayerHand(color: Color, shown: ReadSignal<Color>) -> Element {
                     if is_mine() || player_name().is_some() {
                         span { class: "hand-header-who",
                             if is_mine() {
-                                span { class: "hand-header-you", "you" }
+                                span { class: "badge hand-header-you", "you" }
                             }
                             if let Some(name) = player_name() {
                                 span { class: "hand-header-name", {name} }

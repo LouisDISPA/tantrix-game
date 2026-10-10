@@ -102,11 +102,11 @@ pub fn GameHud(children: Element) -> Element {
     rsx! {
         header { class: "game-hud",
             div {
-                class: "hud-chip color-{color_slug(current_color())}",
+                class: "surface hud-chip color-{color_slug(current_color())}",
                 class: if viewing().is_some() { "viewing" },
                 // Left — player identity
                 div { class: "hud-chip-player",
-                    div { class: "hud-chip-dot" }
+                    div { class: "color-swatch hud-chip-dot" }
                     span { class: "hud-chip-name", "{current_color}" }
                 }
 
@@ -140,7 +140,7 @@ pub fn GameHud(children: Element) -> Element {
 
             if can_go_back() {
                 button {
-                    class: "hud-back",
+                    class: "button button-icon button-secondary hud-back",
                     title: "Back",
                     aria_label: "Back",
                     onclick: move |_| ui.go_back(),

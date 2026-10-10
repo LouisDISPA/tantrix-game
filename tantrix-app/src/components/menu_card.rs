@@ -20,13 +20,12 @@ pub fn MenuCard(
 
     rsx! {
         div {
-            class: "menu-card",
+            class: "surface surface-raised surface-backdrop menu-card",
             class: if wide { "menu-card-wide" },
             class: if leaving() { "menu-card-exit" },
-            div { class: "hex-frame menu-card-frame" }
             if let Some(back) = back {
                 button {
-                    class: "menu-back-btn",
+                    class: "button button-ghost menu-back-btn",
                     disabled: leaving(),
                     onclick: move |_| async move {
                         if *leaving.peek() {
@@ -40,7 +39,7 @@ pub fn MenuCard(
                     "← Back"
                 }
             }
-            h1 { class: "menu-card-title", {title} }
+            h1 { class: "brand-heading brand-heading-animated menu-card-title", {title} }
             p { class: "menu-card-subtitle", {subtitle} }
             {children}
         }

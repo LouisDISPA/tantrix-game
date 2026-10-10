@@ -1,197 +1,78 @@
-/* ===== Reset & Base ===== */
-*, *::before, *::after {
+@layer reset, tokens, base, components, features, responsive, motion;
+
+@layer reset {
+  /* ===== Reset & Base ===== */
+  *,
+  *::before,
+  *::after {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+  }
 }
 
-html, body {
+@layer base {
+  html,
+  body {
     width: 100%;
     height: 100%;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-}
+    font-family:
+      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+      Arial, sans-serif;
+  }
 
-#main {
+  #main {
     width: 100%;
     height: 100%;
-}
+  }
 
-/* ===== Theme-independent tokens ===== */
+  /* ===== Base Typography ===== */
 
-:root {
-    /* Pointy-top hex clip-path, reused for frames and swatches */
-    --clip-hex: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
-    /* Primary-button clip-path (wide cut) */
-    --clip-btn: polygon(4% 0%, 96% 0%, 100% 30%, 100% 70%, 96% 100%, 4% 100%, 0% 70%, 0% 30%);
-    /* Tighter primary-button clip-path used by the results panel */
-    --clip-btn-tight: polygon(6% 0%, 94% 0%, 100% 30%, 100% 70%, 94% 100%, 6% 100%, 0% 70%, 0% 30%);
-
-    /* Opacity for the animated hex-gradient frame behind cards / titles */
-    --hex-frame-opacity: 0.10;
-
-    /* Game colors — oklch with matched perceptual luminance & chroma. The
-       same in both themes, and defined here so tokens derived on :root
-       (the --glow-* tints below) can resolve them. */
-    --color-red:    oklch(0.65 0.26 25);
-    --color-blue:   oklch(0.65 0.26 250);
-    --color-yellow: oklch(0.83 0.26 80);
-    --color-green:  oklch(0.65 0.26 160);
-}
-
-[data-theme="dark"] {
-    --hex-frame-opacity: 0.16;
-}
-
-/* Glow tints derived from the game colors. Uses --glow-alpha so callers
-   can dial the intensity without recomputing the whole color. */
-:root {
-    --glow-alpha: 0.40;
-    --glow-red:    color-mix(in oklch, var(--color-red)    calc(var(--glow-alpha) * 100%), transparent);
-    --glow-blue:   color-mix(in oklch, var(--color-blue)   calc(var(--glow-alpha) * 100%), transparent);
-    --glow-yellow: color-mix(in oklch, var(--color-yellow) calc(var(--glow-alpha) * 100%), transparent);
-    --glow-green:  color-mix(in oklch, var(--color-green)  calc(var(--glow-alpha) * 100%), transparent);
-}
-
-/* Per-color utility classes. Tag any element with `.color-<slug>` to set
-   the scoped color-driven custom properties (--player-color, --seat-color,
-   --turn-color) that descendants read. Lets components encode their player
-   color via a class instead of an inline `style`. */
-.color-red    { --player-color: var(--color-red);    --seat-color: var(--color-red);    --turn-color: var(--color-red); }
-.color-blue   { --player-color: var(--color-blue);   --seat-color: var(--color-blue);   --turn-color: var(--color-blue); }
-.color-yellow { --player-color: var(--color-yellow); --seat-color: var(--color-yellow); --turn-color: var(--color-yellow); }
-.color-green  { --player-color: var(--color-green);  --seat-color: var(--color-green);  --turn-color: var(--color-green); }
-
-/* ===== Theme Variables =====
-   The theme attribute sits on `.app-root`. Each block also matches the
-   document root while the app shows that theme, so <body> (the page canvas
-   behind the app) reads the same tokens. `:is()` keeps a browser without
-   `:has()` on the `.app-root` match instead of dropping the rule. */
-
-:is([data-theme="light"], :root:has(.app-root[data-theme="light"])) {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f5f5f5;
-    --bg-board: #fafafa;
-    --bg-card: #ffffff;
-    --text-primary: #1a1a1a;
-    --text-secondary: #666666;
-    --text-muted: #999999;
-    --border-color: #e0e0e0;
-    --border-light: #eeeeee;
-    --border-subtle: rgba(0, 0, 0, 0.08);
-    --hex-outline: #555555;
-    --hex-outline-light: #aaaaaa;
-    --hex-empty: rgba(0, 0, 0, 0.04);
-    --overlay: rgba(0, 0, 0, 0.45);
-
-    /* Layered shadows — large soft + small crisp for tactile depth */
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
-    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.13), 0 2px 6px rgba(0, 0, 0, 0.07);
-    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
-
-    /* Surfaces */
-    --surface-primary: #ffffff;
-    --surface-secondary: #f5f5f5;
-    --surface-elevated: #ffffff;
-
-    /* Buttons */
-    --btn-primary-bg: #333333;
-    --btn-primary-hover: #444444;
-    --btn-primary-text: #ffffff;
-    --btn-secondary-bg: #f0f0f0;
-    --btn-secondary-hover: #e4e4e4;
-    --btn-secondary-text: #1a1a1a;
-    --btn-disabled-bg: #f0f0f0;
-    --btn-disabled-text: #aaaaaa;
-
-    /* Tile — black with lighter border for separation */
-    --tile-fill: #1a1a1a;
-    --tile-fill-light: #2a2a2a;
-    --tile-fill-dark: #0e0e0e;
-    --tile-stroke: #3a3a3a;
-
-    --hand-bg: #f5f5f5;
-    --hand-active-glow: rgba(0, 0, 0, 0.06);
-    --hand-header-text: #ffffff;
-}
-
-:is([data-theme="dark"], :root:has(.app-root[data-theme="dark"])) {
-    --bg-primary: #121212;
-    --bg-secondary: #1a1a1a;
-    --bg-board: #161616;
-    --bg-card: #1e1e1e;
-    --text-primary: #e0e0e0;
-    --text-secondary: #909090;
-    --text-muted: #585858;
-    --border-color: #2a2a2a;
-    --border-light: #333333;
-    --border-subtle: rgba(255, 255, 255, 0.08);
-    --hex-outline: #555555;
-    --hex-outline-light: #444444;
-    --hex-empty: rgba(255, 255, 255, 0.04);
-    --overlay: rgba(0, 0, 0, 0.65);
-
-    /* Layered shadows — large soft + small crisp for tactile depth */
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.20);
-    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.30);
-    --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.40);
-
-    /* Surfaces */
-    --surface-primary: #141414;
-    --surface-secondary: #1c1c1c;
-    --surface-elevated: #222222;
-
-    /* Buttons */
-    --btn-primary-bg: #e0e0e0;
-    --btn-primary-hover: #ffffff;
-    --btn-primary-text: #121212;
-    --btn-secondary-bg: #2a2a2a;
-    --btn-secondary-hover: #333333;
-    --btn-secondary-text: #e0e0e0;
-    --btn-disabled-bg: #1e1e1e;
-    --btn-disabled-text: #4a4a4a;
-
-    /* Tile — black with lighter border for separation */
-    --tile-fill: #141414;
-    --tile-fill-light: #222222;
-    --tile-fill-dark: #0a0a0a;
-    --tile-stroke: #333333;
-
-    --hand-bg: #1a1a1a;
-    --hand-active-glow: rgba(255, 255, 255, 0.04);
-    --hand-header-text: #ffffff;
-}
-
-/* ===== Base Typography ===== */
-
-body {
+  body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
-}
+  }
 
-/* ===== Shared: animated hex-gradient frame behind cards/titles ===== */
+  /* ===== Shared: animated hex-gradient frame behind cards/titles ===== */
 
-.hex-frame {
+  .hex-frame {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     clip-path: var(--clip-hex);
     background: linear-gradient(
-        135deg,
-        color-mix(in oklch, var(--color-red)    calc(var(--hex-frame-opacity) * 100%), transparent),
-        color-mix(in oklch, var(--color-blue)   calc(var(--hex-frame-opacity) * 100%), transparent),
-        color-mix(in oklch, var(--color-yellow) calc(var(--hex-frame-opacity) * 100%), transparent),
-        color-mix(in oklch, var(--color-green)  calc(var(--hex-frame-opacity) * 100%), transparent)
+      135deg,
+      color-mix(
+        in oklch,
+        var(--color-red) calc(var(--hex-frame-opacity) * 100%),
+        transparent
+      ),
+      color-mix(
+        in oklch,
+        var(--color-blue) calc(var(--hex-frame-opacity) * 100%),
+        transparent
+      ),
+      color-mix(
+        in oklch,
+        var(--color-yellow) calc(var(--hex-frame-opacity) * 100%),
+        transparent
+      ),
+      color-mix(
+        in oklch,
+        var(--color-green) calc(var(--hex-frame-opacity) * 100%),
+        transparent
+      )
     );
     z-index: -1;
-    animation: hexFramePulse 4s ease-in-out infinite;
+    animation: hex-frame-pulse 4s ease-in-out infinite;
     pointer-events: none;
-}
+  }
 
-/* ===== Utility ===== */
+  /* ===== Utility ===== */
 
-.app-root {
+  .app-root {
     width: 100%;
     height: 100vh;
     height: 100dvh;
@@ -199,40 +80,10 @@ body {
     flex-direction: column;
     background-color: var(--bg-primary);
     position: relative;
-}
+  }
 
-/* Theme toggle */
-.theme-toggle {
-    position: fixed;
-    top: 12px;
-    right: 12px;
-    z-index: 100;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-elevated);
-    color: var(--text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  :where(button, a, [role="button"], input):focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+  }
 }
-
-/* The game screen has the switch in its own menu: this one would float over it. */
-.app-page:has(.game-layout) ~ .theme-toggle {
-    display: none;
-}
-
-.theme-toggle:hover {
-    transform: scale(1.1);
-    box-shadow: var(--shadow-md);
-}
-
-.theme-toggle:active {
-    transform: scale(0.95);
-}
-

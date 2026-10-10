@@ -22,13 +22,13 @@ pub fn Learn() -> Element {
             main { class: "learn-shell",
                 header { class: "learn-header",
                     button {
-                        class: "learn-back",
+                        class: "button button-ghost learn-back",
                         onclick: move |_| { let _ = nav.push(Route::MainMenu {}); },
                         "← Menu"
                     }
                 }
                 div { class: "learn-heading",
-                    h1 { "LEARN TANTRIX" }
+                    h1 { class: "brand-heading", "LEARN TANTRIX" }
                     p { "Five quick moves. Then you’re ready." }
                 }
                 div { class: "learn-progress", aria_label: "Lesson {step() + 1} of {STEPS}",
@@ -39,7 +39,7 @@ pub fn Learn() -> Element {
                         }
                     }
                 }
-                section { class: "learn-card",
+                section { class: "surface surface-raised surface-blur learn-card",
                     match step() {
                         0 => rsx! { OverviewLesson {} },
                         1 => rsx! { MatchLesson {} },
@@ -50,20 +50,20 @@ pub fn Learn() -> Element {
                 }
                 nav { class: "learn-nav", aria_label: "Lesson navigation",
                     button {
-                        class: "learn-nav-back",
+                        class: "button button-ghost learn-nav-back",
                         disabled: step() == 0,
                         onclick: move |_| step.set(step().saturating_sub(1)),
                         "← Previous"
                     }
                     if step() + 1 == STEPS {
                         button {
-                            class: "learn-nav-next",
+                            class: "button button-primary learn-nav-next",
                             onclick: move |_| { let _ = nav.push(Route::LocalGame { seed: None }); },
                             "Play a game →"
                         }
                     } else {
                         button {
-                            class: "learn-nav-next",
+                            class: "button button-primary learn-nav-next",
                             onclick: move |_| step.set((step() + 1).min(STEPS - 1)),
                             "Next →"
                         }
@@ -85,13 +85,13 @@ fn OverviewLesson() -> Element {
             p { class: "learn-hint", "Tap a color to trace it. Tap again to clear." }
             div { class: "learn-actions",
                 button {
-                    class: "learn-choice color-blue",
+                    class: "button learn-choice color-blue",
                     class: if color() == Some(Color::Blue) { "is-active" },
                     onclick: move |_| color.set(if color() == Some(Color::Blue) { None } else { Some(Color::Blue) }),
                     "Blue"
                 }
                 button {
-                    class: "learn-choice color-red",
+                    class: "button learn-choice color-red",
                     class: if color() == Some(Color::Red) { "is-active" },
                     onclick: move |_| color.set(if color() == Some(Color::Red) { None } else { Some(Color::Red) }),
                     "Red"
@@ -123,7 +123,7 @@ fn MatchLesson() -> Element {
             p { class: "learn-hint", "Rotate until the edges match." }
             div { class: "learn-actions",
                 button {
-                    class: "learn-choice",
+                    class: "button learn-choice",
                     onclick: move |_| rotation.set(Rotation::from(rotation() as i8 + 1)),
                     "Rotate 60° ↻"
                 }
@@ -154,20 +154,20 @@ fn ForcedLesson() -> Element {
             p { class: "learn-hint", "Forced → one free move → forced again. Draw after each tile while the bag has tiles." }
             div { class: "learn-actions",
                 button {
-                    class: "learn-choice",
-                    class: if phase() == 0 { "learn-choice-primary" },
+                    class: "button learn-choice",
+                    class: if phase() == 0 { "button-primary" },
                     disabled: phase() != 0,
                     onclick: move |_| phase.set(1),
                     "Fill gap"
                 }
                 button {
-                    class: "learn-choice",
-                    class: if phase() == 1 { "learn-choice-primary" },
+                    class: "button learn-choice",
+                    class: if phase() == 1 { "button-primary" },
                     disabled: phase() != 1,
                     onclick: move |_| phase.set(2),
                     "Free move"
                 }
-                button { class: "learn-reset", onclick: move |_| phase.set(0), "Reset ↺" }
+                button { class: "button button-ghost learn-reset", onclick: move |_| phase.set(0), "Reset ↺" }
             }
             span { class: "learn-sr-only", role: "status",
                 if phase() == 2 { "Free move complete. Fill any new forced gaps." }
@@ -196,13 +196,15 @@ fn EndgameLesson() -> Element {
             p { class: "learn-hint", "Bag empty? " strong { "Restrictions lift." } " Forced gaps and matching edges stay. Here, your tile cannot fill the gap." }
         }
         div { class: "learn-example",
-            div { class: "learn-switch", role: "group", aria_label: "Tiles left in bag",
+            div { class: "segmented-control learn-switch", role: "group", aria_label: "Tiles left in bag",
                 button {
+                    class: "button button-small button-ghost segment",
                     class: if !bag_empty() { "is-active" } else { "" },
                     onclick: move |_| bag_empty.set(false),
                     "Bag has tiles"
                 }
                 button {
+                    class: "button button-small button-ghost segment",
                     class: if bag_empty() { "is-active" } else { "" },
                     onclick: move |_| bag_empty.set(true),
                     "Bag empty"
@@ -235,8 +237,8 @@ fn ScoreLesson() -> Element {
             p { class: "learn-rule", "Longest " strong { "line" } ": 1 per tile. Longest " strong { "loop" } ": 2 per tile." }
             p { class: "learn-hint", "Only your best single path counts." }
             div { class: "learn-actions",
-                button { class: "learn-choice color-blue", onclick: move |_| loop_mode.set(false), "Trace line" }
-                button { class: "learn-choice color-red", onclick: move |_| loop_mode.set(true), "Trace loop" }
+                button { class: "button learn-choice color-blue", onclick: move |_| loop_mode.set(false), "Trace line" }
+                button { class: "button learn-choice color-red", onclick: move |_| loop_mode.set(true), "Trace loop" }
             }
             p { class: "learn-score", class: if loop_mode() { "is-loop" },
                 if loop_mode() { "6 tiles × 2 = 12" } else { "3 tiles × 1 = 3" }

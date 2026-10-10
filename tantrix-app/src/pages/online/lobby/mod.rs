@@ -85,7 +85,7 @@ pub fn OnlineLobbyView(
                     }
                     if my_color().is_some() {
                         button {
-                            class: "lobby-release-btn",
+                            class: "button button-small button-secondary lobby-release-btn",
                             onclick: move |_| {
                                 if let Some(s) = sender.read().as_ref() {
                                     s.send(SessionCommand::PickColor(None));

@@ -11,8 +11,8 @@ pub fn MenuButton(
 ) -> Element {
     rsx! {
         button {
-            class: "title-btn title-btn-primary",
-            class: if full_width { "menu-button-full" },
+            class: "button button-primary button-large title-btn title-btn-primary",
+            class: if full_width { "button-full" },
             disabled,
             onclick: move |_| on_click.call(()),
             div { class: "title-btn-inner", {children} }

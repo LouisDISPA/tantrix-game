@@ -38,18 +38,18 @@ pub fn OnlineSeatTakeover(
     }
 
     rsx! {
-        div { class: "seat-takeover", role: "group", "aria-label": "Take a seat",
+        div { class: "surface surface-raised surface-blur seat-takeover", role: "group", "aria-label": "Take a seat",
             span { class: "seat-takeover-title", "You're watching · take a seat:" }
             for seat in seats.read().iter().cloned() {
                 button {
                     key: "{seat.color:?}",
-                    class: "seat-takeover-btn color-{color_slug(seat.color)}",
+                    class: "button button-small button-ghost seat-takeover-btn color-{color_slug(seat.color)}",
                     class: if !seat.online { "offline" },
                     onclick: {
                         let seat = seat.clone();
                         move |_| confirming.set(Some(seat.clone()))
                     },
-                    span { class: "seat-takeover-dot" }
+                    span { class: "color-swatch seat-takeover-dot" }
                     "{seat.color} · {seat.nickname}"
                     if !seat.online {
                         span { class: "seat-takeover-offline", " (offline)" }

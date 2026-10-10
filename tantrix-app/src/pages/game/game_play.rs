@@ -93,7 +93,7 @@ pub fn GamePlay(children: Element) -> Element {
             div { class: "board-slot", TurnBanner {} Board {} }
 
             section {
-                class: "hand-panel",
+                class: "surface surface-blur hand-panel",
                 role: "tablist",
                 aria_label: "Players' tiles",
                 for color in seats.read().iter().copied() {

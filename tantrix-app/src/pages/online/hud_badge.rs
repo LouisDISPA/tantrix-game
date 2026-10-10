@@ -17,10 +17,10 @@ pub fn OnlineHudBadge(state: Store<OnlineState>) -> Element {
         }
     });
     rsx! {
-        div { class: "online-hud-badge",
+        div { class: "surface surface-blur online-hud-badge",
             span { class: "hud-chip-conn-dot {label_and_dot().1}" }
             span { class: "hud-chip-conn-label", "{label_and_dot().0}" }
-            span { class: "hud-chip-room", "{state.room_code()}" }
+            span { class: "badge badge-code hud-chip-room", "{state.room_code()}" }
         }
     }
 }

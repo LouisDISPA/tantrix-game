@@ -33,7 +33,7 @@ pub fn ShareChip(url: ReadSignal<String>) -> Element {
 
     rsx! {
         button {
-            class: "lobby-share-chip",
+            class: "button button-secondary lobby-share-chip",
             class: if copied() { "copied" },
             onclick: on_click,
             span { class: "lobby-share-label",

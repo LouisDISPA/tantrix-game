@@ -58,7 +58,7 @@ fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
                 }
             },
             div { class: "results-player",
-                div { class: "results-color-swatch" }
+                div { class: "color-swatch results-color-swatch" }
                 span { class: "results-name", "{color}" }
             }
             span {
@@ -93,8 +93,8 @@ pub fn ScoresPanel(children: Element) -> Element {
     let winners = use_memo(move || ctx.game_state.read().winners_from(&scores.read()));
 
     rsx! {
-        section { class: "results-panel",
-            div { class: "board-results-card",
+        section { class: "surface surface-raised surface-blur results-panel",
+            div { class: "surface surface-raised surface-blur board-results-card",
 
                 div { class: "results-header",
                     if winners.read().len() > 1 {

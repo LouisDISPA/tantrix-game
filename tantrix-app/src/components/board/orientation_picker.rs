@@ -54,8 +54,8 @@ pub fn OrientationPicker(
         if let Some(Orientations { tile, rotations }) = orientations() {
             {
                 let (class, style) = match placement() {
-                    Some(at) => (format!("orientation-card {}", at.side.css_class()), at.style()),
-                    None => ("orientation-card unplaced".to_string(), size_style()),
+                    Some(at) => (format!("surface surface-blur orientation-card {}", at.side.css_class()), at.style()),
+                    None => ("surface surface-blur orientation-card unplaced".to_string(), size_style()),
                 };
 
                 rsx! {
@@ -67,7 +67,7 @@ pub fn OrientationPicker(
                         for rot in rotations {
                             button {
                                 key: "{rot:?}",
-                                class: "orientation-option",
+                                class: "button button-secondary orientation-option",
                                 "data-rotation": "{rot:?}",
                                 aria_label: "Choose rotation",
                                 onclick: move |_| pick_rotation(ctx, rot),

@@ -39,10 +39,11 @@ pub fn OnlineEntry() -> Element {
                             "Create a room"
                         }
 
-                        div { class: "online-join",
-                            label { class: "online-field",
-                                span { "Join code" }
+                        div { class: "surface surface-inset online-join",
+                            label { class: "field-group online-field",
+                                span { class: "field-label", "Join code" }
                                 input {
+                                    class: "field",
                                     r#type: "text",
                                     maxlength: "{ROOM_CODE_LEN}",
                                     placeholder: "ABCXYZ",
@@ -67,7 +68,7 @@ pub fn OnlineEntry() -> Element {
                     }
 
                     if let Some(err) = error.read().clone() {
-                        p { class: "online-error", {err} }
+                        p { class: "alert-banner online-error", {err} }
                     }
 
                 }
@@ -109,7 +110,7 @@ pub fn JoinRoom(code: String) -> Element {
                     if code_is_valid {
                         p { class: "lobby-waiting", "Connecting…" }
                     } else {
-                        p { class: "online-error", "This link doesn't look like a valid room code." }
+                        p { class: "alert-banner online-error", "This link doesn't look like a valid room code." }
                         MenuButton {
                             full_width: true,
                             on_click: move |_| { let _ = nav.push(Route::OnlineEntry {}); },

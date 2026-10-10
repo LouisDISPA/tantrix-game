@@ -17,7 +17,7 @@ pub fn ConfirmDialog(
             class: "modal-backdrop",
             onclick: move |_| on_cancel.call(()),
             div {
-                class: "modal",
+                class: "surface surface-raised surface-blur modal",
                 role: "dialog",
                 "aria-modal": "true",
                 "aria-labelledby": "modal-title",
@@ -35,7 +35,7 @@ pub fn ConfirmDialog(
                 p { class: "modal-message", {message} }
                 div { class: "modal-actions",
                     button {
-                        class: "modal-btn",
+                        class: "button button-secondary modal-btn",
                         // Focus the safe choice so Escape/Enter work at once;
                         // `autofocus` only applies on page load.
                         onmounted: move |e| async move {
@@ -45,7 +45,7 @@ pub fn ConfirmDialog(
                         "Cancel"
                     }
                     button {
-                        class: "modal-btn modal-btn-primary",
+                        class: "button button-primary modal-btn modal-btn-primary",
                         onclick: move |_| on_confirm.call(()),
                         {confirm_label}
                     }

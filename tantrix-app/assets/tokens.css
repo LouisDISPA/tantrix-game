@@ -1,0 +1,243 @@
+@layer tokens {
+  /* ===== Theme-independent tokens ===== */
+
+  :root {
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 32px;
+    --space-8: 48px;
+    --radius-small: 6px;
+    --radius-control: 8px;
+    --radius-panel: 14px;
+    --radius-menu: var(--radius-panel);
+    --radius-pill: 999px;
+    --text-xs: 0.6875rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --motion-fast: 150ms;
+    --motion-normal: 200ms;
+    --motion-slow: 300ms;
+    --motion-enter: 350ms;
+    /* Paired with MenuCard's BACK_EXIT so navigation waits for its exit. */
+    --motion-menu-exit: 180ms;
+    --layer-modal: 100;
+    /* Pointy-top hex clip-path, reused for frames and swatches */
+    --clip-hex: polygon(
+      50% 0%,
+      93.3% 25%,
+      93.3% 75%,
+      50% 100%,
+      6.7% 75%,
+      6.7% 25%
+    );
+    /* Opacity for the animated hex-gradient frame behind cards / titles */
+    --hex-frame-opacity: 0.1;
+
+    /* Game colors — oklch with matched perceptual luminance & chroma. The
+      same in both themes, and defined here so tokens derived on :root
+      (the --glow-* tints below) can resolve them. */
+    --color-red: oklch(0.65 0.26 25);
+    --color-blue: oklch(0.65 0.26 250);
+    --color-yellow: oklch(0.83 0.26 80);
+    --color-green: oklch(0.65 0.26 160);
+  }
+
+  [data-theme="dark"] {
+    --hex-frame-opacity: 0.16;
+  }
+
+  /* Glow tints derived from the game colors. Uses --glow-alpha so callers
+    can dial the intensity without recomputing the whole color. */
+  :root {
+    --glow-alpha: 0.4;
+    --glow-red: color-mix(
+      in oklch,
+      var(--color-red) calc(var(--glow-alpha) * 100%),
+      transparent
+    );
+    --glow-blue: color-mix(
+      in oklch,
+      var(--color-blue) calc(var(--glow-alpha) * 100%),
+      transparent
+    );
+    --glow-yellow: color-mix(
+      in oklch,
+      var(--color-yellow) calc(var(--glow-alpha) * 100%),
+      transparent
+    );
+    --glow-green: color-mix(
+      in oklch,
+      var(--color-green) calc(var(--glow-alpha) * 100%),
+      transparent
+    );
+  }
+
+  /* Per-color utility classes. Tag any element with `.color-<slug>` to set
+    the scoped color-driven custom properties (--player-color, --seat-color,
+    --turn-color) that descendants read. Lets components encode their player
+    color via a class instead of an inline `style`. */
+  .color-red {
+    --player-color: var(--color-red);
+    --seat-color: var(--color-red);
+    --turn-color: var(--color-red);
+  }
+  .color-blue {
+    --player-color: var(--color-blue);
+    --seat-color: var(--color-blue);
+    --turn-color: var(--color-blue);
+  }
+  .color-yellow {
+    --player-color: var(--color-yellow);
+    --seat-color: var(--color-yellow);
+    --turn-color: var(--color-yellow);
+  }
+  .color-green {
+    --player-color: var(--color-green);
+    --seat-color: var(--color-green);
+    --turn-color: var(--color-green);
+  }
+
+  /* ===== Theme Variables =====
+    The theme attribute sits on `.app-root`. Each block also matches the
+    document root while the app shows that theme, so <body> (the page canvas
+    behind the app) reads the same tokens. `:is()` keeps a browser without
+    `:has()` on the `.app-root` match instead of dropping the rule. */
+
+  :is([data-theme="light"], :root:has(.app-root[data-theme="light"])) {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f5;
+    --bg-board: #fafafa;
+    --bg-card: #ffffff;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666666;
+    --text-muted: #999999;
+    --border-color: #e0e0e0;
+    --border-light: #eeeeee;
+    --border-subtle: rgba(0, 0, 0, 0.08);
+    --hex-outline: #555555;
+    --hex-outline-light: #aaaaaa;
+    --hex-empty: rgba(0, 0, 0, 0.04);
+    --overlay: rgba(0, 0, 0, 0.45);
+    --status-error: oklch(0.55 0.2 25);
+    --status-success: oklch(0.5 0.18 150);
+
+    /* One quiet depth for floating panels; controls stay flat. */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.1);
+    --shadow-lg: var(--shadow-md);
+    --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+
+    /* Surfaces */
+    --surface-primary: #ffffff;
+    --surface-secondary: #f5f5f5;
+    --surface-elevated: #ffffff;
+
+    /* Buttons */
+    --btn-primary-bg: linear-gradient(160deg, #2d2d2d, #484040);
+    --btn-primary-hover: linear-gradient(160deg, #393939, #554b4b);
+    --btn-primary-text: #ffffff;
+    --btn-secondary-bg: #f0f0f0;
+    --btn-secondary-hover: #e4e4e4;
+    --btn-secondary-text: #1a1a1a;
+    --btn-disabled-bg: #f0f0f0;
+    --btn-disabled-text: #aaaaaa;
+
+    /* Tile — black with lighter border for separation */
+    --tile-fill: #1a1a1a;
+    --tile-fill-light: #2a2a2a;
+    --tile-fill-dark: #0e0e0e;
+    --tile-stroke: #3a3a3a;
+
+    --hand-bg: #f5f5f5;
+    --hand-active-glow: rgba(0, 0, 0, 0.06);
+    --hand-header-text: #ffffff;
+  }
+
+  :is([data-theme="dark"], :root:has(.app-root[data-theme="dark"])) {
+    --bg-primary: #121212;
+    --bg-secondary: #1a1a1a;
+    --bg-board: #161616;
+    --bg-card: #1e1e1e;
+    --text-primary: #e0e0e0;
+    --text-secondary: #909090;
+    --text-muted: #585858;
+    --border-color: #2a2a2a;
+    --border-light: #333333;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --hex-outline: #555555;
+    --hex-outline-light: #444444;
+    --hex-empty: rgba(255, 255, 255, 0.04);
+    --overlay: rgba(0, 0, 0, 0.65);
+    --status-error: oklch(0.72 0.18 25);
+    --status-success: oklch(0.75 0.18 150);
+
+    /* One quiet depth for floating panels; controls stay flat. */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.18);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+    --shadow-lg: var(--shadow-md);
+    --glass-hi: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+
+    /* Surfaces */
+    --surface-primary: #141414;
+    --surface-secondary: #1c1c1c;
+    --surface-elevated: #222222;
+
+    /* Buttons */
+    --btn-primary-bg: linear-gradient(160deg, #f5f0e8, #ffffff);
+    --btn-primary-hover: linear-gradient(160deg, #ffffff, #f5f0e8);
+    --btn-primary-text: #121212;
+    --btn-secondary-bg: #2a2a2a;
+    --btn-secondary-hover: #333333;
+    --btn-secondary-text: #e0e0e0;
+    --btn-disabled-bg: #1e1e1e;
+    --btn-disabled-text: #4a4a4a;
+
+    /* Tile — black with lighter border for separation */
+    --tile-fill: #141414;
+    --tile-fill-light: #222222;
+    --tile-fill-dark: #0a0a0a;
+    --tile-stroke: #333333;
+
+    --hand-bg: #1a1a1a;
+    --hand-active-glow: rgba(255, 255, 255, 0.04);
+    --hand-header-text: #ffffff;
+  }
+
+  /* The board's backdrop: a faint hex grid, painted by the game screen. */
+  :root {
+    --board-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='230'%3E%3Cpolygon points='100,0 173.2,37.5 173.2,112.5 100,150 26.8,112.5 26.8,37.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='200,115 273.2,152.5 273.2,227.5 200,265 126.8,227.5 126.8,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3Cpolygon points='0,115 73.2,152.5 73.2,227.5 0,265 -73.2,227.5 -73.2,152.5' fill='none' stroke='%23888' stroke-width='1' opacity='0.22'/%3E%3C/svg%3E");
+  }
+
+  /* Materials are shared by menu cards and game overlays. */
+  :is([data-theme], :root:has(.app-root[data-theme])) {
+    --glass: color-mix(in srgb, var(--surface-elevated) 84%, transparent);
+    --glass-strong: color-mix(
+      in srgb,
+      var(--surface-elevated) 94%,
+      transparent
+    );
+    --glass-solid: color-mix(in srgb, var(--surface-elevated) 94%, transparent);
+    --glass-line: color-mix(in srgb, var(--text-primary) 10%, transparent);
+    --glass-filter: blur(12px) saturate(1.05);
+    --surface-inset: color-mix(
+      in srgb,
+      var(--surface-elevated) 60%,
+      var(--btn-secondary-bg)
+    );
+    --focus-ring: var(--color-blue);
+    --brand-gradient: linear-gradient(
+      90deg in oklch,
+      var(--color-red),
+      var(--color-blue),
+      var(--color-yellow),
+      var(--color-green),
+      var(--color-red)
+    );
+  }
+}

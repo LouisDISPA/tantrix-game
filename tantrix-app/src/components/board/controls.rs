@@ -22,7 +22,7 @@ pub fn ZoomControls() -> Element {
             // The steps stop their click, so the menu they sit in stays open
             // for the next one.
             button {
-                class: "zoom-btn zoom-step",
+                class: "button button-ghost segment zoom-btn zoom-step",
                 title: "Zoom out",
                 onclick: move |evt| {
                     evt.stop_propagation();
@@ -31,7 +31,7 @@ pub fn ZoomControls() -> Element {
                 "−"
             }
             button {
-                class: "zoom-btn zoom-label",
+                class: "button button-ghost segment zoom-btn zoom-label",
                 title: "Reset zoom",
                 onclick: move |evt| {
                     evt.stop_propagation();
@@ -40,7 +40,7 @@ pub fn ZoomControls() -> Element {
                 "{percent}%"
             }
             button {
-                class: "zoom-btn zoom-step",
+                class: "button button-ghost segment zoom-btn zoom-step",
                 title: "Zoom in",
                 onclick: move |evt| {
                     evt.stop_propagation();
@@ -49,7 +49,7 @@ pub fn ZoomControls() -> Element {
                 "+"
             }
             button {
-                class: "zoom-btn zoom-fit",
+                class: "button button-ghost segment zoom-btn zoom-fit",
                 title: "Fit board",
                 onclick: move |_| {
                     let placed: Vec<Position> = ctx
@@ -80,7 +80,7 @@ pub fn EndGameButton(on_click: EventHandler<()>) -> Element {
 
     rsx! {
         button {
-            class: "board-ctrl-btn end-game-btn",
+            class: "button button-ghost board-ctrl-btn end-game-btn",
             title: "End game",
             onclick: move |_| on_click.call(()),
             "End Game"

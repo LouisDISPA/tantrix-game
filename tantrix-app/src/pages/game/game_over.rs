@@ -30,12 +30,12 @@ pub fn GameOver(
 
             ScoresPanel {
                 button {
-                    class: "results-btn results-btn-primary",
+                    class: "button button-primary results-btn results-btn-primary",
                     onclick: move |_| on_again.call(()),
                     {again_label}
                 }
                 button {
-                    class: "results-btn results-btn-secondary",
+                    class: "button button-secondary results-btn results-btn-secondary",
                     onclick: move |_| {
                         let _ = nav.push(Route::MainMenu {});
                     },

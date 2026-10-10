@@ -39,7 +39,7 @@ pub fn ColorChip(
 
     rsx! {
         button {
-            class: "lobby-color-chip {state_class} {color_class}",
+            class: "surface surface-inset lobby-color-chip {state_class} {color_class}",
             onclick: move |_| on_click.call(()),
             ColorSwatch { color, large: true, selected: is_mine }
             div { class: "lobby-color-meta",
@@ -51,11 +51,11 @@ pub fn ColorChip(
                 }
             }
             if is_mine {
-                span { class: "lobby-color-tag", "You" }
+                span { class: "badge badge-color lobby-color-tag", "You" }
             } else if taken {
-                span { class: "lobby-color-tag dim", "Taken" }
+                span { class: "badge badge-color lobby-color-tag dim", "Taken" }
             } else if state == ColorChipState::Offline {
-                span { class: "lobby-color-tag dim", "Offline" }
+                span { class: "badge badge-color lobby-color-tag dim", "Offline" }
             }
         }
     }

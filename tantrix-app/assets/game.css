@@ -1,23 +1,24 @@
-/* ===== The game screen =====
-   One component tree for every screen; the layout below picks how it is laid
-   out:
+@layer features {
+  /* ===== The game screen =====
+    One component tree for every screen; the layout below picks how it is laid
+    out:
 
      stack  (default)       HUD row / board / hand panel, in a column
      side   (landscape)     the HUD row on top, the board beside a panel column
      desk   (desk.css)      a top bar, the board, a rack under it and a rail of
-                            the other players beside it: a landscape window at
-                            least 900 x 640
+                the other players beside it: a landscape window at
+                least 900 x 640
 
-   In stack and side the panel is a row of tabs over the shown seat's tiles.
+    In stack and side the panel is a row of tabs over the shown seat's tiles.
 
-   On every layout the board is the screen: its backdrop is the game screen's
-   own, nothing clips it but the window, and the HUD and the panel are glass
-   cards floating over it. The camera frames the board in its grid cell (the
-   space the cards leave), so a legal spot never hides under a card. */
+    On every layout the board is the screen: its backdrop is the game screen's
+    own, nothing clips it but the window, and the HUD and the panel are glass
+    cards floating over it. The camera frames the board in its grid cell (the
+    space the cards leave), so a legal spot never hides under a card. */
 
-/* ===== Shell ===== */
+  /* ===== Shell ===== */
 
-.game-layout {
+  .game-layout {
     --side-w: clamp(232px, 28vw, 360px);
     display: grid;
     box-sizing: border-box;
@@ -27,56 +28,59 @@
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas:
-        "hud"
-        "board"
-        "panel";
+      "hud"
+      "board"
+      "panel";
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     /* The board runs past the window, so this clips and never scrolls: focus
-       or a scroll-into-view on a hex out there must not slide the screen. */
+      or a scroll-into-view on a hex out there must not slide the screen. */
     overflow: hidden;
     overflow: clip;
-
-    /* The glass the cards are made of: translucent, hairline-lit. */
-    --glass: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
-    --glass-strong: color-mix(in srgb, var(--surface-elevated) 88%, transparent);
-    --glass-line: color-mix(in srgb, var(--text-primary) 11%, transparent);
-    --glass-hi: inset 0 1px 0 color-mix(in srgb, #fff 8%, transparent);
 
     /* The board's backdrop, lit from the middle. */
     background-color: var(--bg-board);
     background-image:
-        var(--board-pattern),
-        radial-gradient(130% 90% at 50% 40%, color-mix(in srgb, var(--text-primary) 6%, transparent), transparent 70%);
-}
+      var(--board-pattern),
+      radial-gradient(
+        130% 90% at 50% 40%,
+        color-mix(in srgb, var(--text-primary) 6%, transparent),
+        transparent 70%
+      );
+  }
 
-.game-hud {
+  .game-hud {
     grid-area: hud;
     z-index: 7;
-}
+  }
 
-.board-slot {
+  .board-slot {
     position: relative;
     grid-area: board;
     min-width: 0;
     min-height: 0;
     z-index: 0;
-}
+  }
 
-
-.hand-panel,
-.results-panel {
+  .hand-panel,
+  .results-panel {
     grid-area: panel;
     z-index: 6;
-}
+  }
 
-.players-2 { --seats: 2; }
-.players-3 { --seats: 3; }
-.players-4 { --seats: 4; }
+  .players-2 {
+    --seats: 2;
+  }
+  .players-3 {
+    --seats: 3;
+  }
+  .players-4 {
+    --seats: 4;
+  }
 
-/* ===== HUD row ===== */
+  /* ===== HUD row ===== */
 
-.game-hud {
+  .game-hud {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -84,214 +88,205 @@
     min-height: 52px;
     box-sizing: border-box;
     padding: calc(env(safe-area-inset-top) + 6px) 4px 6px 12px;
-}
+  }
 
-.hud-spacer {
+  .hud-spacer {
     flex: 1 1 0;
     min-width: 0;
-}
+  }
 
-/* The pill: whose turn, what to do, the bag. Dark in both themes, with light
-   text, so it reads on a pale board as well as a dark one. */
-.hud-chip,
-.online-hud-badge {
+  /* The turn and connection panels use the shared glass material. */
+  .hud-chip,
+  .online-hud-badge {
+    --surface-bg: var(--glass-strong);
+    --surface-radius: var(--radius-panel);
     display: flex;
     align-items: center;
     gap: 10px;
     box-sizing: border-box;
     height: 40px;
     padding: 0 16px;
-    background: #262626;
-    border: 1px solid var(--border-subtle);
-    border-radius: 999px;
-    box-shadow: var(--shadow-sm);
-    white-space: nowrap;
-    color: #fff;
-}
 
-.hud-chip {
+    white-space: nowrap;
+    color: var(--text-primary);
+  }
+
+  .hud-chip {
     flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
-}
+  }
 
-.online-hud-badge {
+  .online-hud-badge {
     flex: none;
     gap: 8px;
     padding: 0 12px;
-}
+  }
 
-.hud-chip-player {
+  .hud-chip-player {
     display: flex;
     align-items: center;
     gap: 7px;
     flex-shrink: 0;
-}
+  }
 
-.hud-chip-dot {
+  .hud-chip-dot {
     width: 14px;
     height: 14px;
-    flex-shrink: 0;
-    clip-path: var(--clip-hex);
-    background: var(--turn-color);
-}
+  }
 
-.hud-chip-name {
+  .hud-chip-name {
     font-size: 13px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: #fff;
-}
+    color: var(--text-primary);
+  }
 
-.hud-chip-sep {
+  .hud-chip-sep {
     font-size: 11px;
-    color: rgba(255, 255, 255, 0.35);
+    color: var(--text-muted);
     flex-shrink: 0;
     user-select: none;
-}
+  }
 
-.hud-chip-phase {
+  .hud-chip-phase {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 13px;
     font-weight: 400;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-secondary);
     transition: color 0.2s ease;
-}
+  }
 
-.hud-chip-phase.alert {
-    color: #ff7a6b;
+  .hud-chip-phase.alert {
+    color: var(--status-error);
     font-weight: 600;
-}
+  }
 
-/* A short hint where the pill is tight, the full one where there is room. */
-.hud-long { display: none; }
-.hud-short { display: inline; }
+  /* A short hint where the pill is tight, the full one where there is room. */
+  .hud-long {
+    display: none;
+  }
+  .hud-short {
+    display: inline;
+  }
 
-/* Whose tiles are peeked at: said in the pill only where the hint is not
-   (desk.css); a phone's tabs already show it. */
-.hud-viewing { display: none; }
+  /* Whose tiles are peeked at: said in the pill only where the hint is not
+    (desk.css); a phone's tabs already show it. */
+  .hud-viewing {
+    display: none;
+  }
 
-.hud-chip-bag {
+  .hud-chip-bag {
     font-size: 11px;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.62);
+    color: var(--text-secondary);
     letter-spacing: 0.5px;
     flex-shrink: 0;
-}
+  }
 
-.hud-chip-conn-dot {
+  .hud-chip-conn-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
-}
+  }
 
-.hud-chip-conn-dot.live {
-    background: oklch(0.68 0.22 150);
-    box-shadow: 0 0 8px color-mix(in oklch, oklch(0.68 0.22 150), transparent 50%);
-}
+  .hud-chip-conn-dot.live {
+    background: var(--status-success);
+    box-shadow: 0 0 8px
+      color-mix(in oklch, var(--status-success), transparent 50%);
+  }
 
-.hud-chip-conn-dot.ended {
+  .hud-chip-conn-dot.ended {
     background: var(--text-muted);
-}
+  }
 
-.hud-chip-conn-label {
+  .hud-chip-conn-label {
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.5px;
-    color: #fff;
-}
+    color: var(--text-primary);
+  }
 
-.hud-chip-room {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 11px;
+  .hud-chip-room {
+    font-size: var(--text-xs);
     font-weight: 700;
     letter-spacing: 2.2px;
     padding: 2px 7px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.14);
-    color: #fff;
-    flex-shrink: 0;
-}
+  }
 
-/* Back, while a tile is being placed. */
-.hud-back {
-    flex: none;
-    width: 44px;
-    height: 44px;
-    display: grid;
-    place-items: center;
-    border: 0;
-    border-radius: 50%;
-    background: var(--surface-elevated);
-    color: var(--text-primary);
-    font-size: 18px;
-    box-shadow: var(--shadow-sm);
-    cursor: pointer;
-}
+  /* Back, while a tile is being placed. */
+  .hud-back {
+    --button-size: 18px;
+  }
 
-@media (min-width: 480px) {
-    .hud-long { display: inline; }
-    .hud-short { display: none; }
-}
+  @media (min-width: 480px) {
+    .hud-long {
+      display: inline;
+    }
+    .hud-short {
+      display: none;
+    }
+  }
 
-@media (max-width: 520px) {
-    .hud-chip-conn-label { display: none; }
-}
+  @media (max-width: 520px) {
+    .hud-chip-conn-label {
+      display: none;
+    }
+  }
 
-/* On a phone the online badge is just its dot: the hint needs the room. */
-@media (max-width: 480px) {
-    .online-hud-badge .hud-chip-room { display: none; }
-    .online-hud-badge { padding: 0 10px; }
-}
+  /* On a phone the online badge is just its dot: the hint needs the room. */
+  @media (max-width: 480px) {
+    .online-hud-badge .hud-chip-room {
+      display: none;
+    }
+    .online-hud-badge {
+      padding: 0 10px;
+    }
+  }
 
-/* A narrow phone: the pill tightens (with Back beside it) so the hint keeps its room. */
-@media (max-width: 400px) {
+  /* A narrow phone: the pill tightens (with Back beside it) so the hint keeps its room. */
+  @media (max-width: 400px) {
     .hud-chip {
-        gap: 7px;
-        padding: 0 12px;
+      gap: 7px;
+      padding: 0 12px;
     }
 
     .hud-chip-name {
-        font-size: 12px;
-        letter-spacing: 1px;
+      font-size: 12px;
+      letter-spacing: 1px;
     }
 
-    .hud-bag-label { display: none; }
-}
+    .hud-bag-label {
+      display: none;
+    }
+  }
 
-/* ===== Menu ===== */
+  /* ===== Menu ===== */
 
-.hud-menu {
+  .hud-menu {
     position: relative;
     flex: none;
     display: flex;
     align-items: center;
-}
+  }
 
-.hud-menu-toggle {
-    width: 44px;
-    height: 44px;
-    display: grid;
-    place-items: center;
-    border: 0;
-    border-radius: 50%;
-    background: none;
-    color: var(--text-secondary);
-    font-size: 22px;
-    cursor: pointer;
-}
+  .hud-menu-toggle {
+    --button-size: 22px;
+  }
 
-.hud-menu-backdrop {
+  .hud-menu-backdrop {
     position: fixed;
     inset: 0;
     z-index: 55;
-}
+  }
 
-.hud-menu-items {
+  .hud-menu-items {
+    --surface-bg: var(--glass-strong);
+    --surface-shadow: var(--shadow-lg), var(--glass-hi);
     display: none;
     position: absolute;
     top: 100%;
@@ -302,227 +297,255 @@
     align-items: stretch;
     gap: 4px;
     padding: 8px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 16px;
-    box-shadow: var(--shadow-lg);
-}
+  }
 
-.hud-menu.open .hud-menu-items { display: flex; }
-
-/* Every item is a row of its own in the popover. */
-.hud-menu-items .hud-menu-item,
-.hud-menu-items .board-ctrl-btn {
+  .hud-menu.open .hud-menu-items {
     display: flex;
-    align-items: center;
-    gap: 10px;
+  }
+
+  /* Every item is a row of its own in the popover. */
+  .hud-menu-items .hud-menu-item,
+  .hud-menu-items .board-ctrl-btn {
+    --button-shadow: none;
+    justify-content: flex-start;
     min-height: 44px;
     padding: 0 12px;
-    border: 0;
-    border-radius: 10px;
-    background: none;
-    color: var(--text-primary);
-    font: inherit;
-    font-size: 14px;
+    font-size: var(--text-sm);
     font-weight: 600;
     letter-spacing: 0.3px;
     text-transform: none;
     text-align: left;
-    box-shadow: none;
-    cursor: pointer;
-}
+  }
 
-.hud-menu-items .board-ctrl-btn { color: var(--color-red); }
+  .hud-menu-items .board-ctrl-btn {
+    color: var(--color-red);
+  }
 
-.zoom-controls {
+  .zoom-controls {
     display: flex;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: 12px;
+    border: 1px solid var(--glass-line);
+    border-radius: var(--radius-control);
     overflow: hidden;
-}
+  }
 
-.hud-menu-items .zoom-controls { justify-content: space-between; }
+  .hud-menu-items .zoom-controls {
+    justify-content: space-between;
+  }
 
-.zoom-btn {
+  .zoom-btn {
+    --button-line: transparent;
+    --button-shadow: none;
+    --button-radius: 0;
+    --button-padding: 0 10px;
+    --button-size: 18px;
     min-width: 44px;
     height: 44px;
-    padding: 0 10px;
-    border: 0;
-    background: transparent;
-    color: var(--text-primary);
-    font: inherit;
-    font-size: 18px;
     font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+  }
 
-.zoom-btn.zoom-label {
+  .zoom-btn.zoom-label {
     min-width: 56px;
     font-size: 12px;
     font-weight: 500;
     color: var(--text-secondary);
     border-left: 1px solid var(--border-light);
     border-right: 1px solid var(--border-light);
-}
+  }
 
-.zoom-btn.zoom-fit {
+  .zoom-btn.zoom-fit {
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
     border-left: 1px solid var(--border-light);
-}
+  }
 
-/* Fingers pinch: only Fit is left of the zoom buttons. */
-@media (pointer: coarse) {
+  /* Fingers pinch: only Fit is left of the zoom buttons. */
+  @media (pointer: coarse) {
     .zoom-step,
-    .zoom-label { display: none; }
-}
+    .zoom-label {
+      display: none;
+    }
+  }
 
-@media (hover: hover) {
-    .hud-menu-items .hud-menu-item:hover,
-    .hud-menu-items .board-ctrl-btn:hover,
-    .zoom-btn:hover { background: var(--hand-active-glow); }
-}
-
-/* A wide window has room for the menu's items in the row itself. */
-@media (min-width: 900px) {
-    .hud-menu-toggle { display: none; }
+  /* A wide window has room for the menu's items in the row itself. */
+  @media (min-width: 900px) {
+    .hud-menu-toggle {
+      display: none;
+    }
 
     .hud-menu-items {
-        display: flex;
-        position: static;
-        flex-direction: row;
-        align-items: center;
-        min-width: 0;
-        padding: 0;
-        background: none;
-        border: 0;
-        box-shadow: none;
+      display: flex;
+      position: static;
+      flex-direction: row;
+      align-items: center;
+      min-width: 0;
+      padding: 0;
+      --surface-bg: transparent;
+      --surface-border: 0px;
+      --surface-radius: 0;
+      --surface-shadow: none;
+      --surface-filter: none;
     }
 
     .hud-menu-items .hud-menu-item,
     .hud-menu-items .board-ctrl-btn {
-        min-height: 36px;
-        border: 1px solid var(--border-subtle);
-        background: var(--surface-elevated);
-        box-shadow: var(--shadow-sm);
+      min-height: 36px;
+      border: 1px solid var(--border-subtle);
+      background: var(--surface-elevated);
+      box-shadow: none;
     }
 
-    .zoom-btn { height: 36px; }
-    .theme-toggle-label { display: none; }
-    .hud-menu-items .hud-menu-item { width: 36px; justify-content: center; padding: 0; border-radius: 50%; }
-}
+    .zoom-btn {
+      --button-height: 36px;
+      height: 36px;
+    }
+    .theme-toggle-label {
+      display: none;
+    }
+    .hud-menu-items .hud-menu-item {
+      width: 36px;
+      justify-content: center;
+      padding: 0;
+      border-radius: 50%;
+    }
+  }
 
-/* ===== Hand panel: a row of tabs over the shown seat's tiles ===== */
+  /* ===== Hand panel: a row of tabs over the shown seat's tiles ===== */
 
-.hand-panel {
+  .hand-panel {
+    --surface-shadow: var(--shadow-lg), var(--glass-hi);
     display: grid;
     grid-template-columns: repeat(var(--seats, 2), minmax(0, 1fr));
     align-content: start;
     min-width: 0;
     margin: 0 0.6rem calc(0.6rem + env(safe-area-inset-bottom));
     overflow: hidden;
-    background: var(--glass);
-    -webkit-backdrop-filter: blur(18px) saturate(1.5);
-    backdrop-filter: blur(18px) saturate(1.5);
-    border: 1px solid var(--glass-line);
-    border-radius: 1.3rem;
-    box-shadow: var(--shadow-lg), var(--glass-hi);
-}
+  }
 
-/* The bottom card takes the shown player's color during their turn.
-   :where keeps the desktop rail's .hand-panel reset in control. */
-.hand-panel:where(:has(.player-hand.shown.active.color-red)) { --player-color: var(--color-red); }
-.hand-panel:where(:has(.player-hand.shown.active.color-blue)) { --player-color: var(--color-blue); }
-.hand-panel:where(:has(.player-hand.shown.active.color-yellow)) { --player-color: var(--color-yellow); }
-.hand-panel:where(:has(.player-hand.shown.active.color-green)) { --player-color: var(--color-green); }
+  /* The bottom card takes the shown player's color during their turn.
+    :where keeps the desktop rail's .hand-panel reset in control. */
+  .hand-panel:where(:has(.player-hand.shown.active.color-red)) {
+    --player-color: var(--color-red);
+  }
+  .hand-panel:where(:has(.player-hand.shown.active.color-blue)) {
+    --player-color: var(--color-blue);
+  }
+  .hand-panel:where(:has(.player-hand.shown.active.color-yellow)) {
+    --player-color: var(--color-yellow);
+  }
+  .hand-panel:where(:has(.player-hand.shown.active.color-green)) {
+    --player-color: var(--color-green);
+  }
 
-.hand-panel:where(:has(.player-hand.shown.active)) {
-    border-color: var(--player-color);
-    box-shadow: var(--shadow-lg), var(--glass-hi), inset 0 2px 0 var(--player-color);
-}
+  .hand-panel:where(:has(.player-hand.shown.active)) {
+    --surface-line: var(--player-color);
+    --surface-shadow:
+      var(--shadow-lg), var(--glass-hi), inset 0 2px 0 var(--player-color);
+  }
 
-/* The seats' headers fall into the grid's first row, one column each, and
-   the shown seat's tiles span the second. */
-.hand-panel .player-hand { display: contents; }
-.hand-panel .hand-header { grid-row: 1; }
-.hand-panel .hand-tiles,
-.hand-panel .hand-empty {
+  /* The seats' headers fall into the grid's first row, one column each, and
+    the shown seat's tiles span the second. */
+  .hand-panel .player-hand {
+    --surface-bg: transparent;
+    --surface-border: 0px;
+    --surface-radius: 0;
+    --surface-shadow: none;
+    --surface-filter: none;
+    display: contents;
+  }
+  .hand-panel .hand-header {
+    grid-row: 1;
+  }
+  .hand-panel .hand-tiles,
+  .hand-panel .hand-empty {
     grid-row: 2;
     grid-column: 1 / -1;
-}
+  }
 
-/* Six tiles in a row, no bigger than a hand needs on a tablet. */
-.hand-panel .hand-tiles {
+  /* Six tiles in a row, no bigger than a hand needs on a tablet. */
+  .hand-panel .hand-tiles {
     grid-template-columns: repeat(6, minmax(0, 96px));
     justify-content: center;
     padding: 10px 14px;
-}
+  }
 
-/* ===== Results panel (game over) ===== */
+  /* ===== Results panel (game over) ===== */
 
-.results-panel {
+  .results-panel {
     max-height: 60vh;
     max-height: 60dvh;
     overflow-y: auto;
     margin: 0 0.6rem calc(0.6rem + env(safe-area-inset-bottom));
     padding: 12px 16px;
-    background: var(--glass-strong);
-    -webkit-backdrop-filter: blur(18px) saturate(1.5);
-    backdrop-filter: blur(18px) saturate(1.5);
-    border: 1px solid var(--glass-line);
-    border-radius: 1.3rem;
-    box-shadow: var(--shadow-lg), var(--glass-hi);
-}
+  }
 
-.results-panel .board-results-card {
+  .board-results-card {
+    --surface-bg: transparent;
+    --surface-border: 0px;
+    --surface-radius: 0;
+    --surface-shadow: none;
+    --surface-filter: none;
+  }
+
+  .results-panel .board-results-card {
     max-width: 480px;
     margin: 0 auto;
-}
+  }
 
-.results-panel .results-row { padding: 6px 12px; }
-.results-panel .results-divider { margin: 8px 0 10px; }
-.results-panel .results-stats { margin-bottom: 12px; }
+  .results-panel .results-row {
+    padding: 6px 12px;
+  }
+  .results-panel .results-divider {
+    margin: 8px 0 10px;
+  }
+  .results-panel .results-stats {
+    margin-bottom: 12px;
+  }
 
-/* ===== Side layout: landscape, with room for a panel column ===== */
+  /* ===== Side layout: landscape, with room for a panel column ===== */
 
-@media (orientation: landscape) and (min-width: 640px) {
+  @media (orientation: landscape) and (min-width: 640px) {
     .game-layout {
-        grid-template-columns: minmax(0, 1fr) var(--side-w);
-        grid-template-rows: auto minmax(0, 1fr);
-        grid-template-areas:
-            "hud hud"
-            "board panel";
+      grid-template-columns: minmax(0, 1fr) var(--side-w);
+      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-areas:
+        "hud hud"
+        "board panel";
     }
 
     .hand-panel,
     .results-panel {
-        align-self: stretch;
-        max-height: none;
-        overflow-y: auto;
+      align-self: stretch;
+      max-height: none;
+      overflow-y: auto;
     }
 
     .hand-panel,
-    .results-panel { margin: 0.2rem 0.6rem 0.6rem 0; }
+    .results-panel {
+      margin: 0.2rem 0.6rem 0.6rem 0;
+    }
 
     .hand-panel .hand-tiles {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        justify-content: stretch;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      justify-content: stretch;
     }
 
     /* Four tabs share a narrow column: the names give way to bigger swatches. */
-    .players-4 .hand-header-color { display: none; }
-    .players-4 .hand-header { gap: 8px; }
-    .players-4 .hand-header .color-swatch { width: 15px; height: 17px; }
-}
+    .players-4 .hand-header-color {
+      display: none;
+    }
+    .players-4 .hand-header {
+      gap: 8px;
+    }
+    .players-4 .hand-header .color-swatch {
+      width: 15px;
+      height: 17px;
+    }
+  }
 
-/* Turn handoff floats above the board without taking space or intercepting play. */
-.turn-announcement {
+  /* Turn handoff floats above the board without taking space or intercepting play. */
+  .turn-announcement {
     position: absolute;
     top: 12px;
     left: 50%;
@@ -530,33 +553,94 @@
     z-index: 5;
     max-width: calc(100% - 24px);
     pointer-events: none;
-}
-.turn-banner {
+  }
+  .turn-banner {
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 12px 20px;
-    border: 1px solid var(--glass-line);
-    border-radius: 18px;
-    background: var(--glass-strong);
+
     color: var(--text-primary);
-    box-shadow: var(--shadow-md);
-    backdrop-filter: blur(16px);
+
     animation: turn-arrive 180ms ease-out;
-}
-.turn-banner-dot {
-    flex: none;
+  }
+  .turn-banner-dot {
     width: 22px;
     height: 22px;
-    clip-path: var(--clip-hex);
-    background: var(--turn-color);
-}
-.turn-banner-title { display: block; font-size: 18px; white-space: nowrap; }
-.turn-banner-detail { display: block; font-size: 12px; color: var(--text-secondary); }
-@keyframes turn-arrive {
-    from { opacity: 0; transform: translateY(-6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-    .turn-banner { animation: none; }
+  }
+  .turn-banner-title {
+    display: block;
+    font-size: 18px;
+    white-space: nowrap;
+  }
+  .turn-banner-detail {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  @keyframes turn-arrive {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .turn-banner {
+      animation: none;
+    }
+  }
+
+  /* ===== In-game seat takeover (members watching a game) ===== */
+
+  .seat-takeover {
+    --surface-radius: var(--radius-panel);
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 58px);
+    left: 0;
+    right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-width: calc(100vw - 32px);
+    padding: 6px 10px;
+  }
+
+  .seat-takeover-title {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 0 4px;
+  }
+
+  .seat-takeover-btn {
+    --button-line: color-mix(in oklch, var(--seat-color), transparent 40%);
+    --button-radius: var(--radius-control);
+    --button-padding: 4px 10px;
+  }
+
+  .seat-takeover-btn:hover {
+    background: color-mix(in oklch, var(--seat-color), transparent 70%);
+  }
+
+  .seat-takeover-btn.offline {
+    border-style: dashed;
+  }
+
+  .seat-takeover-dot {
+    width: 10px;
+    height: 10px;
+  }
+
+  .seat-takeover-offline {
+    font-weight: 400;
+    opacity: 0.7;
+  }
 }

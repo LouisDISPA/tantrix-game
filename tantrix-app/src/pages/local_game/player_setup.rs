@@ -38,13 +38,13 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                                 rsx! {
                                     div {
                                         key: "{color:?}",
-                                        class: "player-slot {color_class}",
+                                        class: "surface surface-inset player-slot {color_class}",
                                         class: if is_active { "active" },
                                         class: if matches!(kind, PlayerKind::Ai(_)) { "has-level" },
                                         ColorSwatch { color }
                                         div { class: "player-label", "{color}" }
                                         button {
-                                            class: toggle_class,
+                                            class: "button button-small {toggle_class}",
                                             onclick: move |_| {
                                                 config.write().cycle_player(color);
                                             },

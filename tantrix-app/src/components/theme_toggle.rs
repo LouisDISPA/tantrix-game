@@ -20,7 +20,9 @@ pub fn ThemeToggle(
 
     rsx! {
         button {
-            class,
+            class: "button button-ghost",
+            class: if !labelled { "button-icon" },
+            class: "{class}",
             aria_label: action,
             onclick: move |_| toggle_theme(),
             span { aria_hidden: "true", "{theme.icon()}" }

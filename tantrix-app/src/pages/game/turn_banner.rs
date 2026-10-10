@@ -80,8 +80,8 @@ pub fn TurnBanner() -> Element {
     rsx! {
         div { class: "turn-announcement", role: "status", aria_live: "polite", aria_atomic: "true",
             if let Some((color, title, detail)) = notice() {
-                div { key: "{color:?}-{title}", class: "turn-banner color-{color_name(color)}",
-                    span { class: "turn-banner-dot", aria_hidden: "true" }
+                div { key: "{color:?}-{title}", class: "surface surface-raised surface-blur turn-banner color-{color_name(color)}",
+                    span { class: "color-swatch turn-banner-dot", aria_hidden: "true" }
                     div {
                         strong { class: "turn-banner-title", {title} }
                         span { class: "turn-banner-detail", {detail} }

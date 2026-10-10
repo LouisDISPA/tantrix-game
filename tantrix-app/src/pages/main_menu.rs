@@ -17,7 +17,7 @@ pub fn MainMenu() -> Element {
         MenuScreen { quick,
                 div { class: "title-logo-area",
                     div { class: "hex-frame title-hex-frame" }
-                    h1 { class: "title-logo", "TANTRIX" }
+                    h1 { class: "brand-heading brand-heading-animated title-logo", "TANTRIX" }
                     p { class: "title-subtitle", "Hexagonal Strategy Game" }
                 }
 
@@ -36,12 +36,12 @@ pub fn MainMenu() -> Element {
                     }
                     div { class: "title-secondary-links",
                         button {
-                            class: "title-btn-link",
+                            class: "button button-ghost button-link title-btn-link",
                             onclick: move |_| { let _ = nav.push(Route::Learn {}); },
-                            "Learn the rules · 2 min →"
+                            "Learn the rules →"
                         }
                         button {
-                            class: "title-btn-link",
+                            class: "button button-ghost button-link title-btn-link",
                             onclick: move |_| { let _ = nav.push(Route::About {}); },
                             "About"
                         }

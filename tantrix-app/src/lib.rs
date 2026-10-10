@@ -20,6 +20,8 @@ pub use util::init_logging;
 use route::Route;
 use state::theme::THEME;
 
+const TOKENS_CSS: Asset = asset!("/assets/tokens.css");
+const COMPONENTS_CSS: Asset = asset!("/assets/components.css");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const BOARD_CSS: Asset = asset!("/assets/board.css");
 const GAME_CSS: Asset = asset!("/assets/game.css");
@@ -36,6 +38,8 @@ pub fn app() -> Element {
     rsx! {
         document::Link { rel: "icon", href: FAVICON, sizes: "any", r#type: "image/svg+xml" }
         document::Stylesheet { href: MAIN_CSS }
+        document::Stylesheet { href: TOKENS_CSS }
+        document::Stylesheet { href: COMPONENTS_CSS }
         document::Stylesheet { href: BOARD_CSS }
         document::Stylesheet { href: HAND_CSS }
         document::Stylesheet { href: GAME_CSS }

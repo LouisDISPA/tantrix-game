@@ -26,8 +26,6 @@ signal which flips the `data-theme` attribute on the root.
 
 ```css
 --clip-hex          /* pointy-top hex for frames & swatches   */
---clip-btn          /* wide hex-cut primary button            */
---clip-btn-tight    /* same, narrower cut (results panel)     */
 ```
 
 Every `clip-path` reads from these — no literal `polygon(…)` values in
