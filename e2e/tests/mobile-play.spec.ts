@@ -52,12 +52,15 @@ test('a spot that takes two orientations opens a card, a press previews and a ta
   const stage = (await page.locator('.board-stage').boundingBox())!;
   const ghost = page.locator('.tile-preview');
   const placed = await placedTiles(page).count();
-  await expect(ghost).toHaveCount(0);
+  await expect(ghost).toHaveCount(1);
+  const defaultPreview = await ghost.innerHTML();
   const finger = await holdTouch(page, centreOf((await options.nth(1).boundingBox())!));
   await expect(ghost).toHaveCount(1);
+  expect(await ghost.innerHTML()).not.toBe(defaultPreview);
   await finger.moveTo({ x: stage.x + 4, y: stage.y + 4 });
   await finger.lift();
-  await expect(ghost).toHaveCount(0);
+  await expect(ghost).toHaveCount(1);
+  expect(await ghost.innerHTML()).toBe(defaultPreview);
   await expect(placedTiles(page)).toHaveCount(placed);
   await expect(card).toHaveCount(1);
 

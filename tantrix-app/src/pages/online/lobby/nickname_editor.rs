@@ -25,7 +25,7 @@ pub fn LobbyNicknameEditor(
 
     let on_commit = move |text: String| {
         let trimmed = text.trim().to_string();
-        if trimmed.is_empty() {
+        if trimmed.is_empty() || trimmed == *authoritative.peek() {
             return;
         }
         if let Some(s) = sender.read().as_ref() {

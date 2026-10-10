@@ -6,6 +6,7 @@ use super::game_hud::GameHud;
 use super::player_hand::PlayerHand;
 use super::shown_hand::shown_hand;
 use super::tile_drag::GameDraggedTile;
+use super::turn_banner::TurnBanner;
 use crate::components::board::Board;
 use crate::hooks::use_current_player;
 use crate::state::game_state::GameCtx;
@@ -89,7 +90,7 @@ pub fn GamePlay(children: Element) -> Element {
 
             GameHud { {children} }
 
-            div { class: "board-slot", Board {} }
+            div { class: "board-slot", TurnBanner {} Board {} }
 
             section {
                 class: "hand-panel",

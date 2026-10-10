@@ -206,7 +206,7 @@ fn hovering_a_rotation_re_renders_only_the_preview() {
         render_count::reset();
         page.act(|ctx| ctx.ui_state.hovered().set(Hovered::Rotation(rotation)));
         page.act(|ctx| ctx.ui_state.hovered().set(Hovered::None));
-        // The ghost shows the option pointed at, and goes when it is let go;
+        // The ghost shows the option pointed at, then the default when let go;
         // the card and the rest of the board stay as they are.
         assert!(render_count::total("BoardPreview") <= 2);
         assert_quiet(&all_but(&["BoardPreview"]));

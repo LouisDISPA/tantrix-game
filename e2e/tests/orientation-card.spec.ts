@@ -22,14 +22,16 @@ test('pressing an option previews it on the board and lifting elsewhere plays no
   const ghost = page.locator('.tile-preview');
   const placed = await placedTiles(page).count();
 
-  // Nothing is previewed until an option is pointed at.
-  await expect(ghost).toHaveCount(0);
+  // The first valid option is previewed before pointing at either one.
+  await expect(ghost).toHaveCount(1);
+  const defaultPreview = await ghost.innerHTML();
 
   const o = (await options.nth(1).boundingBox())!;
   await page.mouse.move(o.x + o.width / 2, o.y + o.height / 2);
   await page.mouse.down();
   await expect(ghost).toHaveCount(1);
   const pressed = await ghost.innerHTML();
+  expect(pressed).not.toBe(defaultPreview);
 
   // Slide to the other option: the ghost turns.
   const other = (await options.nth(0).boundingBox())!;
@@ -37,10 +39,11 @@ test('pressing an option previews it on the board and lifting elsewhere plays no
   await expect(ghost).toHaveCount(1);
   expect(await ghost.innerHTML()).not.toBe(pressed);
 
-  // Lift away from both: no click, no ghost, the card stays.
+  // Lift away from both: the default preview returns and the card stays.
   await page.mouse.move(o.x + o.width / 2, o.y - 200, { steps: 4 });
   await page.mouse.up();
-  await expect(ghost).toHaveCount(0);
+  await expect(ghost).toHaveCount(1);
+  expect(await ghost.innerHTML()).toBe(defaultPreview);
   await expect(placedTiles(page)).toHaveCount(placed);
   await expect(card).toHaveCount(1);
 });

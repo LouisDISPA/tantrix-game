@@ -56,6 +56,7 @@
 }
 
 .board-slot {
+    position: relative;
     grid-area: board;
     min-width: 0;
     min-height: 0;
@@ -434,6 +435,18 @@
     box-shadow: var(--shadow-lg), var(--glass-hi);
 }
 
+/* The bottom card takes the shown player's color during their turn.
+   :where keeps the desktop rail's .hand-panel reset in control. */
+.hand-panel:where(:has(.player-hand.shown.active.color-red)) { --player-color: var(--color-red); }
+.hand-panel:where(:has(.player-hand.shown.active.color-blue)) { --player-color: var(--color-blue); }
+.hand-panel:where(:has(.player-hand.shown.active.color-yellow)) { --player-color: var(--color-yellow); }
+.hand-panel:where(:has(.player-hand.shown.active.color-green)) { --player-color: var(--color-green); }
+
+.hand-panel:where(:has(.player-hand.shown.active)) {
+    border-color: var(--player-color);
+    box-shadow: var(--shadow-lg), var(--glass-hi), inset 0 2px 0 var(--player-color);
+}
+
 /* The seats' headers fall into the grid's first row, one column each, and
    the shown seat's tiles span the second. */
 .hand-panel .player-hand { display: contents; }
@@ -506,4 +519,44 @@
     .players-4 .hand-header-color { display: none; }
     .players-4 .hand-header { gap: 8px; }
     .players-4 .hand-header .color-swatch { width: 15px; height: 17px; }
+}
+
+/* Turn handoff floats above the board without taking space or intercepting play. */
+.turn-announcement {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    max-width: calc(100% - 24px);
+    pointer-events: none;
+}
+.turn-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    border: 1px solid var(--glass-line);
+    border-radius: 18px;
+    background: var(--glass-strong);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(16px);
+    animation: turn-arrive 180ms ease-out;
+}
+.turn-banner-dot {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    clip-path: var(--clip-hex);
+    background: var(--turn-color);
+}
+.turn-banner-title { display: block; font-size: 18px; white-space: nowrap; }
+.turn-banner-detail { display: block; font-size: 12px; color: var(--text-secondary); }
+@keyframes turn-arrive {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .turn-banner { animation: none; }
 }

@@ -25,8 +25,9 @@
    follows through the camera's home zoom (svg/camera_math.rs).
 
    Two things are pulled out of their parents with `position: absolute` and
-   put in the rack's grid area: the shown seat (the rack) and the HUD's hint
-   (above its tiles, in large type). Their containing block is `.game-layout`:
+   put in the rack's grid area, across the screen: the shown seat (the rack)
+   and the HUD's hint (above its tiles, in large type). Their containing block
+   is `.game-layout`:
    nothing between them and it may be positioned, or filtered (a `filter` or
    `backdrop-filter` makes its element the containing block of what is
    positioned inside it: the turn chip, which holds the hint, gets a plain
@@ -62,12 +63,18 @@
         grid-template-areas:
             "hud hud"
             "rail board"
-            "rail rack";
+            "rack rack";
     }
 
     .game-layout.players-4 {
         --rail-w: clamp(310px, calc(25 * var(--fs)), 540px);
         --mini: 3.75em;
+    }
+
+    /* The handoff shares the rack's screen center, above the board. */
+    .turn-announcement {
+        position: fixed;
+        top: calc(var(--top-h) + 12px);
     }
 
     /* Nothing is played at the end: the board takes the rack's height. */
@@ -588,6 +595,11 @@
         border-radius: 1.5em;
         box-shadow: var(--shadow-lg), var(--glass-hi);
         cursor: default;
+    }
+
+    .hand-panel .player-hand.shown.active {
+        border-color: var(--player-color);
+        box-shadow: var(--shadow-lg), var(--glass-hi), inset 0 2px 0 var(--player-color);
     }
 
     /* The name and score to the right: the hint has the left. */

@@ -77,8 +77,8 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
 
 /// Ghost preview of the placement being considered: the hovered hand tile's
 /// only move, the selected tile at the hovered (or selected) position, or at
-/// the selected position in the rotation being hovered or pressed — none
-/// until the player points at one of the options.
+/// the selected position in the rotation being hovered or pressed, defaulting
+/// to the first valid rotation while the player chooses an option.
 pub fn use_preview_placement() -> Memo<Option<Placement>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
@@ -123,13 +123,16 @@ pub fn use_preview_placement() -> Memo<Option<Placement>> {
             }
 
             TurnPhase::SelectRotation => {
-                let rotation = ui_state.hovered()().rotation()?;
                 let idx = ui_state.selected_tile()()?;
                 let position = ui_state.selected_position()()?;
                 let gs = ctx.game_state.read();
                 let tile = *gs.hand(gs.current_player()).get(idx)?;
                 let rotations = gs.hand_info().get(idx)?.positions.get(&position)?;
-                rotations.contains(&rotation).then_some(Placement {
+                let rotation = ui_state.hovered()()
+                    .rotation()
+                    .filter(|rotation| rotations.contains(rotation))
+                    .unwrap_or(*rotations.first()?);
+                Some(Placement {
                     tile,
                     position,
                     rotation,
@@ -315,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn the_card_offers_the_rotations_and_the_ghost_shows_the_one_pointed_at() {
+    fn the_card_keeps_a_default_preview_and_shows_the_rotation_pointed_at() {
         let (game, idx, at) = tile_with_positions(|rotations| rotations.len() > 1);
         let tile = tile_at(&game, idx);
         let rotations = game.hand_info()[idx].positions[&at].clone();
@@ -336,8 +339,7 @@ mod tests {
         };
         let (positions, preview, shown_orientations) = shown(&page);
         assert!(positions.iter().any(|&(hex, _, faint)| hex == at && !faint));
-        // Nothing is previewed until an option is pointed at.
-        assert_eq!(preview, None);
+        assert_eq!(preview, ghost(rotations[0]));
         assert_eq!(shown_orientations, offered);
 
         hover(&mut page, Hovered::Rotation(rotations[1]));
@@ -346,10 +348,10 @@ mod tests {
         assert_eq!(shown(&page).1, ghost(rotations[0]));
         assert_eq!(shown(&page).2, offered);
 
-        // Letting go takes the ghost away; a rotation that does not fit
-        // here shows none.
+        // Letting go or a stale rotation from another spot returns to the
+        // first valid option, so the tile stays visible.
         hover(&mut page, Hovered::None);
-        assert_eq!(shown(&page).1, None);
+        assert_eq!(shown(&page).1, ghost(rotations[0]));
         let other = [
             Rotation::None,
             Rotation::R60,
@@ -362,6 +364,9 @@ mod tests {
         .find(|r| !rotations.contains(r))
         .unwrap();
         hover(&mut page, Hovered::Rotation(other));
+        assert_eq!(shown(&page).1, ghost(rotations[0]));
+
+        page.act(|mut ctx| ctx.ui_state.go_back());
         assert_eq!(shown(&page).1, None);
     }
 
