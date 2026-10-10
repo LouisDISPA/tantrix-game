@@ -14,7 +14,7 @@ Rust implementation of the Tantrix board game — a hex-tile strategy game where
 
 ```bash
 # Dioxus web app (dev)
-cd tantrix-app && dx serve --features devtools --hot-reload   # `devtools` = hot reload + dioxus logs, off in release
+just dev   # fullstack server + browser; `devtools` adds hot reload + logs, off in release
 
 # TUI
 cargo run -p tantrix-tui
@@ -38,7 +38,7 @@ just native-e2e
 just worker-client
 
 # Plain release build
-cd tantrix-app && dx build --release
+cd tantrix-app && dx build --web --fullstack true --release --features fullstack
 
 # Cloudflare Worker (SSR + hydration): build, run locally, deploy
 just worker-build

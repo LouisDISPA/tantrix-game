@@ -2,6 +2,8 @@ use std::rc::Rc;
 
 use dioxus::html::input_data::MouseButton;
 use dioxus::prelude::*;
+#[cfg(feature = "web")]
+use dioxus::web::WebEventExt;
 use tantrix_game::{Color, Rotation};
 
 use crate::components::tile::hex_svg::HexSvg;
@@ -113,6 +115,10 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         onpointerdown: move |evt| {
                             if interactive && evt.data().trigger_button() == Some(MouseButton::Primary) {
                                 if let Some(origin) = *bounds.peek() {
+                                    #[cfg(feature = "web")]
+                                    if let Some(element) = mounted.peek().as_ref().and_then(|data| data.try_as_web_event()) {
+                                        _ = element.set_pointer_capture(evt.data().pointer_id());
+                                    }
                                     let at = evt.data().client_coordinates();
                                     let slop = if evt.data().pointer_type() == "mouse" { MOUSE_SLOP } else { TOUCH_SLOP };
                                     press_tile(ctx, color, index(), Pointer::new(evt.data().pointer_id(), at.x, at.y), origin, slop);

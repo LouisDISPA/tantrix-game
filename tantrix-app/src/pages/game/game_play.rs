@@ -53,17 +53,6 @@ pub fn GamePlay(children: Element) -> Element {
             class: "game-layout players-{seats.read().len()}",
             tabindex: "0",
             autofocus: true,
-            // Capture synchronously in the browser, before Rust handles the
-            // press. Events then bubble here even after leaving the hand tile.
-            onmounted: move |_| {
-                document::eval(r#"
-                    const game = document.querySelector('.game-layout');
-                    game.addEventListener('pointerdown', event => {
-                        const tile = event.target.closest('[data-draggable="true"]');
-                        if (tile && event.button === 0) tile.setPointerCapture(event.pointerId);
-                    }, { capture: true });
-                "#);
-            },
             onpointerdown: move |evt| {
                 if ui.tile_drag().peek().is_some_and(|drag| drag.holds_pointer() && drag.pointer.id != evt.data().pointer_id()) {
                     cancel_tile_drag(ctx);

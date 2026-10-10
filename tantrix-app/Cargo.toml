@@ -32,7 +32,7 @@ rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 serde_json = { version = "1.0.151", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { version = "0.3.106", features = ["Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
+web-sys = { version = "0.3.106", features = ["Element", "Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
 wasm-bindgen-futures = "0.4.79"
 
 [dev-dependencies]

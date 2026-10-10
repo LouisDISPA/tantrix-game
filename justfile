@@ -22,11 +22,11 @@ test:
 
 [group('Local')]
 dev:
-    cd tantrix-app && dx serve --port {{ port }} --web --features fullstack,devtools --hot-reload true
+    cd tantrix-app && dx serve --port {{ port }} --web --fullstack true --features fullstack,devtools --hot-reload true
 
 [group('Local')]
 run:
-    cd tantrix-app && dx run --web --features fullstack --release --port {{ port }} --open false
+    cd tantrix-app && dx run --web --fullstack true --features fullstack --release --port {{ port }} --open false
 
 [group('Setup')]
 setup-e2e:

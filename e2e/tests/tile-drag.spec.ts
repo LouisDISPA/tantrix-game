@@ -13,6 +13,32 @@ async function liftTile(page: Page, tile = page.locator('.player-hand.active .ha
   return origin;
 }
 
+test('a game starts and drags under the production script policy', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/*', async route => {
+    if (!route.request().isNavigationRequest()) return route.continue();
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: {
+        ...response.headers(),
+        'content-security-policy': "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+      },
+    });
+  });
+  await startLocalGame(page, 2, 3);
+  expect(errors).toEqual([]);
+  await liftTile(page);
+  // Chromium's mouse pointer is 1; capture must belong to the hand tile itself.
+  await expect.poll(() => page.locator('.hand-tile.lifted').evaluate(tile => tile.hasPointerCapture(1))).toBe(true);
+  const at = centreOf((await page.locator('.board-empty').boundingBox())!);
+  await page.mouse.move(at.x, at.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(placedTiles(page)).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
 test('dragging the opening tile snaps it and plays only on release', async ({ page }, testInfo) => {
   await startLocalGame(page, 2, 3);
   const before = await camera(page);
