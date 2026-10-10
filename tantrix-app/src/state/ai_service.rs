@@ -8,10 +8,11 @@ use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{set_if_changed, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::util::sleep;
 
-/// Run AI players' turns with cinematic pacing: select the tile, sweep to
-/// the position, commit the move, pause, then look at the next player. Exits
-/// when the current player is a human, an AI with no move, or the game is
-/// over; [`advance_turn`](crate::state::actions::advance_turn) then skips
+/// Run AI players' turns with cinematic pacing: pause before thinking,
+/// select the tile, sweep to the position, commit the move, pause, then
+/// look at the next player. Exits when the current player is a human, an AI
+/// with no move, or the game is over;
+/// [`advance_turn`](crate::state::actions::advance_turn) then skips
 /// whoever cannot move and hands the turn on (back to this loop if an AI
 /// seat can move).
 ///
@@ -26,14 +27,21 @@ pub async fn run_ai_loop(ctx: GameCtx) {
             break;
         }
 
+        let ai_color = game_state.read().current_player();
+        // Let the previous move's animations finish and the thinking hint
+        // paint before synchronous search blocks the browser's main thread.
+        sleep(Duration::from_millis(500)).await;
+        if !ai_can_continue(ctx, ai_color) {
+            break;
+        }
+
         // `None` for a human, an AI with no legal move, or a finished game.
-        let (chosen, ai_color, tile_idx) = {
+        let (chosen, tile_idx) = {
             let gs = game_state.read();
-            let ai_color = gs.current_player();
             let chosen = gs.ai_choose();
             // Where the chosen tile is in the hand, to show it picked.
             let tile_idx = chosen.and_then(|m| gs.hand(ai_color).iter().position(|&t| t == m.tile));
-            (chosen, ai_color, tile_idx)
+            (chosen, tile_idx)
         };
         let Some(chosen) = chosen else { break };
 
