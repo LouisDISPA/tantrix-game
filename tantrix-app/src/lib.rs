@@ -21,17 +21,40 @@ use components::startup_loading::StartupLoading;
 use route::Route;
 use state::theme::THEME;
 
-const TOKENS_CSS: Asset = asset!("/assets/tokens.css");
-const COMPONENTS_CSS: Asset = asset!("/assets/components.css");
-const MAIN_CSS: Asset = asset!("/assets/main.css");
-const BOARD_CSS: Asset = asset!("/assets/board.css");
-const GAME_CSS: Asset = asset!("/assets/game.css");
-const DESK_CSS: Asset = asset!("/assets/desk.css");
-const HAND_CSS: Asset = asset!("/assets/hand.css");
-const MENU_CSS: Asset = asset!("/assets/menu.css");
-const LEARN_CSS: Asset = asset!("/assets/learn.css");
-const ANIMATIONS_CSS: Asset = asset!("/assets/animations.css");
-const LOADING_CSS: Asset = asset!("/assets/loading.css");
+// SSR embeds the CSS in the head. Standalone clients also need the contents;
+// fullstack browser clients reuse the server's style tag during hydration.
+// The Worker renders on wasm32 too, so gate by features rather than target.
+#[cfg(any(feature = "server", feature = "worker", not(feature = "fullstack")))]
+const APP_CSS: &str = concat!(
+    include_str!("../assets/main.css"),
+    "\n",
+    include_str!("../assets/tokens.css"),
+    "\n",
+    include_str!("../assets/components.css"),
+    "\n",
+    include_str!("../assets/board.css"),
+    "\n",
+    include_str!("../assets/hand.css"),
+    "\n",
+    include_str!("../assets/game.css"),
+    "\n",
+    include_str!("../assets/desk.css"),
+    "\n",
+    include_str!("../assets/menu.css"),
+    "\n",
+    include_str!("../assets/learn.css"),
+    "\n",
+    include_str!("../assets/animations.css"),
+    "\n",
+    include_str!("../assets/loading.css"),
+);
+
+#[cfg(all(
+    feature = "fullstack",
+    not(any(feature = "server", feature = "worker"))
+))]
+const APP_CSS: &str = "";
+
 const FAVICON: Asset = asset!("/assets/favicon.svg");
 
 pub fn app() -> Element {
@@ -41,17 +64,7 @@ pub fn app() -> Element {
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON, sizes: "any", r#type: "image/svg+xml" }
-        document::Stylesheet { href: MAIN_CSS }
-        document::Stylesheet { href: TOKENS_CSS }
-        document::Stylesheet { href: COMPONENTS_CSS }
-        document::Stylesheet { href: BOARD_CSS }
-        document::Stylesheet { href: HAND_CSS }
-        document::Stylesheet { href: GAME_CSS }
-        document::Stylesheet { href: DESK_CSS }
-        document::Stylesheet { href: MENU_CSS }
-        document::Stylesheet { href: LEARN_CSS }
-        document::Stylesheet { href: ANIMATIONS_CSS }
-        document::Stylesheet { href: LOADING_CSS }
+        document::Style { id: "app-styles", {APP_CSS} }
 
         div {
             class: "app-root",
