@@ -37,9 +37,13 @@ just native-e2e
 
 Playwright's native config runs `dx run --release`, which builds and starts the
 app on port 4175, then waits for `/health`. Cargo reuses unchanged compilation
-outputs. Locally, Playwright reuses an already running server on that port; CI
-always builds and starts a fresh process. Each page waits for client hydration
-before interacting.
+outputs. CI runs format and lint checks, a production build, unit tests and e2e
+tests in one job. The production build and Playwright use the same release
+options and target directory, so e2e reuses the compiled client and server.
+The Rust cache retains dependency and workspace compilation outputs between
+runs. Playwright keeps its build command and starts a fresh process in CI;
+locally, it reuses an already running server on that port. Each page waits for
+client hydration before interacting.
 
 For focused runs:
 
