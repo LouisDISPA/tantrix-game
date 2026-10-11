@@ -487,6 +487,25 @@ fn pick(
 }
 
 #[test]
+fn the_room_can_start_after_its_unseated_creator_leaves() {
+    let mut room = RoomData::default();
+    let creator = join(&mut room, "creator");
+    let red = join(&mut room, "red");
+    let blue = join(&mut room, "blue");
+    let connected = HashSet::from([red.clone(), blue.clone()]);
+    pick(&mut room, &red, Some(Color::Red), &connected);
+    pick(&mut room, &blue, Some(Color::Blue), &connected);
+
+    assert!(room.disconnect(&creator));
+    assert!(room.player(&creator).is_none());
+    let change = room
+        .apply(&blue, PeerMessage::StartGame, &connected)
+        .unwrap();
+    assert!(matches!(change.message, HostMessage::GameStarted { .. }));
+    assert_eq!(room.snapshot(&connected).unwrap().participants.len(), 2);
+}
+
+#[test]
 fn more_than_four_members_share_four_seats_by_releasing_them() {
     let mut room = RoomData::default();
     let tokens: Vec<_> = ["a", "b", "c", "d", "e", "f"]

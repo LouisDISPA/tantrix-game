@@ -1,25 +1,22 @@
 # Browser end-to-end tests
 
-Playwright runs headless Chromium against either the native Axum server or
-`wrangler dev`. Both use the same Rust room rules and client protocol.
+Eight Chromium tests cover the important user flows. CI uses the native Axum
+server with an in-memory SQLite database. The same suite can be run manually
+against the Cloudflare Worker.
 
 | Spec | Coverage |
 | --- | --- |
-| `local-game`, `full-game` (local) | Local play through the results screen. |
-| `forced-after-free-move` | A seeded game (`/game?seed=N`) replays `fixtures/forced-after-free-move.json`: a free move that creates a forced space keeps the turn until it is filled. |
-| `online`, `full-game` (online) | Two browsers create and join a room, play, and agree on results. |
-| `online-flow` | Both boards, turns, bag count, and connection status after every move; reload and resume a seat. |
-| `online-join` | Repeated room join handshake (`JOIN_ATTEMPTS`, default 5). |
-| `online-lobby` | A rejected color claim leaves the player's old seat intact. |
-| `online-retry` | A nonexistent code gives a clear error rather than creating a room. |
-| `online-room-lifecycle` | The creator can leave, another player can start, and a late visitor can take over a seat. |
-| `online-authority` | Invalid and stale move intents cannot mutate server game state. |
-| `online-early-end` | A seated player ends a running game; both players see results, including after reload. |
-| `board-layout` | The cards float over the board but never over a legal position, and nothing scrolls, at several window sizes. |
-| `touch-camera` | Real touch input (DevTools protocol): a finger pans the board, two pinch it, and the lift that ends a drag plays nothing. |
-| `orientation-card` | A spot that takes two orientations opens a card of the options; pressing previews, a tap plays, a tap on the empty board closes it. |
-| `desktop-layout` | A desktop window: the rack under the board, a card per player beside it, every tool in the bar; a click on a card looks at that player; the board is the screen (a zoomed board runs under the cards, the window never scrolls); an online game's hint (the mover selects, the other waits) and room code. |
-| `mobile-play` | A phone with real touch: peeking at another tab, a move in a tile, a spot and a tap (a press previews), End Game from the menu asks first. |
+| `local-game` | Start, place a tile, advance the turn, end and play again; one Expert AI turn. |
+| `forced-after-free-move` | Four seeded placements show that a forced fill keeps the turn. |
+| `tile-drag` | A desktop drag commits on release under the production script policy; an invalid drop places nothing. |
+| `mobile-play` | Phone taps select a tile, position and rotation; End Game asks for confirmation; real touch drags, pans and pinches. |
+| `online` | Two independent sessions join, play synchronized moves, reload and resume, and see matching results; a missing room shows an error. |
+
+Complete-game playthroughs, repeated join attempts, detailed geometry and
+animation assertions, and room-rule permutations are excluded. Game rules and
+scoring live in `tantrix-game` tests; room validation, seats, disconnects,
+replacement, second-tab takeover, origin checks and cookies are covered in
+`tantrix-room`. Drag and gesture state have focused tests in `tantrix-app`.
 
 ## Setup
 
@@ -30,48 +27,74 @@ just setup-e2e
 cd e2e && pnpm exec playwright install chromium
 ```
 
-## Run
+## Native runs
 
-From the repository root, `just native-e2e` builds and tests the native server;
-`just worker-e2e` builds and tests the Worker. For a focused Worker run after
-`just worker-build` and `just setup-worker`:
+Build and run the suite from the repository root:
+
+```bash
+just native-e2e
+```
+
+Playwright's native config runs `dx run --release`, which builds and starts the
+app on port 4175, then waits for `/health`. Cargo reuses unchanged compilation
+outputs. Locally, Playwright reuses an already running server on that port; CI
+always builds and starts a fresh process. Each page waits for client hydration
+before interacting.
+
+For focused runs:
 
 ```bash
 cd e2e
-pnpm exec playwright test tests/online-flow.spec.ts
-JOIN_ATTEMPTS=50 pnpm exec playwright test tests/online-join.spec.ts
+pnpm run test:native tests/online.spec.ts
+pnpm run test:native --workers=2
 ```
 
-The Worker config starts Wrangler on port 4174; the native config starts
-`dx run` on port 4175 with an in-memory SQLite database. Those ports must be free.
-A cold Rust build can take several minutes.
+CI uses four workers and one retry; local runs have no retries. The plain
+`pnpm exec playwright test` command also selects the native config.
 
-## Screenshots
-
-`tests/screens.spec.ts` takes screenshots of the real game screen at phone, tablet and
-desktop sizes (for looking at, not asserting). It is skipped unless asked for:
+To test an already running app at another address, omit server startup with:
 
 ```bash
-cd e2e && TANTRIX_SCREENSHOTS=1 pnpm exec playwright test tests/screens.spec.ts
+BASE_URL=http://127.0.0.1:8080 pnpm run test:native
 ```
 
-They land in `e2e/screenshots/` (git-ignored).
+The server has ten minutes to build and start; the entire Playwright run has a
+fifteen-minute limit so failures still produce a report before CI's job timeout.
 
-## Seeded games
+## Worker runs
 
-`/game?seed=N` deals the same bag and turn order every time, so a spec can
-script exact moves: hand tiles, board hexes and rotation choices carry
-`data-tile`, `data-position` (`x,y`) and `data-rotation` attributes. The Rust
-tests in `tantrix-app` and `tantrix-room` replay the same fixture, so a change
-that alters the deal fails `cargo test` first. Regenerate the fixture with:
+```bash
+just worker-e2e
+```
+
+This builds the production client and Worker before testing. To repeat tests
+without rebuilding, run `pnpm run test:worker` from `e2e/` after the build. Wrangler
+uses port 4174 and can reuse a running local instance.
+
+## Manual screenshots
+
+Two optional cases capture a seeded board at phone and desktop sizes. They are
+skipped during normal runs and write to the git-ignored `e2e/screenshots/`:
+
+```bash
+cd e2e
+TANTRIX_SCREENSHOTS=1 pnpm run test:native tests/screens.spec.ts
+```
+
+## Seeded games and failures
+
+The four-move fixture at `fixtures/forced-after-free-move.json` is shared with
+Rust tests. Regenerate it after a deliberate change to dealing with:
 
 ```bash
 cargo test --workspace print_forced_after_free_move_fixture -- --ignored --nocapture
 ```
 
-## Failures
+The online flow attaches a merged console/request/WebSocket timeline on failure.
+It excludes private tokens and snapshot contents. CI records a Playwright trace
+on the first retry and uploads failure reports. For local diagnosis, use:
 
-Online tests attach a merged timeline of both browsers to the Playwright
-report and write it under `test-results/**/merged-timeline.log`. It records
-page and console errors, failed requests, and room WebSocket message types.
-Private session tokens and game snapshots are excluded from the diagnostic log.
+```bash
+cd e2e
+pnpm run test:native tests/online.spec.ts --trace on
+```

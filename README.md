@@ -26,5 +26,6 @@ cd e2e && pnpm exec playwright install chromium
 
 Run `just` to list commands. `just dev` starts the native app; `just tunnel`
 shares it through a temporary Cloudflare Tunnel. `just native-e2e` and
-`just worker-e2e` run the browser suites. See [e2e/README.md](e2e/README.md)
+`just worker-e2e` run the focused browser suite against either backend. CI uses
+the native server, built and started by the Playwright config. See [e2e/README.md](e2e/README.md)
 and [cloudflare/README.md](cloudflare/README.md) for details.
