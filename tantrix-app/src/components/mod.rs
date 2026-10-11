@@ -12,6 +12,7 @@ pub mod nickname_input;
 pub mod room_code_badge;
 pub mod scores_panel;
 pub mod share_chip;
+pub mod startup_loading;
 pub mod theme_toggle;
 pub mod tile;
 pub mod title_decoration;

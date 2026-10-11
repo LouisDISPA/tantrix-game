@@ -17,6 +17,7 @@ pub mod server;
 
 pub use util::init_logging;
 
+use components::startup_loading::StartupLoading;
 use route::Route;
 use state::theme::THEME;
 
@@ -30,10 +31,13 @@ const HAND_CSS: Asset = asset!("/assets/hand.css");
 const MENU_CSS: Asset = asset!("/assets/menu.css");
 const LEARN_CSS: Asset = asset!("/assets/learn.css");
 const ANIMATIONS_CSS: Asset = asset!("/assets/animations.css");
+const LOADING_CSS: Asset = asset!("/assets/loading.css");
 const FAVICON: Asset = asset!("/assets/favicon.svg");
 
 pub fn app() -> Element {
     let theme = *THEME.resolve().read();
+    // SSR and the first client render agree; mounted fires after hydration.
+    let mut ready = use_signal(|| false);
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON, sizes: "any", r#type: "image/svg+xml" }
@@ -47,7 +51,19 @@ pub fn app() -> Element {
         document::Stylesheet { href: MENU_CSS }
         document::Stylesheet { href: LEARN_CSS }
         document::Stylesheet { href: ANIMATIONS_CSS }
+        document::Stylesheet { href: LOADING_CSS }
 
-        div { class: "app-root", "data-theme": "{theme.as_str()}", Router::<Route> {} }
+        div {
+            class: "app-root",
+            "data-theme": "{theme.as_str()}",
+            "data-app-ready": "{ready}",
+            onmounted: move |_| ready.set(true),
+            StartupLoading { ready: ready() }
+            div {
+                class: "app-content",
+                inert: (!ready()).then_some(true),
+                Router::<Route> {}
+            }
+        }
     }
 }

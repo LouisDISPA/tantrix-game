@@ -1,0 +1,119 @@
+#startup-loading {
+  --loading-red: var(--color-red, oklch(0.65 0.26 25));
+  --loading-blue: var(--color-blue, oklch(0.65 0.26 250));
+  --loading-yellow: var(--color-yellow, oklch(0.83 0.26 80));
+  --loading-green: var(--color-green, oklch(0.65 0.26 160));
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 200;
+  pointer-events: none;
+  color: var(--text-secondary, #909090);
+  font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 180ms ease 250ms, visibility 0s 250ms;
+}
+
+/* CSS can run before the browser downloads or executes Wasm. */
+@starting-style {
+  #startup-loading { opacity: 0; visibility: hidden; }
+}
+
+.app-content { display: contents; }
+
+.loading-track {
+  height: 3px;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--loading-blue) 12%, transparent);
+}
+
+.loading-ribbon {
+  width: 36%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    var(--loading-red), var(--loading-blue),
+    var(--loading-yellow), var(--loading-green));
+  animation: loading-travel 2.4s ease-in-out infinite;
+}
+
+.loading-caption {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: max(16px, env(safe-area-inset-top)) auto 0;
+  padding: 7px 12px;
+  border: 1px solid var(--glass-line, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  background: var(--glass, rgba(26, 26, 26, 0.94));
+}
+
+.loading-hexes { display: flex; gap: 3px; }
+
+.loading-hexes span {
+  width: 8px;
+  height: 10px;
+  clip-path: polygon(50% 0%, 93.3% 25%, 93.3% 75%, 50% 100%, 6.7% 75%, 6.7% 25%);
+  background: var(--loading-red);
+  animation: loading-relay 1.8s ease-in-out infinite;
+}
+
+.loading-hexes span:nth-child(2) { background: var(--loading-blue); animation-delay: 150ms; }
+.loading-hexes span:nth-child(3) { background: var(--loading-yellow); animation-delay: 300ms; }
+.loading-hexes span:nth-child(4) { background: var(--loading-green); animation-delay: 450ms; }
+
+.loading-retry {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  color: inherit;
+  pointer-events: auto;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--glass, rgba(26, 26, 26, 0.94));
+  visibility: hidden;
+  animation: loading-retry 0s 15s forwards;
+}
+
+.app-content[inert] :is(button, input, select) { opacity: 0.5; }
+
+.app-root[data-app-ready="true"] #startup-loading {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 180ms ease, visibility 0s 180ms;
+}
+
+.app-root[data-app-ready="true"] #startup-loading * { animation: none; }
+
+@keyframes loading-travel {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(280%); }
+}
+
+@keyframes loading-relay {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes loading-retry { to { visibility: visible; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #startup-loading { transition-duration: 0s; }
+  .app-root[data-app-ready="true"] #startup-loading { transition-delay: 0s; }
+  .loading-ribbon { width: 100%; animation: none; }
+  .loading-hexes span { animation: none; }
+}
+
+.no-script {
+  position: fixed;
+  inset: 16px 16px auto;
+  z-index: 200;
+  padding: 12px;
+  color: var(--text-primary);
+  background: var(--glass);
+  text-align: center;
+}
