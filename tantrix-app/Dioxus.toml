@@ -1,6 +1,9 @@
 [application]
 name = "Tantrix"
 
+[web]
+pre_compress = true
+
 [web.app]
 title = "Tantrix"
 

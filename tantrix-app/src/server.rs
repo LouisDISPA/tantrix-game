@@ -17,6 +17,7 @@ use axum::routing::get;
 use axum::Router;
 use tantrix_room::handshake::{self, Refusal};
 use tantrix_room::session_cookie::{self, SessionToken};
+use tower_http::compression::CompressionLayer;
 
 use crate::app;
 
@@ -81,7 +82,8 @@ pub fn run() {
             .route("/health", get(|| async { "OK" }))
             .with_state(state.clone())
             .merge(dioxus::server::router(app))
-            .layer(from_fn_with_state(state, session_cookie_layer));
+            .layer(from_fn_with_state(state, session_cookie_layer))
+            .layer(CompressionLayer::new());
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .expect("failed to bind fullstack server");
