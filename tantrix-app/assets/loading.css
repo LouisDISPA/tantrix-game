@@ -11,7 +11,7 @@
   font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   opacity: 1;
   visibility: visible;
-  transition: opacity 180ms ease 250ms, visibility 0s 250ms;
+  transition: opacity 180ms ease 500ms, visibility 0s 500ms;
 }
 
 /* CSS can run before the browser downloads or executes Wasm. */
@@ -84,10 +84,8 @@
 .app-root[data-app-ready="true"] #startup-loading {
   opacity: 0;
   visibility: hidden;
-  transition: opacity 180ms ease, visibility 0s 180ms;
+  transition: opacity 180ms ease 400ms, visibility 0s 580ms;
 }
-
-.app-root[data-app-ready="true"] #startup-loading * { animation: none; }
 
 @keyframes loading-travel {
   from { transform: translateX(-100%); }
