@@ -1,347 +1,138 @@
-//! A short, resettable guide to the rules this app plays.
+//! A concise, scrolling field guide to the rules this app plays.
 
 use dioxus::prelude::*;
-use tantrix_game::{Board, Color, Direction, Move, Position, Rotation, Tile};
+use tantrix_game::{Color, Direction, Move, Position, Rotation, Tile};
 
+use crate::components::learn_board::{DiagramSpace, LearnBoard, SpaceKind};
+use crate::components::menu_button::MenuButton;
+use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
-use crate::components::tile::hex_svg::HexSvg;
 use crate::route::Route;
-use crate::svg::geometry::{axial_to_pixel, board_bounding_box};
-use crate::svg::paths::hex_polygon_points;
-
-const STEPS: usize = 5;
-const HEX: f64 = 38.0;
 
 #[component]
 pub fn Learn() -> Element {
-    let mut step = use_signal(|| 0usize);
     let nav = navigator();
 
     rsx! {
         MenuScreen { scroll: true,
-            main { class: "learn-shell",
-                header { class: "learn-header",
-                    button {
-                        class: "button button-ghost learn-back",
-                        onclick: move |_| { let _ = nav.push(Route::MainMenu {}); },
-                        "← Menu"
-                    }
-                }
-                div { class: "learn-heading",
-                    h1 { class: "brand-heading", "LEARN TANTRIX" }
-                    p { "Five quick moves. Then you’re ready." }
-                }
-                div { class: "learn-progress", aria_label: "Lesson {step() + 1} of {STEPS}",
-                    for index in 0..STEPS {
-                        span {
-                            key: "{index}",
-                            class: if index <= step() { "learn-progress-fill" } else { "" },
-                        }
-                    }
-                }
-                section { class: "surface surface-raised surface-blur learn-card",
-                    match step() {
-                        0 => rsx! { OverviewLesson {} },
-                        1 => rsx! { MatchLesson {} },
-                        2 => rsx! { ForcedLesson {} },
-                        3 => rsx! { EndgameLesson {} },
-                        _ => rsx! { ScoreLesson {} },
-                    }
-                }
-                nav { class: "learn-nav", aria_label: "Lesson navigation",
-                    button {
-                        class: "button button-ghost learn-nav-back",
-                        disabled: step() == 0,
-                        onclick: move |_| step.set(step().saturating_sub(1)),
-                        "← Previous"
-                    }
-                    if step() + 1 == STEPS {
-                        button {
-                            class: "button button-primary learn-nav-next",
-                            onclick: move |_| { let _ = nav.push(Route::LocalGame { seed: None }); },
-                            "Play a game →"
-                        }
-                    } else {
-                        button {
-                            class: "button button-primary learn-nav-next",
-                            onclick: move |_| step.set((step() + 1).min(STEPS - 1)),
-                            "Next →"
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+            div { class: "learn-shell",
+                MenuCard {
+                    title: "Learn Tantrix",
+                    subtitle: "A visual field guide",
+                    wide: true,
+                    back: move |_| { let _ = nav.push(Route::MainMenu {}); },
+                    main { class: "learn-guide",
+                        p { class: "learn-intro", "2–4 players · 6 tiles each · hands face up" }
 
-#[component]
-fn OverviewLesson() -> Element {
-    let mut color = use_signal(|| None::<Color>);
-    rsx! {
-        div { class: "learn-copy",
-            p { class: "learn-step", "01 / THE IDEA" }
-            h2 { "Make a " strong { "path." } }
-            p { class: "learn-rule", "2–4 players take turns placing tiles, " strong { "one by one." } " Connect your color into a long " strong { "line" } " or " strong { "loop" } "." }
-            p { class: "learn-hint", "Tap a color to trace it. Tap again to clear." }
-            div { class: "learn-actions",
-                button {
-                    class: "button learn-choice color-blue",
-                    class: if color() == Some(Color::Blue) { "is-active" },
-                    onclick: move |_| color.set(if color() == Some(Color::Blue) { None } else { Some(Color::Blue) }),
-                    "Blue"
-                }
-                button {
-                    class: "button learn-choice color-red",
-                    class: if color() == Some(Color::Red) { "is-active" },
-                    onclick: move |_| color.set(if color() == Some(Color::Red) { None } else { Some(Color::Red) }),
-                    "Red"
-                }
-            }
-            span { class: "learn-sr-only", role: "status",
-                if color().is_some() { "Path highlighted." } else { "Path highlight cleared." }
-            }
-        }
-        MiniBoard { moves: line_board(), highlight: color(), label: "Three connected hex tiles" }
-    }
-}
-
-#[component]
-fn MatchLesson() -> Element {
-    let mut rotation = use_signal(|| Rotation::R60);
-    let candidate = use_memo(move || match_tile(rotation()));
-    let fits = use_memo(move || {
-        let candidate = candidate();
-        match_board()
-            .get_possible_move(candidate.tile, candidate.position)
-            .any(|m| m.rotation == candidate.rotation)
-    });
-    rsx! {
-        div { class: "learn-copy",
-            p { class: "learn-step", "02 / THE GOLDEN RULE" }
-            h2 { "Match " strong { "every edge." } }
-            p { class: "learn-rule", "Touching colors must match. " strong { "Always." } }
-            p { class: "learn-hint", "Rotate until the edges match." }
-            div { class: "learn-actions",
-                button {
-                    class: "button learn-choice",
-                    onclick: move |_| rotation.set(Rotation::from(rotation() as i8 + 1)),
-                    "Rotate 60° ↻"
-                }
-            }
-            span { class: "learn-sr-only", role: "status",
-                if fits() { "Edges match." } else { "Edges do not match yet." }
-            }
-        }
-        MiniBoard {
-            moves: if fits() { vec![first_tile(), candidate()] } else { vec![first_tile()] },
-            target: if fits() { None } else { Some(candidate().position) },
-            preview: if fits() { None } else { Some(candidate()) },
-            preview_valid: fits(),
-            success_position: if fits() { Some(candidate().position) } else { None },
-            label: "Rotate the right tile until its touching edge matches",
-        }
-    }
-}
-
-#[component]
-fn ForcedLesson() -> Element {
-    let mut phase = use_signal(|| 0u8);
-    rsx! {
-        div { class: "learn-copy",
-            p { class: "learn-step", "03 / YOUR TURN" }
-            h2 { "Fill the " strong { "gap first." } }
-            p { class: "learn-rule", "A gap with " strong { "3+ neighbors" } " is forced if your tile fits." }
-            p { class: "learn-hint", "Forced → one free move → forced again. Draw after each tile while the bag has tiles." }
-            div { class: "learn-actions",
-                button {
-                    class: "button learn-choice",
-                    class: if phase() == 0 { "button-primary" },
-                    disabled: phase() != 0,
-                    onclick: move |_| phase.set(1),
-                    "Fill gap"
-                }
-                button {
-                    class: "button learn-choice",
-                    class: if phase() == 1 { "button-primary" },
-                    disabled: phase() != 1,
-                    onclick: move |_| phase.set(2),
-                    "Free move"
-                }
-                button { class: "button button-ghost learn-reset", onclick: move |_| phase.set(0), "Reset ↺" }
-            }
-            span { class: "learn-sr-only", role: "status",
-                if phase() == 2 { "Free move complete. Fill any new forced gaps." }
-                else if phase() == 1 { "Gap filled. Free move next." }
-                else { "Fill the forced gap first." }
-            }
-        }
-        MiniBoard {
-            moves: forced_board(phase()),
-            target: if phase() == 0 { Some(Position::CENTER) } else if phase() == 1 { Some(side_tile().position) } else { None },
-            target_forced: phase() == 0,
-            success_position: if phase() == 2 { Some(side_tile().position) } else { None },
-            label: "The center has three neighbors, so it must be filled first",
-        }
-    }
-}
-
-#[component]
-fn EndgameLesson() -> Element {
-    let mut bag_empty = use_signal(|| false);
-    rsx! {
-        div { class: "learn-copy",
-            p { class: "learn-step", "04 / WHEN THE BAG EMPTIES" }
-            h2 { "The board " strong { "opens up." } }
-            p { class: "learn-rule", "With tiles in the bag: no same-color triples, fourth sides, or controlled-side plays." }
-            p { class: "learn-hint", "Bag empty? " strong { "Restrictions lift." } " Forced gaps and matching edges stay. Here, your tile cannot fill the gap." }
-        }
-        div { class: "learn-example",
-            div { class: "segmented-control learn-switch", role: "group", aria_label: "Tiles left in bag",
-                button {
-                    class: "button button-small button-ghost segment",
-                    class: if !bag_empty() { "is-active" } else { "" },
-                    onclick: move |_| bag_empty.set(false),
-                    "Bag has tiles"
-                }
-                button {
-                    class: "button button-small button-ghost segment",
-                    class: if bag_empty() { "is-active" } else { "" },
-                    onclick: move |_| bag_empty.set(true),
-                    "Bag empty"
-                }
-            }
-            MiniBoard {
-                moves: gap_board(),
-                forced_space: Some(Position::CENTER),
-                target: Some(side_tile().position),
-                target_blocked: !bag_empty(),
-                preview: Some(side_tile()),
-                preview_valid: bag_empty(),
-                label: "A side placement is blocked before the bag empties and allowed after",
-            }
-            span { class: "learn-sr-only", role: "status",
-                if bag_empty() { "Side tile allowed. The gap remains forced." }
-                else { "Side tile blocked while the gap is open." }
-            }
-        }
-    }
-}
-
-#[component]
-fn ScoreLesson() -> Element {
-    let mut loop_mode = use_signal(|| false);
-    rsx! {
-        div { class: "learn-copy",
-            p { class: "learn-step", "05 / THE WINNER" }
-            h2 { "Your " strong { "best path" } " wins." }
-            p { class: "learn-rule", "Longest " strong { "line" } ": 1 per tile. Longest " strong { "loop" } ": 2 per tile." }
-            p { class: "learn-hint", "Only your best single path counts." }
-            div { class: "learn-actions",
-                button { class: "button learn-choice color-blue", onclick: move |_| loop_mode.set(false), "Trace line" }
-                button { class: "button learn-choice color-red", onclick: move |_| loop_mode.set(true), "Trace loop" }
-            }
-            p { class: "learn-score", class: if loop_mode() { "is-loop" },
-                if loop_mode() { "6 tiles × 2 = 12" } else { "3 tiles × 1 = 3" }
-            }
-        }
-        MiniBoard {
-            moves: if loop_mode() { loop_board() } else { line_board() },
-            highlight: Some(if loop_mode() { Color::Red } else { Color::Blue }),
-            label: if loop_mode() { "Six tile red loop scores twelve" } else { "Three tile blue line scores three" },
-        }
-    }
-}
-
-#[component]
-fn MiniBoard(
-    moves: Vec<Move>,
-    #[props(default)] forced_space: Option<Position>,
-    #[props(default)] target: Option<Position>,
-    #[props(default)] target_forced: bool,
-    #[props(default)] target_blocked: bool,
-    #[props(default)] preview: Option<Move>,
-    #[props(default)] preview_valid: bool,
-    #[props(default)] success_position: Option<Position>,
-    #[props(default)] highlight: Option<Color>,
-    #[props(into)] label: String,
-) -> Element {
-    let mut positions: Vec<Position> = moves.iter().map(|m| m.position).collect();
-    if let Some(position) = forced_space {
-        positions.push(position);
-    }
-    if let Some(position) = target {
-        positions.push(position);
-    }
-    if let Some(m) = preview {
-        positions.push(m.position);
-    }
-    let (left, top, right, bottom) =
-        board_bounding_box(&positions, HEX).unwrap_or((-50.0, -50.0, 50.0, 50.0));
-    let view_box = format!(
-        "{} {} {} {}",
-        left - 36.0,
-        top - 36.0,
-        right - left + 72.0,
-        bottom - top + 72.0
-    );
-    let mut board = Board::default();
-    for &m in &moves {
-        board
-            .insert_move(m)
-            .expect("fixed lesson board has distinct positions");
-    }
-    let path = highlight.map(|color| board.scoring_paths()[color].positions.clone());
-
-    rsx! {
-        div { class: "learn-board",
-            svg { view_box, role: "img",
-                title { {label} }
-                if let Some(position) = forced_space {
-                    {
-                        let (x, y) = axial_to_pixel(position, HEX);
-                        let points = hex_polygon_points(x, y, HEX);
-                        rsx! { polygon { class: "learn-forced-space", points } }
-                    }
-                }
-                if let Some(position) = target {
-                    {
-                        let (x, y) = axial_to_pixel(position, HEX);
-                        let points = hex_polygon_points(x, y, HEX);
-                        rsx! { polygon {
-                            class: "learn-target",
-                            class: if target_forced { "is-forced" },
-                            class: if target_blocked { "is-blocked" },
-                            points,
-                        } }
-                    }
-                }
-                for (index, m) in moves.iter().enumerate() {
-                    {
-                        let (x, y) = axial_to_pixel(m.position, HEX);
-                        let on_path = path.as_ref().is_some_and(|positions| positions.contains(&m.position));
-                        let marked = highlight.filter(|_| on_path).into_iter().collect::<Vec<_>>();
-                        rsx! { g { key: "{index}",
-                            class: if success_position == Some(m.position) { "learn-success" },
-                            HexSvg {
-                                tile: m.tile,
-                                rotation: m.rotation,
-                                cx: x,
-                                cy: y,
-                                hex_size: HEX,
-                                base_class: if highlight.is_some() { "learn-tile-muted".to_string() } else { String::new() },
-                                highlight_colors: marked,
+                        section { class: "learn-chapter", aria_labelledby: "learn-goal",
+                            h2 { id: "learn-goal", span { class: "learn-number", "01" } "Build your longest path." }
+                            p { class: "learn-rule", "Choose a color. Connect it into a line or a loop." }
+                            div { class: "learn-paths",
+                                figure {
+                                    LearnBoard { moves: line_board(), highlight: Color::Blue,
+                                        label: "Three connected tiles form a blue line, scoring three points",
+                                    }
+                                    figcaption { strong { "Line: tiles × 1" } span { "3 tiles = 3 points" } }
+                                }
+                                figure {
+                                    LearnBoard { moves: loop_board(), highlight: Color::Red,
+                                        label: "Six connected tiles form a closed red loop, scoring twelve points",
+                                    }
+                                    figcaption { strong { "Loop: tiles × 2" } span { "6 tiles = 12 points" } }
+                                }
                             }
-                        } }
-                    }
-                }
-                if let Some(m) = preview {
-                    {
-                        let (x, y) = axial_to_pixel(m.position, HEX);
-                        rsx! { g {
-                            class: "learn-preview",
-                            class: if preview_valid { "is-valid" } else { "is-invalid" },
-                            HexSvg { tile: m.tile, rotation: m.rotation, cx: x, cy: y, hex_size: HEX }
-                        } }
+                            p { class: "learn-hint", "Only your best single path counts." }
+                        }
+
+                        section { class: "learn-chapter", aria_labelledby: "learn-match",
+                            h2 { id: "learn-match", span { class: "learn-number", "02" } "Match every touching edge." }
+                            LearnBoard {
+                                moves: vec![first_tile(), match_tile()],
+                                matched_edge: (Position::CENTER, Direction::Right),
+                                label: "The two touching blue edges match, highlighted by a circle",
+                            }
+                            p { class: "learn-rule", "All colors must match — even your opponents’." }
+                        }
+
+                        section { class: "learn-chapter", aria_labelledby: "learn-turn",
+                            h2 { id: "learn-turn", span { class: "learn-number", "03" } "A turn can use several tiles." }
+                            figure { class: "learn-gap-example",
+                                LearnBoard {
+                                    moves: gap_board(),
+                                    spaces: vec![forced_space()],
+                                    label: "Empty space A touches three tiles, so it is a forced space",
+                                }
+                                figcaption { strong { "3 neighbors = a forced gap" } span { "Fill it whenever a tile in your hand fits." } }
+                            }
+                            ol { class: "learn-turn-flow", aria_label: "The three parts of your turn",
+                                li { class: "surface surface-inset", strong { "Fill gaps" } span { "if you can" } }
+                                li { class: "surface surface-inset", strong { "Free move" } span { "one tile" } }
+                                li { class: "surface surface-inset", strong { "Fill again" } span { "if you can" } }
+                            }
+                            p { class: "learn-hint", "Draw after each tile while the bag has tiles. Check your new hand too." }
+                        }
+
+                        section { class: "learn-chapter", aria_labelledby: "learn-restrictions",
+                            h2 { id: "learn-restrictions", span { class: "learn-number", "04" } "Why these spaces are blocked." }
+                            p { class: "learn-condition", "While the bag has tiles" }
+                            LearnBoard {
+                                moves: controlled_board(),
+                                spaces: controlled_spaces(),
+                                rays: vec![
+                                    (Position::CENTER, Position::CENTER.neighbor(Direction::Right).neighbor(Direction::Right).neighbor(Direction::Right)),
+                                    (Position::CENTER, Position::CENTER.neighbor(Direction::BottomLeft)),
+                                ],
+                                label: "Forced gap A controls two straight sides. X, Y, Z and the crossed space are blocked, even when no tile in your hand fits A",
+                            }
+                            div { class: "learn-key",
+                                span { strong { class: "learn-key-forced", "A" } " Forced gap" }
+                                span { strong { class: "learn-key-blocked", "X / Y / Z / ×" } " Blocked sides" }
+                            }
+                            p { class: "learn-rule", "A blocks play along its straight sides, " strong { "even if you cannot fill A." } }
+                            p { class: "learn-hint", "These are controlled sides. Keeping them clear prevents four-sided gaps. Play elsewhere if no forced gap can be filled." }
+
+                            details { class: "learn-restriction",
+                                summary { class: "button button-ghost learn-disclosure",
+                                    span { class: "learn-disclosure-arrow", aria_hidden: "true", "›" }
+                                    "No fourth neighbor"
+                                }
+                                figure {
+                                    LearnBoard {
+                                        moves: gap_board(), spaces: vec![forced_space()], preview: side_tile(),
+                                        label: "The outlined tile would add a fourth neighbor around the unfilled gap A, which is forbidden while the bag has tiles",
+                                    }
+                                    figcaption { strong { "3 + 1 = 4: blocked" } span { "Fill A before adding another neighbor." } }
+                                }
+                            }
+                            details { class: "learn-restriction",
+                                summary { class: "button button-ghost learn-disclosure",
+                                    span { class: "learn-disclosure-arrow", aria_hidden: "true", "›" }
+                                    "No three entries of one color"
+                                }
+                                figure {
+                                    LearnBoard {
+                                        moves: same_color_board(),
+                                        spaces: vec![DiagramSpace { position: Position::CENTER, label: "×", kind: SpaceKind::Blocked }],
+                                        highlight: Color::Red,
+                                        label: "Three red edges lead into the crossed gap. No tile has three edges of the same color, so this gap cannot be filled",
+                                    }
+                                    figcaption { strong { "Red + red + red: blocked" } span { "No tile has three edges of one color." } }
+                                }
+                            }
+                        }
+
+                        section { class: "learn-chapter", aria_labelledby: "learn-endgame",
+                            h2 { id: "learn-endgame", span { class: "learn-number", "05" } "Empty bag? Restrictions lift." }
+                            p { class: "learn-rule", "Controlled sides, fourth neighbors and same-color triples are now allowed." }
+                            p { class: "learn-rule", strong { "Still match colors and fill forced gaps whenever possible." } }
+                        }
+                        footer { class: "learn-footer",
+                            MenuButton { full_width: true,
+                                on_click: move |_| { let _ = nav.push(Route::LocalGame { seed: None }); },
+                                "Play a game →"
+                            }
+                            a { class: "button button-ghost", href: "https://www.tantrix.com/english/TantrixGameRules.html", "Full rules ↗" }
+                        }
                     }
                 }
             }
@@ -362,17 +153,11 @@ fn first_tile() -> Move {
     tile(Tile::BYYBRR, Position::CENTER, Rotation::None)
 }
 
-fn match_board() -> Board {
-    let mut board = Board::default();
-    board.insert_move(first_tile()).expect("one tile fits");
-    board
-}
-
-fn match_tile(rotation: Rotation) -> Move {
+fn match_tile() -> Move {
     tile(
         Tile::BYRBRY,
         Position::CENTER.neighbor(Direction::Right),
-        rotation,
+        Rotation::None,
     )
 }
 
@@ -384,7 +169,7 @@ fn line_board() -> Vec<Move> {
             Rotation::None,
         ),
         first_tile(),
-        match_tile(Rotation::None),
+        match_tile(),
     ]
 }
 
@@ -408,8 +193,85 @@ fn gap_board() -> Vec<Move> {
     ]
 }
 
-fn gap_tile() -> Move {
-    tile(Tile::YGGBBY, Position::CENTER, Rotation::R180)
+fn forced_space() -> DiagramSpace {
+    DiagramSpace {
+        position: Position::CENTER,
+        label: "A",
+        kind: SpaceKind::Forced,
+    }
+}
+
+fn controlled_board() -> Vec<Move> {
+    let mut board = gap_board();
+    board.extend([
+        tile(
+            Tile::RYYBRB,
+            Position::CENTER
+                .neighbor(Direction::TopRight)
+                .neighbor(Direction::Right),
+            Rotation::R60,
+        ),
+        tile(
+            Tile::RYYRBB,
+            Position::CENTER
+                .neighbor(Direction::TopRight)
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right),
+            Rotation::R240,
+        ),
+    ]);
+    board
+}
+
+fn controlled_spaces() -> Vec<DiagramSpace> {
+    vec![
+        forced_space(),
+        DiagramSpace {
+            position: Position::CENTER.neighbor(Direction::Right),
+            label: "X",
+            kind: SpaceKind::Blocked,
+        },
+        DiagramSpace {
+            position: Position::CENTER
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right),
+            label: "Y",
+            kind: SpaceKind::Blocked,
+        },
+        DiagramSpace {
+            position: Position::CENTER
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right),
+            label: "Z",
+            kind: SpaceKind::Blocked,
+        },
+        DiagramSpace {
+            position: Position::CENTER.neighbor(Direction::BottomLeft),
+            label: "×",
+            kind: SpaceKind::Blocked,
+        },
+    ]
+}
+
+fn same_color_board() -> Vec<Move> {
+    vec![
+        tile(
+            Tile::RYYBRB,
+            Position::CENTER.neighbor(Direction::Left),
+            Rotation::R180,
+        ),
+        tile(
+            Tile::BYYBRR,
+            Position::CENTER.neighbor(Direction::TopLeft),
+            Rotation::R300,
+        ),
+        tile(
+            Tile::YRRBBY,
+            Position::CENTER.neighbor(Direction::TopRight),
+            Rotation::R240,
+        ),
+    ]
 }
 
 fn side_tile() -> Move {
@@ -418,17 +280,6 @@ fn side_tile() -> Move {
         Position::CENTER.neighbor(Direction::Right),
         Rotation::None,
     )
-}
-
-fn forced_board(phase: u8) -> Vec<Move> {
-    let mut board = gap_board();
-    if phase >= 1 {
-        board.push(gap_tile());
-    }
-    if phase >= 2 {
-        board.push(side_tile());
-    }
-    board
 }
 
 fn loop_board() -> Vec<Move> {
@@ -448,7 +299,7 @@ fn loop_board() -> Vec<Move> {
 
 #[cfg(test)]
 mod tests {
-    use tantrix_game::{Hand, TurnStep};
+    use tantrix_game::{Board, Hand, TurnStep};
 
     use super::*;
 
@@ -468,36 +319,76 @@ mod tests {
     }
 
     #[test]
-    fn mini_boards_and_actions_follow_the_game_rules() {
+    fn diagrams_match_edges_and_show_the_stated_scores() {
         assert_eq!(board_of(&line_board()).scores()[Color::Blue].score, 3);
         assert_eq!(board_of(&loop_board()).scores()[Color::Red].score, 12);
-        let first = match_board();
-        assert!(first
-            .get_possible_move(Tile::BYRBRY, match_tile(Rotation::None).position)
-            .any(|m| m.rotation == Rotation::None));
-        assert!(!first
-            .get_possible_move(Tile::BYRBRY, match_tile(Rotation::R60).position)
-            .any(|m| m.rotation == Rotation::R60));
-
+        board_of(&controlled_board());
+        board_of(&same_color_board());
         let gap = board_of(&gap_board());
         assert!(gap.position_is_forced(&Position::CENTER));
         assert!(gap
-            .get_possible_move(gap_tile().tile, Position::CENTER)
-            .any(|m| m.rotation == gap_tile().rotation));
-        assert!(gap
-            .controlled_positions(&gap.contour_positions())
-            .contains(&side_tile().position));
-        assert!(gap
             .get_possible_move(side_tile().tile, side_tile().position)
             .any(|m| m.rotation == side_tile().rotation));
-        let mut endgame = gap_board();
-        endgame.push(side_tile());
-        board_of(&endgame);
-        board_of(&forced_board(2));
+        let mut fourth = gap_board();
+        fourth.push(side_tile());
+        let fourth = board_of(&fourth);
+        assert_eq!(
+            Position::CENTER
+                .around()
+                .filter(|(p, _)| !fourth.is_available(p))
+                .count(),
+            4
+        );
     }
 
     #[test]
-    fn endgame_example_lifts_the_side_restriction_but_keeps_forced_priority() {
+    fn controlled_diagram_marks_all_and_only_the_controlled_sides() {
+        let board = board_of(&controlled_board());
+        let blocked = board.controlled_positions(&board.contour_positions());
+        let marked = controlled_spaces()
+            .into_iter()
+            .filter(|space| space.kind == SpaceKind::Blocked)
+            .map(|space| space.position)
+            .collect();
+        assert_eq!(blocked, marked);
+        // Y and Z are restricted despite not touching A.
+        assert!(!Position::CENTER.around().any(|(p, _)| p
+            == Position::CENTER
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right)));
+        assert!(blocked.contains(
+            &Position::CENTER
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right)
+        ));
+        assert!(blocked.contains(
+            &Position::CENTER
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right)
+                .neighbor(Direction::Right)
+        ));
+    }
+
+    #[test]
+    fn same_color_diagram_shows_an_impossible_gap() {
+        let moves = same_color_board();
+        let board = board_of(&moves);
+        let entries: Vec<_> = Position::CENTER
+            .around()
+            .filter_map(|(p, d)| {
+                board
+                    .iter()
+                    .find(|m| m.position == p)
+                    .map(|m| m.color(d.opposite()))
+            })
+            .collect();
+        assert_eq!(entries, vec![Color::Red; 3]);
+        let before = board_of(&moves[..2]);
+        assert!(before.creates_same_color_triple(&moves[2]));
+    }
+
+    #[test]
+    fn endgame_lifts_the_side_restriction_but_keeps_forced_priority() {
         let board = board_of(&gap_board());
         let side_only: Hand = serde_json::from_str(r#"{"tiles":["YRRBYB"]}"#).unwrap();
         let with_gap_tile: Hand = serde_json::from_str(r#"{"tiles":["YRRBYB","YGGBBY"]}"#).unwrap();
