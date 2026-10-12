@@ -3,13 +3,14 @@
 
 use dioxus::prelude::*;
 use futures::StreamExt;
-use tantrix_net::{open_session, SessionEvent};
+#[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+use tantrix_net::open_session;
+use tantrix_net::SessionEvent;
 use tantrix_proto::RejectCode;
 
 use crate::state::online_state::{
     CommandSender, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
-use crate::state::room_connection::room_url;
 
 /// Open a session for the given room and pump events into
 /// the `OnlineState` store. The spawned tasks live as long as the component
@@ -17,8 +18,7 @@ use crate::state::room_connection::room_url;
 pub fn spawn_session(
     store: Store<OnlineState>,
     mut sender: Signal<Option<CommandSender>>,
-    room_code: String,
-    create: bool,
+    url: String,
     nickname: String,
 ) {
     // This hook also runs while Dioxus server-renders the room page. Only a
@@ -32,7 +32,20 @@ pub fn spawn_session(
         return;
     }
 
-    let url = room_url(&room_code, create);
+    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    let (handle, run_fut) = {
+        let cookie = match crate::state::desktop_settings::session_cookie(&url) {
+            Ok(cookie) => cookie,
+            Err(reason) => {
+                store.phase().set(OnlinePhase::Failed {
+                    reason: FailureReason::Transport(reason),
+                });
+                return;
+            }
+        };
+        tantrix_net::open_native_session(url, nickname, cookie)
+    };
+    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
     let (handle, run_fut) = open_session(url, nickname);
 
     // Publish the command sender so child components can dispatch actions.

@@ -13,9 +13,7 @@ pub fn ConfirmDialog(
     on_cancel: EventHandler<()>,
 ) -> Element {
     rsx! {
-        div {
-            class: "modal-backdrop",
-            onclick: move |_| on_cancel.call(()),
+        div { class: "modal-backdrop", onclick: move |_| on_cancel.call(()),
             div {
                 class: "surface surface-raised surface-blur modal",
                 role: "dialog",

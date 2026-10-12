@@ -85,7 +85,10 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
         if let Some(tile) = tile() {
             {
                 let state = state();
-                let show_outline = matches!(state, HandTileState::Selected | HandTileState::Forced);
+                let show_outline = matches!(
+                    state,
+                    HandTileState::Selected | HandTileState::Forced
+                );
                 let outline_class = match state {
                     HandTileState::Selected => "hand-hex-ring selected",
                     _ => "hand-hex-ring forced",
@@ -93,7 +96,6 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                 let outline_points = hex_polygon_points(TILE_CX, TILE_CY, OUTLINE_HEX);
                 let state_class = state.css_class();
                 let interactive = state.is_interactive() && can_play();
-
                 rsx! {
                     div {
                         class: "hand-tile",
@@ -112,16 +114,31 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         },
                         onresize: move |_| measure(),
                         ondragstart: move |evt| evt.prevent_default(),
-                        onpointerdown: move |evt| {
+                        onpointerdown: move |evt| { // Only a mouse hovers: a finger's "hover" would stick
                             if interactive && evt.data().trigger_button() == Some(MouseButton::Primary) {
                                 if let Some(origin) = *bounds.peek() {
                                     #[cfg(feature = "web")]
-                                    if let Some(element) = mounted.peek().as_ref().and_then(|data| data.try_as_web_event()) {
+                                    if let Some(element) = mounted
+                                        .peek()
+                                        .as_ref()
+                                        .and_then(|data| data.try_as_web_event())
+                                    {
                                         _ = element.set_pointer_capture(evt.data().pointer_id());
                                     }
                                     let at = evt.data().client_coordinates();
-                                    let slop = if evt.data().pointer_type() == "mouse" { MOUSE_SLOP } else { TOUCH_SLOP };
-                                    press_tile(ctx, color, index(), Pointer::new(evt.data().pointer_id(), at.x, at.y), origin, slop);
+                                    let slop = if evt.data().pointer_type() == "mouse" {
+                                        MOUSE_SLOP
+                                    } else {
+                                        TOUCH_SLOP
+                                    };
+                                    press_tile(
+                                        ctx,
+                                        color,
+                                        index(),
+                                        Pointer::new(evt.data().pointer_id(), at.x, at.y),
+                                        origin,
+                                        slop,
+                                    );
                                     measure();
                                 }
                             }
@@ -151,7 +168,9 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                             }
                         },
                         onpointerleave: move |e| {
-                            if is_active_seat() && e.data().pointer_type() == "mouse" && *hovered.peek() == Hovered::HandTile(index()) {
+                            if is_active_seat() && e.data().pointer_type() == "mouse"
+                                && *hovered.peek() == Hovered::HandTile(index())
+                            {
                                 hovered.set(Hovered::None);
                             }
                         },

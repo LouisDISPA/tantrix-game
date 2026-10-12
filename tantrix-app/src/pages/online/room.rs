@@ -1,7 +1,8 @@
 //! `/online/:code` — root component that owns the session.
 //!
 //! Creates the `Store<OnlineState>` and the command-sender signal locally
-//! and passes them down as props to each child screen. No context.
+//! and passes them down as props to each child screen. Desktop rooms also
+//! provide the captured server origin to the invitation UI.
 //!
 //! The session itself lives in [`OnlineRoomSession`], keyed by a retry
 //! counter: bumping the counter unmounts the old session (dropping its
@@ -20,6 +21,16 @@ use crate::state::room_connection;
 
 #[component]
 pub fn OnlineRoom(code: String) -> Element {
+    let url = use_hook(|| room_connection::room_url(&code, false));
+    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    use_context_provider(|| {
+        room_connection::RoomServer(
+            url.split("/room/")
+                .next()
+                .unwrap_or(&url)
+                .replacen("ws", "http", 1),
+        )
+    });
     let mut attempt = use_signal(|| 0u32);
     let create = use_hook({
         let code = code.clone();
@@ -35,7 +46,7 @@ pub fn OnlineRoom(code: String) -> Element {
             OnlineRoomSession {
                 key: "{code}-{attempt_no}",
                 code: code.clone(),
-                create: create && attempt_no == 0,
+                url: if create && attempt_no == 0 { format!("{url}?create=1") } else { url.clone() },
                 on_retry: move |_| {
                     log::info!("online: retrying (attempt {})", attempt() + 2);
                     attempt += 1;
@@ -46,20 +57,14 @@ pub fn OnlineRoom(code: String) -> Element {
 }
 
 #[component]
-fn OnlineRoomSession(code: String, create: bool, on_retry: EventHandler<()>) -> Element {
+fn OnlineRoomSession(code: String, url: String, on_retry: EventHandler<()>) -> Element {
     let state = use_store(|| OnlineState::new(code.clone()));
     let sender = use_signal(|| None);
 
     // Once per session: the stored nickname (or a fresh one) is read when the
     // session opens, not on every render.
     use_hook(|| {
-        spawn_session(
-            state,
-            sender,
-            code.clone(),
-            create,
-            nickname::load_or_generate(),
-        );
+        spawn_session(state, sender, url.clone(), nickname::load_or_generate());
     });
 
     // The screen for the room's phase. A memo, so a lobby update or a game
@@ -67,11 +72,21 @@ fn OnlineRoomSession(code: String, create: bool, on_retry: EventHandler<()>) -> 
     // clone the phase.
     let screen = use_memo(move || RoomScreen::of(&state.phase().read()));
     match screen() {
-        RoomScreen::Connecting => rsx! { ConnectingView { state, on_retry } },
-        RoomScreen::Lobby => rsx! { OnlineLobbyView { state, sender } },
-        RoomScreen::Playing => rsx! { OnlineGameView { state, sender } },
-        RoomScreen::Ended => rsx! { OnlineGameView { state, sender } },
-        RoomScreen::Failed(reason) => rsx! { FailedView { reason, on_retry } },
+        RoomScreen::Connecting => rsx! {
+            ConnectingView { state, on_retry }
+        },
+        RoomScreen::Lobby => rsx! {
+            OnlineLobbyView { state, sender }
+        },
+        RoomScreen::Playing => rsx! {
+            OnlineGameView { state, sender }
+        },
+        RoomScreen::Ended => rsx! {
+            OnlineGameView { state, sender }
+        },
+        RoomScreen::Failed(reason) => rsx! {
+            FailedView { reason, on_retry, server: url }
+        },
     }
 }
 

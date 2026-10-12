@@ -20,118 +20,225 @@ pub fn Learn() -> Element {
                     title: "Learn Tantrix",
                     subtitle: "A visual field guide",
                     wide: true,
-                    back: move |_| { let _ = nav.push(Route::MainMenu {}); },
+                    back: move |_| {
+                        let _ = nav.push(Route::MainMenu {});
+                    },
                     main { class: "learn-guide",
                         p { class: "learn-intro", "2–4 players · 6 tiles each · hands face up" }
 
-                        section { class: "learn-chapter", aria_labelledby: "learn-goal",
-                            h2 { id: "learn-goal", span { class: "learn-number", "01" } "Build your longest path." }
-                            p { class: "learn-rule", "Choose a color. Connect it into a line or a loop." }
+                        section {
+                            class: "learn-chapter",
+                            aria_labelledby: "learn-goal",
+                            h2 { id: "learn-goal",
+                                span { class: "learn-number", "01" }
+                                "Build your longest path."
+                            }
+                            p { class: "learn-rule",
+                                "Choose a color. Connect it into a line or a loop."
+                            }
                             div { class: "learn-paths",
                                 figure {
-                                    LearnBoard { moves: line_board(), highlight: Color::Blue,
+                                    LearnBoard {
+                                        moves: line_board(),
+                                        highlight: Color::Blue,
                                         label: "Three connected tiles form a blue line, scoring three points",
                                     }
-                                    figcaption { strong { "Line: tiles × 1" } span { "3 tiles = 3 points" } }
+                                    figcaption {
+                                        strong { "Line: tiles × 1" }
+                                        span { "3 tiles = 3 points" }
+                                    }
                                 }
                                 figure {
-                                    LearnBoard { moves: loop_board(), highlight: Color::Red,
+                                    LearnBoard {
+                                        moves: loop_board(),
+                                        highlight: Color::Red,
                                         label: "Six connected tiles form a closed red loop, scoring twelve points",
                                     }
-                                    figcaption { strong { "Loop: tiles × 2" } span { "6 tiles = 12 points" } }
+                                    figcaption {
+                                        strong { "Loop: tiles × 2" }
+                                        span { "6 tiles = 12 points" }
+                                    }
                                 }
                             }
                             p { class: "learn-hint", "Only your best single path counts." }
                         }
 
-                        section { class: "learn-chapter", aria_labelledby: "learn-match",
-                            h2 { id: "learn-match", span { class: "learn-number", "02" } "Match every touching edge." }
+                        section {
+                            class: "learn-chapter",
+                            aria_labelledby: "learn-match",
+                            h2 { id: "learn-match",
+                                span { class: "learn-number", "02" }
+                                "Match every touching edge."
+                            }
                             LearnBoard {
                                 moves: vec![first_tile(), match_tile()],
                                 matched_edge: (Position::CENTER, Direction::Right),
                                 label: "The two touching blue edges match, highlighted by a circle",
                             }
-                            p { class: "learn-rule", "All colors must match — even your opponents’." }
+                            p { class: "learn-rule",
+                                "All colors must match — even your opponents’."
+                            }
                         }
 
-                        section { class: "learn-chapter", aria_labelledby: "learn-turn",
-                            h2 { id: "learn-turn", span { class: "learn-number", "03" } "A turn can use several tiles." }
+                        section {
+                            class: "learn-chapter",
+                            aria_labelledby: "learn-turn",
+                            h2 { id: "learn-turn",
+                                span { class: "learn-number", "03" }
+                                "A turn can use several tiles."
+                            }
                             figure { class: "learn-gap-example",
                                 LearnBoard {
                                     moves: gap_board(),
                                     spaces: vec![forced_space()],
                                     label: "Empty space A touches three tiles, so it is a forced space",
                                 }
-                                figcaption { strong { "3 neighbors = a forced gap" } span { "Fill it whenever a tile in your hand fits." } }
+                                figcaption {
+                                    strong { "3 neighbors = a forced gap" }
+                                    span { "Fill it whenever a tile in your hand fits." }
+                                }
                             }
-                            ol { class: "learn-turn-flow", aria_label: "The three parts of your turn",
-                                li { class: "surface surface-inset", strong { "Fill gaps" } span { "if you can" } }
-                                li { class: "surface surface-inset", strong { "Free move" } span { "one tile" } }
-                                li { class: "surface surface-inset", strong { "Fill again" } span { "if you can" } }
+                            ol {
+                                class: "learn-turn-flow",
+                                aria_label: "The three parts of your turn",
+                                li { class: "surface surface-inset",
+                                    strong { "Fill gaps" }
+                                    span { "if you can" }
+                                }
+                                li { class: "surface surface-inset",
+                                    strong { "Free move" }
+                                    span { "one tile" }
+                                }
+                                li { class: "surface surface-inset",
+                                    strong { "Fill again" }
+                                    span { "if you can" }
+                                }
                             }
-                            p { class: "learn-hint", "Draw after each tile while the bag has tiles. Check your new hand too." }
+                            p { class: "learn-hint",
+                                "Draw after each tile while the bag has tiles. Check your new hand too."
+                            }
                         }
 
-                        section { class: "learn-chapter", aria_labelledby: "learn-restrictions",
-                            h2 { id: "learn-restrictions", span { class: "learn-number", "04" } "Why these spaces are blocked." }
+                        section {
+                            class: "learn-chapter",
+                            aria_labelledby: "learn-restrictions",
+                            h2 { id: "learn-restrictions",
+                                span { class: "learn-number", "04" }
+                                "Why these spaces are blocked."
+                            }
                             p { class: "learn-condition", "While the bag has tiles" }
                             LearnBoard {
                                 moves: controlled_board(),
                                 spaces: controlled_spaces(),
                                 rays: vec![
-                                    (Position::CENTER, Position::CENTER.neighbor(Direction::Right).neighbor(Direction::Right).neighbor(Direction::Right)),
+                                    (
+                                        Position::CENTER,
+                                        Position::CENTER
+                                            .neighbor(Direction::Right)
+                                            .neighbor(Direction::Right)
+                                            .neighbor(Direction::Right),
+                                    ),
                                     (Position::CENTER, Position::CENTER.neighbor(Direction::BottomLeft)),
                                 ],
                                 label: "Forced gap A controls two straight sides. X, Y, Z and the crossed space are blocked, even when no tile in your hand fits A",
                             }
                             div { class: "learn-key",
-                                span { strong { class: "learn-key-forced", "A" } " Forced gap" }
-                                span { strong { class: "learn-key-blocked", "X / Y / Z / ×" } " Blocked sides" }
+                                span {
+                                    strong { class: "learn-key-forced", "A" }
+                                    " Forced gap"
+                                }
+                                span {
+                                    strong { class: "learn-key-blocked", "X / Y / Z / ×" }
+                                    " Blocked sides"
+                                }
                             }
-                            p { class: "learn-rule", "A blocks play along its straight sides, " strong { "even if you cannot fill A." } }
-                            p { class: "learn-hint", "These are controlled sides. Keeping them clear prevents four-sided gaps. Play elsewhere if no forced gap can be filled." }
+                            p { class: "learn-rule",
+                                "A blocks play along its straight sides, "
+                                strong { "even if you cannot fill A." }
+                            }
+                            p { class: "learn-hint",
+                                "These are controlled sides. Keeping them clear prevents four-sided gaps. Play elsewhere if no forced gap can be filled."
+                            }
 
                             details { class: "learn-restriction",
                                 summary { class: "button button-ghost learn-disclosure",
-                                    span { class: "learn-disclosure-arrow", aria_hidden: "true", "›" }
+                                    span {
+                                        class: "learn-disclosure-arrow",
+                                        aria_hidden: "true",
+                                        "›"
+                                    }
                                     "No fourth neighbor"
                                 }
                                 figure {
                                     LearnBoard {
-                                        moves: gap_board(), spaces: vec![forced_space()], preview: side_tile(),
+                                        moves: gap_board(),
+                                        spaces: vec![forced_space()],
+                                        preview: side_tile(),
                                         label: "The outlined tile would add a fourth neighbor around the unfilled gap A, which is forbidden while the bag has tiles",
                                     }
-                                    figcaption { strong { "3 + 1 = 4: blocked" } span { "Fill A before adding another neighbor." } }
+                                    figcaption {
+                                        strong { "3 + 1 = 4: blocked" }
+                                        span { "Fill A before adding another neighbor." }
+                                    }
                                 }
                             }
                             details { class: "learn-restriction",
                                 summary { class: "button button-ghost learn-disclosure",
-                                    span { class: "learn-disclosure-arrow", aria_hidden: "true", "›" }
+                                    span {
+                                        class: "learn-disclosure-arrow",
+                                        aria_hidden: "true",
+                                        "›"
+                                    }
                                     "No three entries of one color"
                                 }
                                 figure {
                                     LearnBoard {
                                         moves: same_color_board(),
-                                        spaces: vec![DiagramSpace { position: Position::CENTER, label: "×", kind: SpaceKind::Blocked }],
+                                        spaces: vec![
+                                            DiagramSpace {
+                                                position: Position::CENTER,
+                                                label: "×",
+                                                kind: SpaceKind::Blocked,
+                                            },
+                                        ],
                                         highlight: Color::Red,
                                         label: "Three red edges lead into the crossed gap. No tile has three edges of the same color, so this gap cannot be filled",
                                     }
-                                    figcaption { strong { "Red + red + red: blocked" } span { "No tile has three edges of one color." } }
+                                    figcaption {
+                                        strong { "Red + red + red: blocked" }
+                                        span { "No tile has three edges of one color." }
+                                    }
                                 }
                             }
                         }
 
-                        section { class: "learn-chapter", aria_labelledby: "learn-endgame",
-                            h2 { id: "learn-endgame", span { class: "learn-number", "05" } "Empty bag? Restrictions lift." }
-                            p { class: "learn-rule", "Controlled sides, fourth neighbors and same-color triples are now allowed." }
-                            p { class: "learn-rule", strong { "Still match colors and fill forced gaps whenever possible." } }
+                        section {
+                            class: "learn-chapter",
+                            aria_labelledby: "learn-endgame",
+                            h2 { id: "learn-endgame",
+                                span { class: "learn-number", "05" }
+                                "Empty bag? Restrictions lift."
+                            }
+                            p { class: "learn-rule",
+                                "Controlled sides, fourth neighbors and same-color triples are now allowed."
+                            }
+                            p { class: "learn-rule",
+                                strong { "Still match colors and fill forced gaps whenever possible." }
+                            }
                         }
                         footer { class: "learn-footer",
-                            MenuButton { full_width: true,
-                                on_click: move |_| { let _ = nav.push(Route::LocalGame { seed: None }); },
+                            MenuButton {
+                                full_width: true,
+                                on_click: move |_| {
+                                    let _ = nav.push(Route::LocalGame { seed: None });
+                                },
                                 "Play a game →"
                             }
-                            a { class: "button button-ghost", href: "https://www.tantrix.com/english/TantrixGameRules.html", "Full rules ↗" }
+                            a {
+                                class: "button button-ghost",
+                                href: "https://www.tantrix.com/english/TantrixGameRules.html",
+                                "Full rules ↗"
+                            }
                         }
                     }
                 }

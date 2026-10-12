@@ -23,7 +23,10 @@ pub fn HudMenu(children: Element) -> Element {
                 }
             },
             if open() {
-                div { class: "hud-menu-backdrop", onclick: move |_| open.set(false) }
+                div {
+                    class: "hud-menu-backdrop",
+                    onclick: move |_| open.set(false),
+                }
             }
             button {
                 class: "button button-icon button-ghost hud-menu-toggle",
@@ -33,7 +36,11 @@ pub fn HudMenu(children: Element) -> Element {
                 onclick: move |_| open.set(!open()),
                 "⋯"
             }
-            div { class: "surface surface-blur hud-menu-items", onclick: move |_| open.set(false), {children} }
+            div {
+                class: "surface surface-blur hud-menu-items",
+                onclick: move |_| open.set(false),
+                {children}
+            }
         }
     }
 }

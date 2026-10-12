@@ -41,7 +41,7 @@ pub fn BoardTile(
             class: if is_preview { "tile-preview" },
             class: if just_placed { "just-placed" },
             class: if dimmed { "dimmed-tile" },
-            style: style,
+            style,
             "data-position": "{placement.position.x()},{placement.position.y()}",
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                 HexSvg {

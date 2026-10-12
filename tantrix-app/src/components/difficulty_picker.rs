@@ -8,7 +8,10 @@ use crate::state::config::Difficulty;
 #[component]
 pub fn DifficultyPicker(level: Difficulty, on_change: EventHandler<Difficulty>) -> Element {
     rsx! {
-        div { class: "segmented-control difficulty-picker", role: "group", aria_label: "AI difficulty",
+        div {
+            class: "segmented-control difficulty-picker",
+            role: "group",
+            aria_label: "AI difficulty",
             for option in Difficulty::ALL {
                 button {
                     key: "{option.label()}",

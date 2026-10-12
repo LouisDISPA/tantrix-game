@@ -13,9 +13,7 @@ pub fn TitleDecoration() -> Element {
         div { class: "title-glow" }
         div { class: "floating-hexes",
             for color in FLOATING_HEX_COLORS.iter() {
-                div {
-                    key: "{color}",
-                    class: "floating-hex hex-{color}",
+                div { key: "{color}", class: "floating-hex hex-{color}",
                     div { class: "floating-hex-inner" }
                 }
             }

@@ -15,38 +15,42 @@ pub fn MainMenu() -> Element {
 
     rsx! {
         MenuScreen { quick,
-                div { class: "title-logo-area",
-                    div { class: "hex-frame title-hex-frame" }
-                    h1 { class: "brand-heading brand-heading-animated title-logo", "TANTRIX" }
-                    p { class: "title-subtitle", "Hexagonal Strategy Game" }
-                }
+            div { class: "title-logo-area",
+                div { class: "hex-frame title-hex-frame" }
+                h1 { class: "brand-heading brand-heading-animated title-logo", "TANTRIX" }
+                p { class: "title-subtitle", "Hexagonal Strategy Game" }
+            }
 
-                div { class: "title-buttons",
-                    MenuButton {
-                        on_click: move |_| {
-                            let _ = nav.push(Route::LocalGame { seed: None });
+            div { class: "title-buttons",
+                MenuButton {
+                    on_click: move |_| {
+                        let _ = nav.push(Route::LocalGame { seed: None });
+                    },
+                    "Local Game"
+                }
+                MenuButton {
+                    on_click: move |_| {
+                        let _ = nav.push(Route::OnlineEntry {});
+                    },
+                    "Online"
+                }
+                div { class: "title-secondary-links",
+                    button {
+                        class: "button button-ghost button-link title-btn-link",
+                        onclick: move |_| {
+                            let _ = nav.push(Route::Learn {});
                         },
-                        "Local Game"
+                        "Learn the rules →"
                     }
-                    MenuButton {
-                        on_click: move |_| {
-                            let _ = nav.push(Route::OnlineEntry {});
+                    button {
+                        class: "button button-ghost button-link title-btn-link",
+                        onclick: move |_| {
+                            let _ = nav.push(Route::About {});
                         },
-                        "Online"
-                    }
-                    div { class: "title-secondary-links",
-                        button {
-                            class: "button button-ghost button-link title-btn-link",
-                            onclick: move |_| { let _ = nav.push(Route::Learn {}); },
-                            "Learn the rules →"
-                        }
-                        button {
-                            class: "button button-ghost button-link title-btn-link",
-                            onclick: move |_| { let _ = nav.push(Route::About {}); },
-                            "About"
-                        }
+                        "About"
                     }
                 }
+            }
         }
     }
 }

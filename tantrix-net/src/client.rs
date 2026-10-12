@@ -244,7 +244,7 @@ async fn run_session(
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "native")))]
 async fn run_session(
     _room_url: String,
     _nickname: String,
@@ -254,4 +254,14 @@ async fn run_session(
     let _ = events.unbounded_send(SessionEvent::Disconnected {
         reason: "Online play requires the web client.".into(),
     });
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
+async fn run_session(
+    room_url: String,
+    nickname: String,
+    commands: futures_channel::mpsc::UnboundedReceiver<SessionCommand>,
+    events: UnboundedSender<SessionEvent>,
+) {
+    crate::native::run_native_session(room_url, nickname, None, commands, events).await;
 }

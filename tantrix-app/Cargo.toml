@@ -32,6 +32,10 @@ rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
 serde_json = { version = "1.0.151", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dirs = { version = "6", optional = true }
+url = { version = "2", optional = true }
+arboard = { version = "3", optional = true }
+
 tower-http = { version = "0.6.11", default-features = false, features = ["compression-br", "compression-gzip"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -69,6 +73,6 @@ fullstack = ["dioxus/fullstack"]
 # the SSR host lives in the worker crate.
 worker = ["dep:gloo-timers", "dep:dioxus-fullstack-core", "dep:http"]
 liveview = ["dioxus/liveview"]
-desktop = ["dioxus/desktop", "dep:tokio"]
+desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep:url", "dep:arboard"]
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]

@@ -37,7 +37,11 @@ pub fn ShareChip(url: ReadSignal<String>) -> Element {
             class: if copied() { "copied" },
             onclick: on_click,
             span { class: "lobby-share-label",
-                if copied() { "Copied!" } else { "Click to copy invite link" }
+                if copied() {
+                    "Copied!"
+                } else {
+                    "Click to copy invite link"
+                }
             }
             span { class: "lobby-share-url", "{url}" }
         }
@@ -57,7 +61,14 @@ async fn copy_to_clipboard(text: String) -> bool {
     wasm_bindgen_futures::JsFuture::from(promise).await.is_ok()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(feature = "desktop")))]
 async fn copy_to_clipboard(_text: String) -> bool {
     false
+}
+
+#[cfg(all(not(target_arch = "wasm32"), feature = "desktop"))]
+async fn copy_to_clipboard(text: String) -> bool {
+    arboard::Clipboard::new()
+        .and_then(|mut clipboard| clipboard.set_text(text))
+        .is_ok()
 }

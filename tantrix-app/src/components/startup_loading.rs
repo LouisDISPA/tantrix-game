@@ -13,7 +13,10 @@ pub fn StartupLoading(ready: bool) -> Element {
             }
             div { class: "loading-caption",
                 span { class: "loading-hexes", aria_hidden: true,
-                    span {} span {} span {} span {}
+                    span {}
+                    span {}
+                    span {}
+                    span {}
                 }
                 span { id: "loading-status", role: "status", "Loading…" }
                 // CSS reveals this after 15s, even if Wasm never starts.

@@ -35,11 +35,7 @@ pub fn LobbyNicknameEditor(
     };
 
     rsx! {
-        NicknameInput {
-            authoritative,
-            max_len: nickname::MAX_CHARS,
-            on_commit,
-        }
+        NicknameInput { authoritative, max_len: nickname::MAX_CHARS, on_commit }
     }
 }
 

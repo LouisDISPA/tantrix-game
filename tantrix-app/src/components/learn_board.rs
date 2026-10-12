@@ -52,7 +52,9 @@ pub fn LearnBoard(
             svg { view_box, role: "img", "aria-label": label.clone(),
                 title { {label.clone()} }
                 for (index, (from, to)) in rays.iter().enumerate() {
-                    line { key: "ray-{index}", class: "learn-controlled-ray",
+                    line {
+                        key: "ray-{index}",
+                        class: "learn-controlled-ray",
                         x1: axial_to_pixel(*from, HEX).0,
                         y1: axial_to_pixel(*from, HEX).1,
                         x2: axial_to_pixel(*to, HEX).0,
@@ -66,15 +68,17 @@ pub fn LearnBoard(
                     g { key: "{m.position:?}",
                         {
                             let (x, y) = axial_to_pixel(m.position, HEX);
-                            rsx! { HexSvg {
-                                tile: m.tile,
-                                rotation: m.rotation,
-                                cx: x,
-                                cy: y,
-                                hex_size: HEX,
-                                base_class: if highlight.is_some() { "learn-tile-muted".to_string() } else { String::new() },
-                                highlight_colors: highlight.into_iter().collect(),
-                            } }
+                            rsx! {
+                                HexSvg {
+                                    tile: m.tile,
+                                    rotation: m.rotation,
+                                    cx: x,
+                                    cy: y,
+                                    hex_size: HEX,
+                                    base_class: if highlight.is_some() { "learn-tile-muted".to_string() } else { String::new() },
+                                    highlight_colors: highlight.into_iter().collect(),
+                                }
+                            }
                         }
                     }
                 }
@@ -82,7 +86,15 @@ pub fn LearnBoard(
                     g { class: "learn-preview",
                         {
                             let (x, y) = axial_to_pixel(m.position, HEX);
-                            rsx! { HexSvg { tile: m.tile, rotation: m.rotation, cx: x, cy: y, hex_size: HEX } }
+                            rsx! {
+                                HexSvg {
+                                    tile: m.tile,
+                                    rotation: m.rotation,
+                                    cx: x,
+                                    cy: y,
+                                    hex_size: HEX,
+                                }
+                            }
                         }
                     }
                 }
@@ -90,7 +102,14 @@ pub fn LearnBoard(
                     {
                         let (x, y) = axial_to_pixel(position, HEX);
                         let (cx, cy) = edge_midpoint(&hex_vertices(x, y, HEX), direction);
-                        rsx! { circle { class: "learn-matched-edge", cx, cy, r: "12" } }
+                        rsx! {
+                            circle {
+                                class: "learn-matched-edge",
+                                cx,
+                                cy,
+                                r: "12",
+                            }
+                        }
                     }
                 }
             }
@@ -102,12 +121,19 @@ pub fn LearnBoard(
 fn SpaceMark(space: DiagramSpace) -> Element {
     let (x, y) = axial_to_pixel(space.position, HEX);
     rsx! {
-        g { class: match space.kind {
+        g {
+            class: match space.kind {
                 SpaceKind::Forced => "learn-space is-forced",
                 SpaceKind::Blocked => "learn-space is-blocked",
             },
             polygon { points: hex_polygon_points(x, y, HEX) }
-            text { x, y, dominant_baseline: "central", text_anchor: "middle", "{space.label}" }
+            text {
+                x,
+                y,
+                dominant_baseline: "central",
+                text_anchor: "middle",
+                "{space.label}"
+            }
         }
     }
 }

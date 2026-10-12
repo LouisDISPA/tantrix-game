@@ -43,6 +43,8 @@ pub fn LocalGame(seed: Option<u64>) -> Element {
                 },
             }
         },
-        (Screen::Playing, false) => rsx! { GamePlay {} },
+        (Screen::Playing, false) => rsx! {
+            GamePlay {}
+        },
     }
 }

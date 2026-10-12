@@ -95,7 +95,11 @@ pub fn PlayerHand(color: Color, shown: ReadSignal<Color>) -> Element {
                     }
                 }
                 if is_current() {
-                    span { class: "active-dot", role: "img", aria_label: "to move" }
+                    span {
+                        class: "active-dot",
+                        role: "img",
+                        aria_label: "to move",
+                    }
                 }
             }
 

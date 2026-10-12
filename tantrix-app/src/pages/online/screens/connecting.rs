@@ -33,7 +33,9 @@ pub fn ConnectingView(state: Store<OnlineState>, on_retry: EventHandler<()>) -> 
                 title: "Joining room…",
                 subtitle: format!("Room {}", state.room_code()),
                 if slow() {
-                    p { class: "lobby-waiting", "Still connecting… this is taking longer than usual." }
+                    p { class: "lobby-waiting",
+                        "Still connecting… this is taking longer than usual."
+                    }
                     MenuButton {
                         full_width: true,
                         on_click: move |_| on_retry.call(()),

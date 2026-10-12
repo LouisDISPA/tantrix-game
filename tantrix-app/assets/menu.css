@@ -477,6 +477,59 @@
     border-style: dashed;
   }
 
+  .connection-settings {
+    position: relative;
+  }
+
+  .connection-settings-toggle {
+    display: flex;
+    width: fit-content;
+    margin-inline: auto;
+    font-weight: 500;
+  }
+
+  .connection-settings-toggle::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+  }
+
+  .connection-settings.open > .connection-settings-toggle::before {
+    transform: rotate(45deg);
+  }
+
+  .connection-settings-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    inset-inline: 0;
+    z-index: 60;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .connection-settings.open > .connection-settings-panel {
+    display: flex;
+  }
+
+  @media (max-height: 760px) {
+    .connection-settings-panel {
+      top: auto;
+      bottom: calc(100% + var(--space-2));
+    }
+  }
+
+  .connection-settings-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
   /* ---------- Lobby ---------- */
 
   .menu-card-wide .lobby-header,

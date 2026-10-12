@@ -61,11 +61,7 @@ fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
                 div { class: "color-swatch results-color-swatch" }
                 span { class: "results-name", "{color}" }
             }
-            span {
-                class: "results-points",
-                class: if is_winner { "winner" },
-                "{score}"
-            }
+            span { class: "results-points", class: if is_winner { "winner" }, "{score}" }
         }
     }
 }
@@ -100,19 +96,15 @@ pub fn ScoresPanel(children: Element) -> Element {
                     if winners.read().len() > 1 {
                         div { class: "results-winner-label", "Tie" }
                         div { class: "results-tie-names",
-                            for (i , color) in winners.read().iter().copied().enumerate() {
+                            for (i, color) in winners.read().iter().copied().enumerate() {
                                 {
                                     let color_class = format!("color-{}", color_slug(color));
                                     rsx! {
-                                        span {
-                                            key: "{color:?}",
+                                        span { key: "{color:?}",
                                             if i > 0 {
                                                 span { class: "results-tie-separator", " & " }
                                             }
-                                            span {
-                                                class: "results-winner-name {color_class}",
-                                                "{color}"
-                                            }
+                                            span { class: "results-winner-name {color_class}", "{color}" }
                                         }
                                     }
                                 }
@@ -124,10 +116,7 @@ pub fn ScoresPanel(children: Element) -> Element {
                             let winner_class = format!("color-{}", color_slug(winner_color));
                             rsx! {
                                 div { class: "results-winner-label", "Winner" }
-                                div {
-                                    class: "results-winner-name {winner_class}",
-                                    "{winner_color}"
-                                }
+                                div { class: "results-winner-name {winner_class}", "{winner_color}" }
                             }
                         }
                     }
@@ -136,7 +125,7 @@ pub fn ScoresPanel(children: Element) -> Element {
                 div { class: "results-divider" }
 
                 div { class: "results-stats",
-                    for (c , score) in rows.read().iter().copied() {
+                    for (c, score) in rows.read().iter().copied() {
                         ScoreRow {
                             key: "{c:?}",
                             color: c,

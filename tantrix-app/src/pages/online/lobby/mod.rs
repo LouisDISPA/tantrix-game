@@ -65,7 +65,9 @@ pub fn OnlineLobbyView(
                 title: "Lobby",
                 subtitle: "Share the room and pick a color",
                 wide: true,
-                back: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
+                back: move |_| {
+                    let _ = nav.push(Route::OnlineEntry {});
+                },
                 div { class: "lobby-header",
                     RoomCodeBadge { code: state.room_code() }
                     ShareChip { url: share_url }
@@ -80,7 +82,12 @@ pub fn OnlineLobbyView(
                     h2 { class: "lobby-section-title", "Pick your color" }
                     div { class: "lobby-color-row",
                         for color in COLORS.iter().copied() {
-                            LobbyColorSeat { key: "{color:?}", color, state, sender }
+                            LobbyColorSeat {
+                                key: "{color:?}",
+                                color,
+                                state,
+                                sender,
+                            }
                         }
                     }
                     if my_color().is_some() {
@@ -111,7 +118,15 @@ pub fn OnlineLobbyView(
                                 }
                             }
                         },
-                        if can_start() { "Start game" } else if my_color().is_none() { "Pick a color" } else if seated_count() >= 2 { "Waiting for reconnection…" } else { "Waiting for players…" }
+                        if can_start() {
+                            "Start game"
+                        } else if my_color().is_none() {
+                            "Pick a color"
+                        } else if seated_count() >= 2 {
+                            "Waiting for reconnection…"
+                        } else {
+                            "Waiting for players…"
+                        }
                     }
                 }
             }

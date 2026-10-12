@@ -68,7 +68,9 @@ impl Page {
                         ui.highlighted_color()(),
                     )
                 });
-                rsx! { GamePlay {} }
+                rsx! {
+                    GamePlay {}
+                }
             },
             game,
         );

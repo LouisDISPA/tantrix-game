@@ -18,23 +18,28 @@ pub fn OnlineEntry() -> Element {
     let nav = navigator();
     let code_input = use_signal(String::new);
     let error = use_signal(|| Option::<String>::None);
+    let mut server_ready = use_signal(|| true);
 
     rsx! {
         MenuScreen {
             MenuCard {
                 title: "Online",
                 subtitle: "Play together online",
-                back: move |_| { let _ = nav.push(Route::MainMenu {}); },
+                back: move |_| {
+                    let _ = nav.push(Route::MainMenu {});
+                },
                 div { class: "online-entry",
                     div { class: "online-actions",
                         MenuButton {
                             full_width: true,
+                            disabled: !server_ready(),
                             on_click: move |_| {
+                                if !server_ready() {
+                                    return;
+                                }
                                 let code = generate_room_code();
                                 room_connection::mark_create(&code);
-                                let _ = nav.push(Route::OnlineRoom {
-                                    code,
-                                });
+                                let _ = nav.push(Route::OnlineRoom { code });
                             },
                             "Create a room"
                         }
@@ -53,7 +58,7 @@ pub fn OnlineEntry() -> Element {
                                         c.set(e.value().to_ascii_uppercase());
                                     },
                                     onkeydown: move |e| {
-                                        if e.key() == Key::Enter {
+                                        if e.key() == Key::Enter && server_ready() {
                                             try_join(code_input, error, nav);
                                         }
                                     },
@@ -61,11 +66,18 @@ pub fn OnlineEntry() -> Element {
                             }
                             MenuButton {
                                 full_width: true,
-                                on_click: move |_| try_join(code_input, error, nav),
+                                disabled: !server_ready(),
+                                on_click: move |_| {
+                                    if server_ready() {
+                                        try_join(code_input, error, nav);
+                                    }
+                                },
                                 "Join room"
                             }
                         }
                     }
+
+                    DesktopServerSettings { on_ready: move |ready| server_ready.set(ready) }
 
                     if let Some(err) = error.read().clone() {
                         p { class: "alert-banner online-error", {err} }
@@ -102,18 +114,20 @@ pub fn JoinRoom(code: String) -> Element {
 
     rsx! {
         MenuScreen {
-            MenuCard {
-                title: "Join Room",
-                subtitle: "Room code",
+            MenuCard { title: "Join Room", subtitle: "Room code",
                 div { class: "online-entry",
                     p { class: "online-room-code", {code_upper} }
                     if code_is_valid {
                         p { class: "lobby-waiting", "Connecting…" }
                     } else {
-                        p { class: "alert-banner online-error", "This link doesn't look like a valid room code." }
+                        p { class: "alert-banner online-error",
+                            "This link doesn't look like a valid room code."
+                        }
                         MenuButton {
                             full_width: true,
-                            on_click: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
+                            on_click: move |_| {
+                                let _ = nav.push(Route::OnlineEntry {});
+                            },
                             "Back to online menu"
                         }
                     }
@@ -136,4 +150,106 @@ fn try_join(
         return;
     };
     let _ = nav.push(Route::OnlineRoom { code });
+}
+
+/// Desktop-only settings; the browser continues to use its own origin.
+#[component]
+fn DesktopServerSettings(on_ready: EventHandler<bool>) -> Element {
+    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    {
+        use crate::state::desktop_settings::{self, DEFAULT_SERVER};
+        let mut address = use_signal(desktop_settings::server_address);
+        let mut error = use_signal(|| None::<String>);
+        let mut open = use_signal(|| false);
+        let mut save_address = move |close: bool| {
+            let input = address.read().clone();
+            let result = desktop_settings::normalize_server(&input).and_then(|server| {
+                desktop_settings::save("server-address", &server).map(|_| server)
+            });
+            match result {
+                Ok(server) => {
+                    address.set(server);
+                    error.set(None);
+                    on_ready.call(true);
+                    if close {
+                        open.set(false);
+                    }
+                }
+                Err(message) => {
+                    error.set(Some(message));
+                    on_ready.call(false);
+                }
+            }
+        };
+        return rsx! {
+            div {
+                class: "connection-settings",
+                class: if open() { "open" },
+                onkeydown: move |event| {
+                    if open() && event.key() == Key::Escape {
+                        event.stop_propagation();
+                        open.set(false);
+                    }
+                },
+                if open() {
+                    div {
+                        class: "hud-menu-backdrop",
+                        onclick: move |_| open.set(false),
+                    }
+                }
+                button {
+                    class: "button button-ghost button-small connection-settings-toggle",
+                    aria_expanded: "{open()}",
+                    aria_controls: "connection-settings-panel",
+                    onclick: move |_| open.set(!open()),
+                    "Connection settings"
+                }
+                div {
+                    id: "connection-settings-panel",
+                    class: "surface surface-raised surface-blur connection-settings-panel",
+                    label { class: "field-group online-field",
+                        span { class: "field-label", "Server address" }
+                        input {
+                            class: "field",
+                            r#type: "text",
+                            value: "{address}",
+                            oninput: move |event| {
+                                let input = event.value();
+                                on_ready.call(desktop_settings::normalize_server(&input).is_ok());
+                                address.set(input);
+                                error.set(None);
+                            },
+                            onblur: move |_| save_address(false),
+                        }
+                    }
+                    div { class: "connection-settings-actions",
+                        button {
+                            class: "button button-small button-secondary",
+                            onclick: move |_| {
+                                match desktop_settings::save("server-address", DEFAULT_SERVER) {
+                                    Ok(()) => {
+                                        address.set(DEFAULT_SERVER.into());
+                                        error.set(None);
+                                        on_ready.call(true);
+                                    }
+                                    Err(message) => error.set(Some(message)),
+                                }
+                            },
+                            "Reset to default"
+                        }
+                        button {
+                            class: "button button-small button-primary",
+                            onclick: move |_| save_address(true),
+                            "Validate"
+                        }
+                    }
+                    if let Some(message) = error.read().as_ref() {
+                        p { class: "alert-banner online-error", {message.clone()} }
+                    }
+                }
+            }
+        };
+    }
+    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+    rsx! {}
 }

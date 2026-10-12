@@ -57,8 +57,9 @@ pub fn BoardViewport(placed_moves: ReadSignal<Vec<Move>>, children: Element) -> 
                 }
             },
             onpointerdown: move |evt| {
-                if holds_tile_pointer(ctx) { return; }
-                // The primary button (or a touch) pans; the right one is "back".
+                if holds_tile_pointer(ctx) {
+                    return;
+                }
                 if evt.data().trigger_button() == Some(MouseButton::Primary) {
                     let at = evt.data().client_coordinates();
                     let slop = if evt.data().pointer_type() == "mouse" {
@@ -70,9 +71,9 @@ pub fn BoardViewport(placed_moves: ReadSignal<Vec<Move>>, children: Element) -> 
                 }
             },
             onpointermove: move |evt| {
-                if holds_tile_pointer(ctx) { return; }
-                // A mouse that moves with no button held let go somewhere we
-                // did not see (outside the window, over a dialog).
+                if holds_tile_pointer(ctx) {
+                    return;
+                }
                 if evt.data().pointer_type() == "mouse"
                     && !evt.data().held_buttons().contains(MouseButton::Primary)
                 {

@@ -45,13 +45,23 @@ pub fn GameDraggedTile() -> Element {
                         aria_hidden: true,
                         onanimationend: move |evt| {
                             if evt.data().animation_name() == "tile-return"
-                                && ctx.ui_state.tile_drag().peek().is_some_and(|d| d.phase == DragPhase::Returning)
+                                && ctx
+                                    .ui_state
+                                    .tile_drag()
+                                    .peek()
+                                    .is_some_and(|d| d.phase == DragPhase::Returning)
                             {
                                 ctx.ui_state.tile_drag().set(None);
                             }
                         },
                         svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
-                            HexSvg { tile: drag.tile, rotation, cx: TILE_CX, cy: TILE_CY, hex_size: TILE_HEX }
+                            HexSvg {
+                                tile: drag.tile,
+                                rotation,
+                                cx: TILE_CX,
+                                cy: TILE_CY,
+                                hex_size: TILE_HEX,
+                            }
                         }
                     }
                 }

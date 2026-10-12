@@ -1,5 +1,5 @@
 //! Build a shareable URL of the shape `<origin>/join/CODE`. Falls back to
-//! a relative path if `window` isn't available (e.g. SSR or native).
+//! a relative path for SSR. Desktop uses the room's captured server origin.
 
 pub fn share_link(code: &str) -> String {
     #[cfg(target_arch = "wasm32")]
@@ -10,5 +10,12 @@ pub fn share_link(code: &str) -> String {
             }
         }
     }
+    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    {
+        let server =
+            dioxus::prelude::consume_context::<crate::state::room_connection::RoomServer>();
+        format!("{}/join/{code}", server.0)
+    }
+    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
     format!("/join/{code}")
 }

@@ -63,7 +63,12 @@ pub fn app() -> Element {
     let mut ready = use_signal(|| false);
 
     rsx! {
-        document::Link { rel: "icon", href: FAVICON, sizes: "any", r#type: "image/svg+xml" }
+        document::Link {
+            rel: "icon",
+            href: FAVICON,
+            sizes: "any",
+            r#type: "image/svg+xml",
+        }
         document::Style { id: "app-styles", {APP_CSS} }
 
         div {
@@ -72,11 +77,7 @@ pub fn app() -> Element {
             "data-app-ready": "{ready}",
             onmounted: move |_| ready.set(true),
             StartupLoading { ready: ready() }
-            div {
-                class: "app-content",
-                inert: (!ready()).then_some(true),
-                Router::<Route> {}
-            }
+            div { class: "app-content", inert: (!ready()).then_some(true), Router::<Route> {} }
         }
     }
 }

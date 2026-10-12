@@ -9,16 +9,22 @@ use crate::components::menu_screen::MenuScreen;
 use crate::state::online_state::FailureReason;
 
 #[component]
-pub fn FailedView(reason: FailureReason, on_retry: EventHandler<()>) -> Element {
+pub fn FailedView(reason: FailureReason, on_retry: EventHandler<()>, server: String) -> Element {
     let nav = navigator();
+    let server = server
+        .split("/room/")
+        .next()
+        .unwrap_or(&server)
+        .replacen("ws", "http", 1);
     let title = heading_for(&reason);
     let detail = reason.display();
     let retryable = reason.is_retryable();
     rsx! {
         MenuScreen {
-            MenuCard {
-                title,
-                subtitle: detail,
+            MenuCard { title, subtitle: detail,
+                if cfg!(feature = "desktop") {
+                    p { "Server: {server}" }
+                }
                 if retryable {
                     MenuButton {
                         full_width: true,
@@ -29,13 +35,21 @@ pub fn FailedView(reason: FailureReason, on_retry: EventHandler<()>) -> Element 
                 if retryable {
                     button {
                         class: "title-btn-link",
-                        onclick: move |_| { let _ = nav.push(crate::route::Route::OnlineEntry {}); },
+                        onclick: move |_| {
+                            let _ = nav
+                                .push(crate::route::Route::OnlineEntry {
+                                });
+                        },
                         "Back to online menu"
                     }
                 } else {
                     MenuButton {
                         full_width: true,
-                        on_click: move |_| { let _ = nav.push(crate::route::Route::OnlineEntry {}); },
+                        on_click: move |_| {
+                            let _ = nav
+                                .push(crate::route::Route::OnlineEntry {
+                                });
+                        },
                         "Back to online menu"
                     }
                 }

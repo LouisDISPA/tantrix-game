@@ -18,7 +18,9 @@ pub fn NotFound(path: Vec<String>) -> Element {
                 title: "Page not found",
                 subtitle: "There's no page at this address.",
                 MenuButton {
-                    on_click: move |_| { let _ = nav.push(Route::MainMenu {}); },
+                    on_click: move |_| {
+                        let _ = nav.push(Route::MainMenu {});
+                    },
                     "Go to main menu"
                 }
             }

@@ -12,3 +12,6 @@ pub mod test_games;
 pub mod theme;
 pub mod tile_drag;
 pub mod ui_state;
+
+#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+pub mod desktop_settings;

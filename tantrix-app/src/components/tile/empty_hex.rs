@@ -37,7 +37,7 @@ pub fn EmptyHex(
             class: if faint { "faint" },
             class: if picked { "picked" },
             class: if snap_target() { "drag-target" },
-            style: style,
+            style,
             "data-position": "{position.x()},{position.y()}",
             role: "button",
             tabindex: "0",
@@ -69,7 +69,7 @@ pub fn EmptyHex(
                 }
             },
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
-                polygon { points: points }
+                polygon { points }
             }
         }
     }

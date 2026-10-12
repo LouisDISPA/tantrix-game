@@ -54,10 +54,22 @@ pub fn OrientationPicker(
         if let Some(Orientations { tile, rotations }) = orientations() {
             {
                 let (class, style) = match placement() {
-                    Some(at) => (format!("surface surface-blur orientation-card {}", at.side.css_class()), at.style()),
-                    None => ("surface surface-blur orientation-card unplaced".to_string(), size_style()),
+                    Some(at) => {
+                        (
+                            format!(
+                                "surface surface-blur orientation-card {}",
+                                at.side.css_class(),
+                            ),
+                            at.style(),
+                        )
+                    } // Pressed: the ghost shows what lifting does.
+                    None => {
+                        (
+                            "surface surface-blur orientation-card unplaced".to_string(),
+                            size_style(),
+                        )
+                    }
                 };
-
                 rsx! {
                     div {
                         class,

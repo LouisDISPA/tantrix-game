@@ -38,7 +38,10 @@ pub fn OnlineSeatTakeover(
     }
 
     rsx! {
-        div { class: "surface surface-raised surface-blur seat-takeover", role: "group", "aria-label": "Take a seat",
+        div {
+            class: "surface surface-raised surface-blur seat-takeover",
+            role: "group",
+            "aria-label": "Take a seat",
             span { class: "seat-takeover-title", "You're watching · take a seat:" }
             for seat in seats.read().iter().cloned() {
                 button {
@@ -62,7 +65,8 @@ pub fn OnlineSeatTakeover(
                 title: format!("Take over {}?", seat.color),
                 message: format!(
                     "You'll play {}'s tiles and turns from now on. {} will watch.",
-                    seat.nickname, seat.nickname,
+                    seat.nickname,
+                    seat.nickname,
                 ),
                 confirm_label: "Take seat",
                 on_confirm: move |_| {

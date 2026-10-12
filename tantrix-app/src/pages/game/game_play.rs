@@ -55,12 +55,20 @@ pub fn GamePlay(children: Element) -> Element {
             tabindex: "0",
             autofocus: true,
             onpointerdown: move |evt| {
-                if ui.tile_drag().peek().is_some_and(|drag| drag.holds_pointer() && drag.pointer.id != evt.data().pointer_id()) {
+                if ui
+                    .tile_drag()
+                    .peek()
+                    .is_some_and(|drag| {
+                        drag.holds_pointer() && drag.pointer.id != evt.data().pointer_id()
+                    })
+                {
                     cancel_tile_drag(ctx);
                 }
             },
             onpointermove: move |evt| {
-                if evt.data().pointer_type() == "mouse" && !evt.data().held_buttons().contains(MouseButton::Primary) {
+                if evt.data().pointer_type() == "mouse"
+                    && !evt.data().held_buttons().contains(MouseButton::Primary)
+                {
                     cancel_tile_drag(ctx);
                     return;
                 }
@@ -73,7 +81,11 @@ pub fn GamePlay(children: Element) -> Element {
             },
             onpointercancel: move |_| cancel_tile_drag(ctx),
             onlostpointercapture: move |evt| {
-                if ui.tile_drag().peek().is_some_and(|drag| drag.pointer.id == evt.data().pointer_id()) {
+                if ui
+                    .tile_drag()
+                    .peek()
+                    .is_some_and(|drag| drag.pointer.id == evt.data().pointer_id())
+                {
                     cancel_tile_drag(ctx);
                 }
             },
@@ -90,7 +102,10 @@ pub fn GamePlay(children: Element) -> Element {
 
             GameHud { {children} }
 
-            div { class: "board-slot", TurnBanner {} Board {} }
+            div { class: "board-slot",
+                TurnBanner {}
+                Board {}
+            }
 
             section {
                 class: "surface surface-blur hand-panel",

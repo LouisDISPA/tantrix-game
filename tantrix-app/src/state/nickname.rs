@@ -114,6 +114,10 @@ pub fn persist(nickname: &str) {
             let _ = storage.set_item(STORAGE_KEY, nickname);
         }
     }
+    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    if let Err(error) = super::desktop_settings::save("nickname", nickname) {
+        log::warn!("{error}");
+    }
     let _ = nickname;
 }
 
@@ -124,7 +128,14 @@ fn load_stored() -> Option<String> {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        None
+        #[cfg(feature = "desktop")]
+        {
+            super::desktop_settings::load("nickname")
+        }
+        #[cfg(not(feature = "desktop"))]
+        {
+            None
+        }
     }
 }
 
@@ -144,7 +155,9 @@ fn local_storage() -> Option<web_sys::Storage> {
 
 #[cfg(test)]
 mod tests {
-    use super::{generate, load_or_generate, persist, pick_index, ADJECTIVES, MAX_CHARS, NOUNS};
+    use super::{generate, pick_index, ADJECTIVES, MAX_CHARS, NOUNS};
+    #[cfg(not(feature = "desktop"))]
+    use super::{load_or_generate, persist};
 
     /// `name` split into its adjective and noun, from the lists.
     fn words(name: &str) -> Option<(&str, &str)> {
@@ -190,6 +203,7 @@ mod tests {
         assert_eq!(pick_index(0), 0);
     }
 
+    #[cfg(not(feature = "desktop"))]
     #[test]
     fn off_the_web_nothing_is_stored_so_a_fresh_name_is_drawn() {
         persist("Louis");

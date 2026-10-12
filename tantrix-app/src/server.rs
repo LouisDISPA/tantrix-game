@@ -82,8 +82,11 @@ pub fn run() {
             .route("/health", get(|| async { "OK" }))
             .with_state(state.clone())
             .merge(dioxus::server::router(app))
-            .layer(from_fn_with_state(state, session_cookie_layer))
-            .layer(CompressionLayer::new());
+            .layer(from_fn_with_state(state, session_cookie_layer));
+
+        #[cfg(not(debug_assertions))]
+        let router = router.layer(CompressionLayer::new());
+
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .expect("failed to bind fullstack server");

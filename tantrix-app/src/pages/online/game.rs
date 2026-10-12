@@ -37,7 +37,9 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
     }
 
     rsx! {
-        GamePlay { OnlineHudBadge { state } }
+        GamePlay {
+            OnlineHudBadge { state }
+        }
         OnlineSeatTakeover { state, sender }
     }
 }
@@ -97,7 +99,9 @@ mod tests {
                 });
                 use_context_provider(|| state);
                 let sender = use_signal(|| None);
-                rsx! { OnlineGameView { state, sender } }
+                rsx! {
+                    OnlineGameView { state, sender }
+                }
             },
             before,
         );
