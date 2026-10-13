@@ -83,7 +83,3 @@ desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep
 bundle = []
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
-
-[package.metadata.dist]
-dist = true
-features = ["desktop", "bundle"]
