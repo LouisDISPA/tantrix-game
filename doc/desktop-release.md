@@ -16,14 +16,6 @@ The `Release` workflow builds desktop packages in one native runner matrix, then
 
 The desktop bundles are built on native GitHub-hosted runners. `dx bundle` does not cross-build native desktop packages; Linux packages also rely on WebKitGTK being available on the build runner. The Windows NSIS bundle uses its per-user install mode and the small WebView2 download bootstrapper. NSIS uses its standard Modern UI wizard.
 
-## Build caches and trial runs
-
-Run `Release` manually from the Actions tab to build all packages without publishing. Running it on the default branch warms caches that subsequent release tags can restore: GitHub does not share caches between different tags. The run also leaves all downloads available as workflow artifacts.
-
-The workflow uses stable Rust for desktop packaging, caches Cargo downloads and compiled dependencies separately per runner, and caches the pinned Dioxus CLI binary. Rust cache keys account for the compiler, manifests and lockfile. CLI installation uses the Dioxus action's cargo-binstall path on a cache miss. Linux system packages are installed normally; completed bundles are rebuilt each run. `dx bundle --locked` prevents dependency changes during packaging.
-
-The build matrix emits Apple Silicon and Intel macOS DMGs, Linux x86_64 `.deb` and AppImage packages, and Windows x86_64 portable and NSIS setup executables. The `.app` is built for the DMG; plain Cargo binary archives are no longer published. Re-running a successful tag workflow replaces assets on the existing release.
-
 ## Why these formats
 
 - **macOS:** DMG is a familiar drag-to-Applications download. Release both supported desktop architectures separately; DMGs are currently unsigned.
