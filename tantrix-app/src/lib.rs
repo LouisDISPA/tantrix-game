@@ -5,6 +5,8 @@
 use dioxus::prelude::*;
 
 mod components;
+#[cfg(feature = "desktop")]
+pub mod desktop;
 mod hooks;
 mod pages;
 mod route;
@@ -21,10 +23,16 @@ use components::startup_loading::StartupLoading;
 use route::Route;
 use state::theme::THEME;
 
-// SSR embeds the CSS in the head. Standalone clients also need the contents;
-// fullstack browser clients reuse the server's style tag during hydration.
+// SSR embeds the CSS in the head; desktop puts it in the initial HTML head.
+// Other standalone clients insert it through document::Style, while fullstack
+// browser clients reuse the server's style tag during hydration.
 // The Worker renders on wasm32 too, so gate by features rather than target.
-#[cfg(any(feature = "server", feature = "worker", not(feature = "fullstack")))]
+#[cfg(any(
+    feature = "desktop",
+    feature = "server",
+    feature = "worker",
+    not(feature = "fullstack")
+))]
 const APP_CSS: &str = concat!(
     include_str!("../assets/main.css"),
     "\n",
@@ -51,7 +59,7 @@ const APP_CSS: &str = concat!(
 
 #[cfg(all(
     feature = "fullstack",
-    not(any(feature = "server", feature = "worker"))
+    not(any(feature = "desktop", feature = "server", feature = "worker"))
 ))]
 const APP_CSS: &str = "";
 
@@ -62,6 +70,15 @@ pub fn app() -> Element {
     // SSR and the first client render agree; mounted fires after hydration.
     let mut ready = use_signal(|| false);
 
+    #[cfg(feature = "desktop")]
+    let platform_ui = rsx! {
+        desktop::DesktopChrome {}
+    };
+    #[cfg(not(feature = "desktop"))]
+    let platform_ui = rsx! {
+        document::Style { id: "app-styles", {APP_CSS} }
+    };
+
     rsx! {
         document::Link {
             rel: "icon",
@@ -69,33 +86,17 @@ pub fn app() -> Element {
             sizes: "any",
             r#type: "image/svg+xml",
         }
-        document::Link {
-            rel: "manifest",
-            href: "/manifest.webmanifest",
-        }
-        document::Link {
-            rel: "apple-touch-icon",
-            href: "/icons/apple-touch-icon.png",
-        }
-        document::Meta {
-            name: "theme-color",
-            content: "#171717",
-        }
-        document::Meta {
-            name: "apple-mobile-web-app-capable",
-            content: "yes",
-        }
-        document::Meta {
-            name: "apple-mobile-web-app-title",
-            content: "Tantrix",
-        }
-        document::Style { id: "app-styles", {APP_CSS} }
-
+        document::Link { rel: "manifest", href: "/manifest.webmanifest" }
+        document::Link { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" }
+        document::Meta { name: "theme-color", content: "#171717" }
+        document::Meta { name: "apple-mobile-web-app-capable", content: "yes" }
+        document::Meta { name: "apple-mobile-web-app-title", content: "Tantrix" }
         div {
             class: "app-root",
             "data-theme": "{theme.as_str()}",
             "data-app-ready": "{ready}",
             onmounted: move |_| ready.set(true),
+            {platform_ui}
             StartupLoading { ready: ready() }
             div { class: "app-content", inert: (!ready()).then_some(true), Router::<Route> {} }
         }

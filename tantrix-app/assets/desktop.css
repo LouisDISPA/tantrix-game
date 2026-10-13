@@ -1,0 +1,217 @@
+@layer features {
+  .desktop-titlebar {
+    position: relative;
+    flex: 0 0 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 160px 0;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .desktop-titlebar[data-platform="macos"] {
+    padding: 0 80px;
+  }
+
+  .desktop-titlebar[data-custom="true"] {
+    padding: 0 188px;
+    background: transparent;
+    position: relative;
+    z-index: 50;
+  }
+
+  .desktop-window-controls {
+    position: absolute;
+    inset: 0 0 0 auto;
+    display: flex;
+    width: max-content;
+  }
+
+  .desktop-titlebar .desktop-theme-toggle {
+    --button-height: 32px;
+    --button-size: 16px;
+    width: 32px;
+    height: 32px;
+    margin: 4px 6px;
+    color: var(--text-secondary);
+  }
+
+  /* Fullscreen hides the titlebar, so keep the existing menu controls as
+     fallbacks there. Web/mobile don't load this desktop stylesheet. */
+  .app-root:has(> .desktop-titlebar) .app-content :is(.theme-toggle, .game-theme-toggle) {
+    display: none;
+  }
+
+  .desktop-window-button {
+    flex: none;
+    width: 44px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 0;
+    cursor: default;
+  }
+
+  .desktop-window-button:hover {
+    background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+    color: var(--text-primary);
+  }
+
+  .desktop-window-button:active {
+    background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  }
+
+  .desktop-window-button:focus-visible {
+    outline-offset: -4px;
+  }
+
+  .desktop-window-close:hover,
+  .desktop-window-close:active {
+    background: #c42b1c;
+    color: #ffffff;
+  }
+
+  .desktop-window-button svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+    pointer-events: none;
+  }
+
+  .desktop-titlebar[data-focused="false"] .desktop-window-button {
+    color: var(--text-muted);
+  }
+
+  .desktop-titlebar[data-focused="false"] .desktop-window-close:hover {
+    color: #ffffff;
+  }
+
+  /* Keep UI and camera measurements below the header, while extending the
+     decorative backgrounds behind the transparent bar and its controls. */
+  .app-root:has(> .desktop-titlebar[data-custom="true"]) .menu-background {
+    top: -40px;
+  }
+
+  .app-root:has(> .desktop-titlebar[data-custom="true"]):has(.game-layout) {
+    background-color: var(--bg-board);
+    background-image:
+      var(--board-pattern),
+      radial-gradient(
+        130% 90% at 50% 40%,
+        color-mix(in srgb, var(--text-primary) 6%, transparent),
+        transparent 70%
+      );
+  }
+
+  .app-root:has(> .desktop-titlebar[data-custom="true"]):has(.game-layout) .menu-background {
+    display: none;
+  }
+
+  .app-root:has(> .desktop-titlebar[data-custom="true"]) .game-layout {
+    background: transparent;
+  }
+
+  .desktop-resize-edge {
+    position: absolute;
+    z-index: 100;
+  }
+
+  .desktop-resize-edge[data-edge="n"],
+  .desktop-resize-edge[data-edge="s"] {
+    left: 12px;
+    right: 12px;
+    height: 5px;
+    cursor: ns-resize;
+  }
+
+  .desktop-resize-edge[data-edge="e"],
+  .desktop-resize-edge[data-edge="w"] {
+    top: 12px;
+    bottom: 12px;
+    width: 5px;
+    cursor: ew-resize;
+  }
+
+  .desktop-resize-edge[data-edge="n"] { top: 0; }
+  .desktop-resize-edge[data-edge="s"] { bottom: 0; }
+  .desktop-resize-edge[data-edge="e"] { right: 0; }
+  .desktop-resize-edge[data-edge="w"] { left: 0; }
+
+  .desktop-resize-edge:is([data-edge="ne"], [data-edge="nw"], [data-edge="se"], [data-edge="sw"]) {
+    width: 12px;
+    height: 12px;
+  }
+
+  .desktop-resize-edge[data-edge="ne"] { top: 0; right: 0; cursor: nesw-resize; }
+  .desktop-resize-edge[data-edge="nw"] { top: 0; left: 0; cursor: nwse-resize; }
+  .desktop-resize-edge[data-edge="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
+  .desktop-resize-edge[data-edge="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
+
+  .desktop-titlebar-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    pointer-events: none;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    white-space: nowrap;
+  }
+
+  .desktop-titlebar-brand img {
+    width: 18px;
+    height: 18px;
+  }
+
+  .desktop-titlebar[data-focused="false"] .desktop-titlebar-brand {
+    opacity: 0.55;
+  }
+
+  /* Fixed game overlays belong to the content viewport, below the native
+     controls. The web/mobile shell keeps its existing viewport layout. */
+  .app-root:has(> .desktop-titlebar) {
+    --desktop-content-height: calc(100dvh - 40px);
+  }
+
+  .app-root:has(> .desktop-titlebar) :is(.game-layout, .title-screen) {
+    height: 100%;
+  }
+
+  .app-root:has(> .desktop-titlebar) .menu-content-scroll {
+    min-height: var(--desktop-content-height);
+  }
+
+  @media (max-width: 440px) {
+    .desktop-titlebar[data-custom="true"] {
+      padding: 0;
+    }
+
+    .desktop-titlebar[data-custom="true"] .desktop-titlebar-brand {
+      visibility: hidden;
+    }
+  }
+}
+
+/* loading.css declares these shell rules outside cascade layers. Desktop
+   overrides must also be unlayered to reserve the header viewport. */
+.app-root:has(> .desktop-titlebar) > .app-content {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  contain: layout;
+}
+
+.app-root:has(> .desktop-titlebar) > #startup-loading {
+  top: 40px;
+}

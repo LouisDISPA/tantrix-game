@@ -156,7 +156,7 @@ pub fn GameHud(children: Element) -> Element {
                 if !is_game_over() {
                     EndGameButton { on_click: move |_| confirming_end.set(true) }
                 }
-                ThemeToggle { class: "hud-menu-item", labelled: true }
+                ThemeToggle { class: "hud-menu-item game-theme-toggle", labelled: true }
             }
 
             if confirming_end() {

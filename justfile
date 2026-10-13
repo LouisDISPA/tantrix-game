@@ -10,6 +10,10 @@ fmt-check:
     cargo fmt --all --check
 
 [group('Checks')]
+test-e2e: setup-e2e
+    cd e2e && pnpm run test:native
+
+[group('Checks')]
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
     cargo clippy -p tantrix-app --features server --all-targets -- -D warnings
@@ -28,6 +32,18 @@ dev:
 run:
     cd tantrix-app && dx run --web --fullstack true --features fullstack --release --port {{ port }} --open false
 
+[group('Local')]
+fmt:
+    cd tantrix-app && dx fmt
+
+[group('Local')]
+desktop:
+    cd tantrix-app && dx serve --desktop --features desktop,bundle
+
+[group('Local')]
+desktop-bundle-macos:
+    cd tantrix-app && dx bundle --release --macos --package tantrix-app --features desktop,bundle --package-types macos
+
 [group('Setup')]
 setup-e2e:
     cd e2e && pnpm install --frozen-lockfile
@@ -35,10 +51,6 @@ setup-e2e:
 [group('Setup')]
 setup-worker:
     cd cloudflare && pnpm install --frozen-lockfile
-
-[group('Browser tests')]
-native-e2e: setup-e2e
-    cd e2e && pnpm run test:native
 
 [group('Local')]
 tunnel:
@@ -56,27 +68,20 @@ client_public := "target/dx/tantrix/release/web/public"
 client_std := "--cargo-args=-Zbuild-std=std,panic_abort -Zbuild-std-features="
 client_flags := "-Zlocation-detail=none -Zunstable-options -Cpanic=immediate-abort"
 
-[group('Worker')]
-worker-client:
+[private]
+worker-client-build:
     rm -rf {{ client_public }}
     cd tantrix-app && CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="{{ client_flags }}" dx build @client --web --release --features fullstack "{{ client_std }}" @server --server --release --features fullstack
     printf 'index.html\n' > {{ client_public }}/.assetsignore
 
 [private]
-worker-ssr: worker-client
+worker-ssr-build: worker-client-build
     ./scripts/build-worker-ssr.sh
 
 [group('Worker')]
-worker-build: worker-ssr
-
-[group('Worker')]
-worker-dev: worker-build setup-worker
-    cd cloudflare && pnpm exec wrangler dev
-
-[group('Browser tests')]
-worker-e2e: worker-build setup-worker setup-e2e
+worker-e2e: worker-ssr-build setup-worker setup-e2e
     cd e2e && pnpm run test:worker
 
 [group('Worker')]
-worker-deploy: worker-build setup-worker
+worker-deploy: worker-ssr-build setup-worker
     cd cloudflare && pnpm exec wrangler deploy
