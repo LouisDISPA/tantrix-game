@@ -1,6 +1,6 @@
 # Desktop release process
 
-The `Release` workflow builds desktop packages in one native runner matrix, then creates the GitHub Release only after every platform succeeds. Each download has a SHA-256 checksum. GitHub generates the release notes; version suffixes such as `-rc.1` produce prereleases.
+The `Release` workflow builds desktop packages in one native runner matrix, then creates the GitHub Release only after every platform succeeds. GitHub generates the release notes; version suffixes such as `-rc.1` produce prereleases.
 
 ## Release a version
 
@@ -8,11 +8,11 @@ The `Release` workflow builds desktop packages in one native runner matrix, then
 2. Push a tag matching the app package's version, for example:
 
    ```sh
-   git tag tantrix-app-v0.1.0
-   git push origin tantrix-app-v0.1.0
+   git tag tantrix-app-v0.1.1
+   git push origin tantrix-app-v0.1.1
    ```
 
-3. Wait for the `Release` workflow. It produces macOS DMGs for Apple Silicon and Intel, Linux `.deb` and AppImage packages, and Windows portable and NSIS setup executables.
+3. Wait for the `Release` workflow. It produces macOS DMGs for Apple Silicon and Intel, Linux `.deb` and AppImage packages for x86_64 and ARM64, and Windows portable and NSIS setup executables for x86_64 and ARM64.
 
 The desktop bundles are built on native GitHub-hosted runners. `dx bundle` does not cross-build native desktop packages; Linux packages also rely on WebKitGTK being available on the build runner. The Windows NSIS bundle uses its per-user install mode and the small WebView2 download bootstrapper. NSIS uses its standard Modern UI wizard.
 
