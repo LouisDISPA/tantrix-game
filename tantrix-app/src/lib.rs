@@ -69,6 +69,26 @@ pub fn app() -> Element {
             sizes: "any",
             r#type: "image/svg+xml",
         }
+        document::Link {
+            rel: "manifest",
+            href: "/manifest.webmanifest",
+        }
+        document::Link {
+            rel: "apple-touch-icon",
+            href: "/icons/apple-touch-icon.png",
+        }
+        document::Meta {
+            name: "theme-color",
+            content: "#171717",
+        }
+        document::Meta {
+            name: "apple-mobile-web-app-capable",
+            content: "yes",
+        }
+        document::Meta {
+            name: "apple-mobile-web-app-title",
+            content: "Tantrix",
+        }
         document::Style { id: "app-styles", {APP_CSS} }
 
         div {

@@ -9,4 +9,4 @@ title = "Tantrix"
 
 [web.watcher]
 reload_html = true
-watch_path = ["src", "assets"]
+watch_path = ["src", "assets", "public"]
