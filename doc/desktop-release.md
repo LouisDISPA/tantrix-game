@@ -28,6 +28,11 @@ Run each command on its target OS after installing the Dioxus desktop prerequisi
 
 ```sh
 dx bundle --release --macos --package tantrix-app --features desktop,bundle --package-types macos --package-types dmg
-dx bundle --release --linux --package tantrix-app --features desktop,bundle --package-types appimage --package-types deb
+dx bundle --release --linux --package tantrix-app --features desktop,bundle --package-types deb --out-dir bundles
+bash scripts/bundle-appimage.sh bundles/*.deb
 dx bundle --release --windows --package tantrix-app --features desktop,bundle --package-types nsis
 ```
+
+On Linux, Dioxus builds the `.deb`; `scripts/bundle-appimage.sh` extracts its executable, resources and metadata into an AppDir and packages the AppImage once. Pinned Tauri GTK/GStreamer plugins handle modules, schemas, WebKit path relocation and runtime hooks. The script stages matching WebKit helpers, includes the excluded font libraries, and limits GStreamer to its appsink/core plugins. It requires the desktop development packages plus `curl`, `pkg-config`, `librsvg2-dev`, `patchelf`, `dpkg-dev` and `gstreamer1.0-plugins-base`. The release workflow runs this step automatically. It does not run a graphical startup check.
+
+The AppImage still relies on the host's graphics stack (X11, OpenGL/EGL/OpenGL ES, GBM and DRM), fonts, CA certificates and a compatible glibc. The Ubuntu 24.04 build runners set that compatibility baseline; the published 0.1.0 executable requires glibc 2.39. Build on an older Linux baseline to support older distributions. Hosts without FUSE can use `APPIMAGE_EXTRACT_AND_RUN=1 ./Tantrix.AppImage`.
