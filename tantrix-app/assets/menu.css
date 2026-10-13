@@ -222,6 +222,100 @@
     gap: 8px 16px;
   }
 
+  .title-download-link {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--space-3);
+  }
+
+  .download-pill {
+    --button-radius: var(--radius-pill);
+    text-decoration: none;
+  }
+
+  .download-content,
+  .download-section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .download-content {
+    gap: var(--space-4);
+  }
+
+  .download-section {
+    gap: var(--space-2);
+  }
+
+  .download-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: 24px;
+  }
+
+  .download-section h2 {
+    font-size: var(--text-lg);
+    margin: 0;
+  }
+
+  .download-section p {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .download-section a {
+    text-decoration: none;
+  }
+
+  .download-meta {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  /* Each compact row fits a control or two lines of fallback copy. The
+     skeleton uses these same rows, including before browser detection. */
+  .download-control-row {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+
+  .download-control-row .field {
+    height: 48px;
+  }
+
+  .download-release-links {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .download-web {
+    border-top: 1px solid var(--glass-line);
+    padding-top: var(--space-4);
+  }
+
+  .download-skeleton {
+    background: var(--surface-inset);
+    border-radius: var(--radius-control);
+    pointer-events: none;
+  }
+
+  .download-skeleton-version {
+    width: 5ch;
+    height: 1em;
+  }
+
+  .download-skeleton-action {
+    width: 100%;
+    height: 44px;
+  }
+
   .title-secondary-links .title-btn-link {
     font-weight: 700;
     letter-spacing: 0.04em;

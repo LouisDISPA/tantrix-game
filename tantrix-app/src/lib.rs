@@ -66,6 +66,8 @@ const APP_CSS: &str = "";
 const FAVICON: Asset = asset!("/assets/favicon.svg");
 
 pub fn app() -> Element {
+    #[cfg(not(any(feature = "desktop", feature = "native")))]
+    hooks::downloads::use_download_context();
     let theme = *THEME.resolve().read();
     // SSR and the first client render agree; mounted fires after hydration.
     let mut ready = use_signal(|| false);

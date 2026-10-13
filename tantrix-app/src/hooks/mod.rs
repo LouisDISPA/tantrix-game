@@ -12,6 +12,8 @@
 
 pub mod camera;
 pub mod derived;
+#[cfg(not(any(feature = "desktop", feature = "native")))]
+pub mod downloads;
 pub mod game_ctx;
 pub mod online_game;
 pub mod phase_view;

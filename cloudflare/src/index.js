@@ -37,7 +37,7 @@ function withSecurityHeaders(response, url) {
       "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
-      `connect-src 'self' ${socketOrigin}`,
+      `connect-src 'self' ${socketOrigin} https://api.github.com`,
     ].join("; "),
   );
   if (url.protocol === "https:") {

@@ -5,6 +5,8 @@ use dioxus::prelude::*;
 use crate::components::theme_toggle::ThemeToggle;
 use crate::components::title_decoration::TitleDecoration;
 use crate::pages::about::About;
+#[cfg(not(any(feature = "desktop", feature = "native")))]
+use crate::pages::download::Download;
 use crate::pages::learn::Learn;
 use crate::pages::local_game::LocalGame;
 use crate::pages::main_menu::MainMenu;
@@ -20,6 +22,9 @@ pub enum Route {
     Learn {},
     #[route("/about")]
     About {},
+    #[cfg(not(any(feature = "desktop", feature = "native")))]
+    #[route("/download")]
+    Download {},
     #[route("/game?:seed")]
     LocalGame { seed: Option<u64> },
     #[route("/online")]

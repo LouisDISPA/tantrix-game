@@ -13,6 +13,20 @@ pub fn MainMenu() -> Element {
     let quick = use_hook(move || *visit.has_seen_main.peek());
     use_effect(move || visit.has_seen_main.set(true));
 
+    #[cfg(not(any(feature = "desktop", feature = "native")))]
+    let download_link = rsx! {
+        div { class: "title-download-link",
+            Link {
+                to: Route::Download {},
+                class: "button button-secondary download-pill",
+                span { aria_hidden: "true", "↓" }
+                "Get the app"
+            }
+        }
+    };
+    #[cfg(any(feature = "desktop", feature = "native"))]
+    let download_link = rsx! {};
+
     rsx! {
         MenuScreen { quick,
             div { class: "title-logo-area",
@@ -50,6 +64,7 @@ pub fn MainMenu() -> Element {
                         "About"
                     }
                 }
+                {download_link}
             }
         }
     }

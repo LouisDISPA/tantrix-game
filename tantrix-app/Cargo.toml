@@ -46,6 +46,8 @@ tower-http = { version = "0.6.11", default-features = false, features = ["compre
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3.106", features = ["Element", "Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
+js-sys = { version = "0.3.106", optional = true }
+wasm-bindgen = { version = "0.2.129", optional = true }
 wasm-bindgen-futures = "0.4.79"
 
 [dev-dependencies]
@@ -56,7 +58,7 @@ serde_json = "1.0.151"
 default = []
 # Hot reload and dioxus's tracing output, for `dx serve`; left out of release bundles.
 devtools = ["dioxus/devtools", "dioxus/logger"]
-web = ["dioxus/web", "dep:gloo-timers"]
+web = ["dioxus/web", "dep:gloo-timers", "dep:js-sys", "dep:wasm-bindgen", "web-sys/Event", "web-sys/EventTarget", "web-sys/Request", "web-sys/RequestInit", "web-sys/Response", "web-sys/Headers", "web-sys/AbortSignal", "web-sys/MediaQueryList"]
 server = [
     "dioxus/server",
     "dep:dioxus-fullstack-core",

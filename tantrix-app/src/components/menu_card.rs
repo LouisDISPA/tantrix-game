@@ -13,6 +13,7 @@ pub fn MenuCard(
     #[props(into)] title: String,
     #[props(into)] subtitle: String,
     #[props(default)] wide: bool,
+    #[props(default)] back_disabled: bool,
     back: Option<EventHandler<()>>,
     children: Element,
 ) -> Element {
@@ -26,9 +27,9 @@ pub fn MenuCard(
             if let Some(back) = back {
                 button {
                     class: "button button-ghost menu-back-btn",
-                    disabled: leaving(),
+                    disabled: back_disabled || leaving(),
                     onclick: move |_| async move {
-                        if *leaving.peek() {
+                        if back_disabled || *leaving.peek() {
                             return;
                         }
                         // Keep this card mounted until its exit animation finishes.
