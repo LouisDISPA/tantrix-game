@@ -17,6 +17,7 @@ use axum::routing::get;
 use axum::Router;
 use tantrix_room::handshake::{self, Refusal};
 use tantrix_room::session_cookie::{self, SessionToken};
+#[cfg(not(debug_assertions))]
 use tower_http::compression::CompressionLayer;
 
 use crate::app;
