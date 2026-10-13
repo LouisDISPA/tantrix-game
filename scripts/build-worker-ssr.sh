@@ -11,7 +11,7 @@ cargo install worker-build --version "$version" --locked --root target/tools --q
 
 wasm=target/wasm32-unknown-unknown/wasm-release/tantrix_worker.wasm
 out=target/dx/tantrix-worker-assets
-client=target/dx/tantrix-app/release/web/public/assets
+client=target/dx/tantrix/release/web/public/assets
 # worker-build recopies this cached Wasm.
 cached_wasm=
 while IFS= read -r -d '' candidate; do

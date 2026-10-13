@@ -1,3 +1,5 @@
+#![cfg_attr(all(feature = "bundle", target_os = "windows"), windows_subsystem = "windows")]
+
 #[cfg(feature = "server")]
 fn main() {
     tantrix_app::server::run();

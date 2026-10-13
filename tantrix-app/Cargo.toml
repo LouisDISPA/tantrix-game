@@ -2,6 +2,12 @@
 name = "tantrix-app"
 version = "0.1.0"
 edition = "2021"
+description = "A cross-platform implementation of the Tantrix hex tile strategy game"
+repository = "https://github.com/LouisDISPA/tantrix-game"
+
+[[bin]]
+name = "tantrix"
+path = "src/main.rs"
 
 [dependencies]
 tantrix-game = { path = "../tantrix-game" }
@@ -74,5 +80,10 @@ fullstack = ["dioxus/fullstack"]
 worker = ["dep:gloo-timers", "dep:dioxus-fullstack-core", "dep:http"]
 liveview = ["dioxus/liveview"]
 desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep:url", "dep:arboard"]
+bundle = []
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
+
+[package.metadata.dist]
+dist = true
+features = ["desktop", "bundle"]

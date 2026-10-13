@@ -1,0 +1,116 @@
+name: Dioxus desktop packages
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: aarch64
+          - runner: macos-15-intel
+            arch: x86_64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version 0.7.10 --locked
+      - name: Bundle macOS app
+        run: |
+          mkdir -p artifacts
+          dx bundle --release --macos --package tantrix-app --features desktop,bundle --package-types macos --package-types dmg --out-dir artifacts
+      - name: Name and upload release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          files=(artifacts/*.dmg)
+          test "${#files[@]}" -eq 1
+          version="${GITHUB_REF_NAME#tantrix-app-v}"
+          asset="Tantrix-${version}-macos-${{ matrix.arch }}.dmg"
+          mv "${files[0]}" "$asset"
+          shasum -a 256 "$asset" > "$asset.sha256"
+          gh release upload "$GITHUB_REF_NAME" "$asset" "$asset.sha256" --clobber
+
+  linux:
+    name: Linux x86_64 packages
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Dioxus and native bundle dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libxdo-dev
+          cargo install dioxus-cli --version 0.7.10 --locked
+      - name: Build AppImage and Debian package
+        run: |
+          mkdir -p artifacts
+          dx bundle --release --linux --package tantrix-app --features desktop,bundle --package-types appimage --package-types deb --out-dir artifacts
+      - name: Name and upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s nullglob
+          debs=(artifacts/*.deb)
+          images=(artifacts/*.AppImage artifacts/*.appimage)
+          test "${#debs[@]}" -eq 1
+          test "${#images[@]}" -eq 1
+          version="${GITHUB_REF_NAME#tantrix-app-v}"
+          mv "${debs[0]}" "Tantrix-${version}-linux-x86_64.deb"
+          mv "${images[0]}" "Tantrix-${version}-linux-x86_64.AppImage"
+          sha256sum Tantrix-*.deb Tantrix-*.AppImage > Tantrix-${version}-linux-x86_64.sha256
+          gh release upload "$GITHUB_REF_NAME" Tantrix-*.deb Tantrix-*.AppImage Tantrix-*.sha256 --clobber
+
+  windows:
+    name: Windows x86_64 installer and portable executable
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --version 0.7.10 --locked
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          dx bundle --release --windows --package tantrix-app --features desktop,bundle --package-types nsis --out-dir artifacts
+      - name: Stage portable executable and installer
+        shell: pwsh
+        run: |
+          $exe = "target/dx/tantrix/release/windows/app/tantrix.exe"
+          if (!(Test-Path $exe)) { throw "Dioxus portable executable not found: $exe" }
+          $version = $env:GITHUB_REF_NAME -replace '^tantrix-app-v', ''
+          Copy-Item $exe "Tantrix-$version-windows-x86_64-portable.exe"
+          $installers = @(Get-ChildItem artifacts -Filter *.exe)
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer, found $($installers.Count)" }
+          Move-Item $installers[0].FullName "Tantrix-$version-windows-x86_64-setup.exe"
+          Get-ChildItem "Tantrix-$version-windows-x86_64-*.exe" | ForEach-Object {
+            $hash = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLower())  $($_.Name)" | Out-File -FilePath "$($_.FullName).sha256" -Encoding ascii
+          }
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^tantrix-app-v', ''
+          gh release upload $env:GITHUB_REF_NAME "Tantrix-$version-windows-x86_64-portable.exe" "Tantrix-$version-windows-x86_64-portable.exe.sha256" "Tantrix-$version-windows-x86_64-setup.exe" "Tantrix-$version-windows-x86_64-setup.exe.sha256" --clobber

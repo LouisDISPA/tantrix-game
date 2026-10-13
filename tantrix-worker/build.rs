@@ -22,7 +22,7 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-                .join("../target/dx/tantrix-app/release/web/public/index.html")
+                .join("../target/dx/tantrix/release/web/public/index.html")
         });
     println!("cargo::rerun-if-changed={}", source.display());
 

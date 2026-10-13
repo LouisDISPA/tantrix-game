@@ -44,7 +44,7 @@ native-e2e: setup-e2e
 tunnel:
     ./scripts/tunnel.sh {{ port }}
 
-client_public := "target/dx/tantrix-app/release/web/public"
+client_public := "target/dx/tantrix/release/web/public"
 
 # The browser client is built with a std rebuilt from source (nightly build-std,
 # no panic machinery) and without panic locations: 1.69 MB -> 0.98 MB of wasm.

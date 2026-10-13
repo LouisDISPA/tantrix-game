@@ -10,3 +10,34 @@ title = "Tantrix"
 [web.watcher]
 reload_html = true
 watch_path = ["src", "assets", "public"]
+
+[bundle]
+identifier = "io.github.louisdispa.tantrix"
+publisher = "Louis DISPA"
+icon = [
+  "icons/16x16.png",
+  "icons/24x24.png",
+  "icons/32x32.png",
+  "icons/64x64.png",
+  "icons/256x256.png",
+  "icons/icon.icns",
+  "icons/icon.ico",
+]
+copyright = "Copyright 2026 Louis DISPA"
+category = "BoardGame"
+short_description = "Play Tantrix, the hex tile strategy game."
+long_description = "A cross-platform implementation of the Tantrix hex tile strategy game."
+
+[bundle.windows]
+webview_install_mode = { DownloadBootstrapper = { silent = true } }
+
+[bundle.windows.nsis]
+install_mode = "CurrentUser"
+installer_icon = "icons/icon.ico"
+start_menu_folder = "Tantrix"
+
+[bundle.macos]
+bundle_name = "Tantrix"
+
+[bundle.deb]
+depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3"]
