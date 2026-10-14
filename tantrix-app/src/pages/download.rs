@@ -89,7 +89,7 @@ fn ReleaseDownloads(release: ReadSignal<Option<Release>>, loading: ReadSignal<bo
         release
             .read()
             .as_ref()
-            .map(|release| release.choices((ctx.device)()))
+            .map(|release| release.assets.clone())
             .unwrap_or_default()
     });
     // Explicit choices take precedence over late architecture hints.
@@ -130,7 +130,7 @@ fn ReleaseDownloads(release: ReadSignal<Option<Release>>, loading: ReadSignal<bo
                     if release.read().is_none() {
                         "Downloads are unavailable right now."
                     } else if choices.read().is_empty() {
-                        "Not available for this device."
+                        "No downloads available."
                     } else {
                         "Choose your device below."
                     }
@@ -144,23 +144,25 @@ fn ReleaseDownloads(release: ReadSignal<Option<Release>>, loading: ReadSignal<bo
                     aria_hidden: "true",
                 }
             } else if choices.read().len() > 1 {
-                select {
-                    class: "field",
-                    aria_label: "Download for your device",
-                    value: "{selection}",
-                    onchange: move |event| selected.set(Some(event.value())),
-                    option {
-                        value: "",
-                        disabled: true,
-                        selected: selection().is_empty(),
-                        "Choose your device…"
-                    }
-                    for choice in choices.read().iter() {
+                div { class: "download-select",
+                    select {
+                        class: "field",
+                        aria_label: "Platform and architecture",
+                        value: "{selection}",
+                        onchange: move |event| selected.set(Some(event.value())),
                         option {
-                            key: "{choice.name}",
-                            value: "{choice.name}",
-                            selected: choice.name == selection(),
-                            "{choice.label()}"
+                            value: "",
+                            disabled: true,
+                            selected: selection().is_empty(),
+                            "Choose your device…"
+                        }
+                        for choice in choices.read().iter() {
+                            option {
+                                key: "{choice.name}",
+                                value: "{choice.name}",
+                                selected: choice.name == selection(),
+                                "{choice.label()}"
+                            }
                         }
                     }
                 }

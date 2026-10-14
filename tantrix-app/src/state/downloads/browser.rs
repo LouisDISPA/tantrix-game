@@ -107,7 +107,7 @@ pub fn detect_device(mut ctx: DownloadContext) {
     }
     spawn(async move {
         // Safari and other browsers may not expose Client Hints. Missing or
-        // rejected hints leave architecture unknown, so the UI asks the user.
+        // rejected hints leave architecture unknown, so the download uses its default.
         if let Ok(architecture) = architecture(&navigator).await {
             ctx.device.set(Device {
                 architecture,

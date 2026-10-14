@@ -152,35 +152,22 @@ pub struct Release {
 }
 
 impl Release {
-    pub fn choices(&self, device: Device) -> Vec<DownloadAsset> {
-        self.assets
-            .iter()
-            .filter(|a| a.platform == device.platform)
-            .cloned()
-            .collect()
-    }
-
     pub fn preferred(choices: &[DownloadAsset], device: Device) -> Option<String> {
-        if let Some(asset) = choices.iter().find(|a| {
-            a.platform == device.platform
-                && Some(a.architecture) == device.architecture
-                && !matches!(a.package, Package::Portable | Package::Deb)
-        }) {
-            return Some(asset.name.clone());
-        }
-        let first = choices.first()?;
-        // Unknown or unavailable architecture must never silently pick a Mac
-        // build or an incompatible package for a detected ARM device.
-        if choices.iter().any(|a| a.architecture != first.architecture)
-            || (first.platform == device.platform
-                && device
-                    .architecture
-                    .is_some_and(|arch| arch != first.architecture))
-        {
-            None
-        } else {
-            Some(first.name.clone())
-        }
+        let platform = match device.platform {
+            Platform::Mac | Platform::Windows | Platform::Linux => device.platform,
+            _ => Platform::Windows,
+        };
+        let architecture = device.architecture.unwrap_or(Architecture::X64);
+        choices
+            .iter()
+            .filter(|asset| asset.platform == platform)
+            .min_by_key(|asset| {
+                (
+                    asset.architecture != architecture,
+                    matches!(asset.package, Package::Portable | Package::Deb),
+                )
+            })
+            .map(|asset| asset.name.clone())
     }
 }
 
@@ -247,63 +234,39 @@ mod tests {
     }
 
     #[test]
-    fn detection_never_guesses_unknown_or_unavailable_architecture() {
-        let choices = vec![asset("macos-aarch64.dmg"), asset("macos-x86_64.dmg")];
-        let mac = Device {
-            platform: Platform::Mac,
-            ..Device::default()
-        };
-        assert_eq!(Release::preferred(&choices, mac), None);
-        assert_eq!(
-            Release::preferred(
-                &choices,
-                Device {
-                    architecture: Some(Architecture::X64),
-                    ..mac
-                }
-            ),
-            Some(choices[1].name.clone())
-        );
-        let windows_arm = Device {
-            platform: Platform::Windows,
-            architecture: Some(Architecture::Arm64),
-            safari: false,
-        };
-        assert_eq!(
-            Release::preferred(&[asset("windows-x86_64-setup.exe")], windows_arm),
-            None
-        );
-    }
-
-    #[test]
-    fn linux_prefers_appimage_and_only_offers_matching_platforms() {
-        let release = Release {
-            version: "0.1.0".into(),
-            assets: vec![
-                asset("macos-aarch64.dmg"),
-                asset("linux-x86_64.deb"),
-                asset("linux-x86_64.AppImage"),
-            ],
-        };
-        let linux = Device {
-            platform: Platform::Linux,
-            architecture: Some(Architecture::X64),
-            safari: false,
-        };
-        let choices = release.choices(linux);
-        assert_eq!(choices.len(), 2);
-        assert_eq!(
-            Release::preferred(&choices, linux),
-            Some(choices[1].name.clone())
-        );
-        assert_eq!(
-            release
-                .choices(Device {
-                    platform: Platform::Ios,
-                    ..Device::default()
-                })
-                .len(),
-            0
-        );
+    fn defaults_use_detected_platform_and_architecture() {
+        let choices = vec![
+            asset("macos-aarch64.dmg"),
+            asset("macos-x86_64.dmg"),
+            asset("windows-aarch64-setup.exe"),
+            asset("windows-x86_64-portable.exe"),
+            asset("windows-x86_64-setup.exe"),
+            asset("linux-x86_64.deb"),
+            asset("linux-x86_64.AppImage"),
+        ];
+        for (platform, architecture, expected) in [
+            (Platform::Mac, Some(Architecture::Arm64), 0),
+            (Platform::Mac, Some(Architecture::X64), 1),
+            (Platform::Mac, None, 1),
+            (Platform::Windows, Some(Architecture::Arm64), 2),
+            (Platform::Windows, None, 4),
+            (Platform::Linux, Some(Architecture::X64), 6),
+            (Platform::Unknown, None, 4),
+            (Platform::Ios, None, 4),
+            (Platform::Android, Some(Architecture::Arm64), 2),
+        ] {
+            assert_eq!(
+                Release::preferred(
+                    &choices,
+                    Device {
+                        platform,
+                        architecture,
+                        safari: false
+                    }
+                ),
+                Some(choices[expected].name.clone())
+            );
+        }
+        assert_eq!(Release::preferred(&[], Device::default()), None);
     }
 }
