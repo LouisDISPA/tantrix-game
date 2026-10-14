@@ -1,4 +1,5 @@
 [package]
+license = "MIT"
 name = "tantrix-app"
 version = "0.1.2"
 edition = "2021"

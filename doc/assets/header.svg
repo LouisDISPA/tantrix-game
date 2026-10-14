@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img" aria-labelledby="title desc">
+  <title id="title">Tantrix</title>
+  <desc id="desc">Hexagonal strategy game. Dark hex grid with red, blue, yellow and green curves.</desc>
+  <defs>
+    <pattern id="grid" width="180" height="156" patternUnits="userSpaceOnUse"><path d="M45 0 90 26v52l-45 26L0 78V26Zm90 78 45 26v52l-45 26-45-26v-52Z" fill="none" stroke="#303030"/></pattern>
+    <linearGradient id="colors" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#ff0e30"/><stop offset=".34" stop-color="#008cff"/><stop offset=".67" stop-color="#ffab00"/><stop offset="1" stop-color="#00c66a"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#343434"/><stop offset="1" stop-color="#171717"/></radialGradient>
+    <clipPath id="tile"><path d="M32 2 58 17v30L32 62 6 47V17Z"/></clipPath>
+  </defs>
+  <rect width="1200" height="260" rx="20" fill="#171717"/>
+  <rect width="1200" height="260" rx="20" fill="url(#glow)"/>
+  <rect width="1200" height="260" rx="20" fill="url(#grid)" opacity=".7"/>
+  <g transform="translate(72 40) scale(3)">
+    <path d="M32 2 58 17v30L32 62 6 47V17Z" fill="#121212"/>
+    <g clip-path="url(#tile)" fill="none" stroke-width="5">
+      <path d="M19 9.5Q32 22 45 9.5" stroke="#ff0e30"/>
+      <path d="M6 32Q21 38 19 54.5" stroke="#ffab00"/>
+      <path d="M58 32Q43 38 45 54.5" stroke="#008cff"/>
+    </g>
+    <path d="M32 2 58 17v30L32 62 6 47V17Z" fill="none" stroke="#444" stroke-width=".6"/>
+  </g>
+  <text x="310" y="135" fill="url(#colors)" font-family="Arial, Helvetica, sans-serif" font-weight="900" font-size="76" letter-spacing="7">TANTRIX</text>
+  <text x="314" y="179" fill="#bcbcbc" font-family="Arial, Helvetica, sans-serif" font-size="23" letter-spacing="2">HEXAGONAL STRATEGY GAME</text>
+</svg>

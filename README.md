@@ -1,33 +1,82 @@
-# Tantrix
+![Tantrix](doc/assets/header.svg)
 
-Rust Tantrix game with a Dioxus app, native room server, and Cloudflare Worker.
+[Play](https://tantrix.louis-dispa.fr) · [Downloads](https://tantrix.louis-dispa.fr/download) · [Releases](https://github.com/LouisDISPA/tantrix-game/releases)
 
-## Setup
+**Tantrix in Rust, with a Dioxus application for web and desktop.** Match colored hex tiles and compete for the longest line or loop. Play locally or online with 2–4 players, human or AI.
 
-- Install [rustup](https://rust-lang.github.io/rustup/). The nightly toolchain,
-  Clippy, rustfmt, and Wasm target are declared in `rust-toolchain.toml`.
-- Install `just` and the prebuilt Dioxus CLI `dx` 0.7.10. With
-  [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
+**tantrix-app** includes touch and mouse controls, placement guides, live scores, light/dark themes and visual rules. Use the browser, install the web app or download a desktop release.
 
-  ```bash
-  cargo binstall just
-  cargo binstall dioxus-cli@0.7.10
-  ```
+<details>
+<summary>Screenshots</summary>
 
-- Use Node.js 24 (`.node-version`) and [pnpm](https://pnpm.io/installation)
-  12.8.1. The package manifests pin the pnpm version.
-- For `just tunnel`, install [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/).
+<p>
+  <img src="doc/assets/desktop.png" width="74%" alt="Tantrix desktop: board, scores and tile rack">
+  <img src="doc/assets/phone.png" width="23%" alt="Tantrix phone: board and touch controls">
+</p>
 
-```bash
-just setup-e2e
-just setup-worker
-cd e2e && pnpm exec playwright install chromium
+![Tantrix main menu](doc/assets/menu.png)
+
+</details>
+
+## Architecture
+
+The game engine is independent of the interface and server. The web app, desktop app, terminal game and AI tournament use the same rules and scoring.
+
+| Layer | Technology |
+| --- | --- |
+| Application | Rust nightly, Dioxus 0.7 |
+| Browser | WebAssembly, SSR + hydration |
+| Graphics | SVG tiles and paths, responsive CSS |
+| Native backend | Axum, Tokio, SQLite |
+| Cloudflare backend | Workers, Durable Objects |
+| Multiplayer | WebSockets, JSON messages, shared room engine |
+| Terminal | Ratatui, Crossterm |
+
+The UI sends move requests to an authoritative room server. The shared room engine validates actions and produces state changes and socket effects; each backend handles its own storage and delivery. Local games run directly through the core engine.
+
+## Workspace
+
+| Crate | Role |
+| --- | --- |
+| `tantrix-app` | Main UI and native fullstack server |
+| `tantrix-game` | Tiles, legal moves, turns, scoring, history, undo/replay |
+| `tantrix-ai` | Greedy, strategic, lookahead and Monte Carlo players |
+| `tantrix-tui` | Interactive terminal game |
+| `tantrix-tournament` | Configurable AI round robin, TUI/headless modes |
+| `tantrix-room` | Room orchestration shared by both backends |
+| `tantrix-proto` | Client/server message types |
+| `tantrix-net` | Browser and native WebSocket clients |
+| `tantrix-worker` | Cloudflare SSR and room Durable Object |
+
+Seeded local games and tournaments are reproducible. The app exposes four AI difficulties; the tournament accepts TOML configurations for strategies and parameters. [AI details](doc/ai.md).
+
+## Development
+
+Install Rust through rustup, `just`, and Dioxus CLI **0.7.10**. The checked-in toolchain selects nightly, rustfmt, Clippy and the Wasm target. Node.js and pnpm are used for Worker tooling and browser tests. [Setup instructions](doc/development.md).
+
+```sh
+just dev                         # Web app + native backend
+just desktop                     # Desktop app
+cargo run -p tantrix-tui          # Terminal game
 ```
 
-Run `just` to list commands. `just dev` starts the native app; `just tunnel`
-shares it through a temporary Cloudflare Tunnel. `just native-e2e` and
-`just worker-e2e` run the focused browser suite against either backend. CI uses
-one job for format, lint, a production build, unit tests and native browser tests.
-Playwright builds and starts the server, reusing the production compilation
-outputs from the earlier step. See [e2e/README.md](e2e/README.md)
-and [cloudflare/README.md](cloudflare/README.md) for details.
+Run a tournament:
+
+```sh
+cargo run --release -p tantrix-tournament -- \
+  --config tantrix-tournament/configs/championship.toml --headless
+```
+
+## Verification
+
+Rust tests cover game rules, scoring, room behavior and application state. Playwright checks browser flows against either backend.
+
+```sh
+just fmt-check
+just lint
+just test
+just native-e2e                  # Axum browser tests
+just worker-e2e                  # Worker browser tests
+```
+
+[Game engine](doc/game.md) · [Worker setup](cloudflare/README.md) · [Browser tests](e2e/README.md)
