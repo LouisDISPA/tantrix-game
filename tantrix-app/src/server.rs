@@ -81,6 +81,15 @@ pub fn run() {
         let router = Router::new()
             .route("/room/{code}", get(room_socket))
             .route("/health", get(|| async { "OK" }))
+            .route(
+                tantrix_proto::ONLINE_VERSION_PATH,
+                get(|| async {
+                    (
+                        [("cache-control", "no-store")],
+                        axum::Json(tantrix_proto::OnlineVersion::CURRENT),
+                    )
+                }),
+            )
             .with_state(state.clone())
             .merge(dioxus::server::router(app))
             .layer(from_fn_with_state(state, session_cookie_layer));

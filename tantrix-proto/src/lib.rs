@@ -17,6 +17,23 @@ pub mod room_code;
 
 pub use room_code::{is_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
 
+/// Online compatibility, independent of app releases. Bump this for breaking
+/// wire-format changes or changes to shared game rules (legal moves/scoring).
+pub const ONLINE_VERSION: u32 = 1;
+pub const ONLINE_VERSION_PATH: &str = "/api/online-version";
+
+/// Keep this endpoint's shape stable so incompatible clients can read it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct OnlineVersion {
+    pub online_version: u32,
+}
+
+impl OnlineVersion {
+    pub const CURRENT: Self = Self {
+        online_version: ONLINE_VERSION,
+    };
+}
+
 /// Raw keepalive frames. The room answers the ping with the pong through the
 /// runtime's auto-response, without waking the Durable Object.
 pub const KEEPALIVE_PING: &str = "ping";

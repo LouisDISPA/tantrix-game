@@ -1,6 +1,6 @@
 //! `/online` and `/join/:code` entry pages.
 //!
-//! Both are thin redirects: the nickname is generated automatically (see
+//! The nickname is generated automatically (see
 //! `state::nickname`) and editable once the lobby has loaded.
 
 use dioxus::prelude::*;
@@ -10,6 +10,7 @@ use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
+use crate::state::online_compatibility::{self, Compatibility, DOWNLOAD_URL};
 use crate::state::room_connection;
 
 /// `/online` landing page: create a fresh room or enter a code to join.
@@ -19,6 +20,24 @@ pub fn OnlineEntry() -> Element {
     let code_input = use_signal(String::new);
     let error = use_signal(|| Option::<String>::None);
     let mut server_ready = use_signal(|| true);
+    let mut server = use_signal(online_compatibility::server_origin);
+    let mut mounted = use_signal(|| false);
+    let mut compatibility = use_resource(move || async move {
+        let server = server();
+        if !mounted() {
+            return None;
+        }
+        let result = online_compatibility::check(&server).await;
+        Some((server, result))
+    });
+    let can_join = use_memo(move || {
+        server_ready()
+            && compatibility.state()() == UseResourceState::Ready
+            && matches!(
+                &*compatibility.read(),
+                Some(Some((checked, Ok(Compatibility::Compatible)))) if *checked == server()
+            )
+    });
 
     rsx! {
         MenuScreen {
@@ -29,12 +48,13 @@ pub fn OnlineEntry() -> Element {
                     let _ = nav.push(Route::MainMenu {});
                 },
                 div { class: "online-entry",
+                    onmounted: move |_| mounted.set(true),
                     div { class: "online-actions",
                         MenuButton {
                             full_width: true,
-                            disabled: !server_ready(),
+                            disabled: !can_join(),
                             on_click: move |_| {
-                                if !server_ready() {
+                                if !can_join() {
                                     return;
                                 }
                                 let code = generate_room_code();
@@ -58,7 +78,7 @@ pub fn OnlineEntry() -> Element {
                                         c.set(e.value().to_ascii_uppercase());
                                     },
                                     onkeydown: move |e| {
-                                        if e.key() == Key::Enter && server_ready() {
+                                        if e.key() == Key::Enter && can_join() {
                                             try_join(code_input, error, nav);
                                         }
                                     },
@@ -66,9 +86,9 @@ pub fn OnlineEntry() -> Element {
                             }
                             MenuButton {
                                 full_width: true,
-                                disabled: !server_ready(),
+                                disabled: !can_join(),
                                 on_click: move |_| {
-                                    if server_ready() {
+                                    if can_join() {
                                         try_join(code_input, error, nav);
                                     }
                                 },
@@ -77,7 +97,67 @@ pub fn OnlineEntry() -> Element {
                         }
                     }
 
-                    DesktopServerSettings { on_ready: move |ready| server_ready.set(ready) }
+                    DesktopServerSettings {
+                        on_ready: move |ready| server_ready.set(ready),
+                        on_server_changed: move |origin| {
+                            if *server.peek() != origin {
+                                server.set(origin);
+                            }
+                        },
+                    }
+
+                    if compatibility.state()() == UseResourceState::Pending || !matches!(
+                        &*compatibility.read(), Some(Some((checked, _))) if *checked == server()
+                    ) {
+                        p { role: "status", "Checking server…" }
+                    } else {
+                        match &*compatibility.read() {
+                            Some(Some((_, Ok(Compatibility::Compatible)))) => rsx! {},
+                            Some(Some((_, Ok(status)))) => rsx! {
+                                div { class: "surface surface-inset online-compatibility", role: "alert",
+                                    p {
+                                        if !cfg!(feature = "desktop") {
+                                            "This page is out of date. Reload to play online."
+                                        } else if *status == Compatibility::AppOutdated {
+                                            "Update Tantrix to play online with this server."
+                                        } else {
+                                            "This server needs updating to work with your app."
+                                        }
+                                    }
+                                    if !cfg!(feature = "desktop") {
+                                        MenuButton {
+                                            full_width: true,
+                                            on_click: move |_| {
+                                                #[cfg(all(target_arch = "wasm32", feature = "web"))]
+                                                if let Some(window) = web_sys::window() {
+                                                    let _ = window.location().reload();
+                                                }
+                                            },
+                                            "Reload"
+                                        }
+                                    } else {
+                                        a {
+                                            class: "button button-primary button-full title-btn title-btn-primary",
+                                            href: DOWNLOAD_URL,
+                                            target: "_blank",
+                                            rel: "noopener noreferrer",
+                                            span { class: "title-btn-inner", "Download Tantrix ↗" }
+                                        }
+                                    }
+                                }
+                            },
+                            _ => rsx! {
+                                p { class: "alert-banner online-error", role: "alert",
+                                    "Couldn’t check server compatibility. The server may be unavailable or need updating."
+                                }
+                                button {
+                                    class: "button button-secondary",
+                                    onclick: move |_| compatibility.restart(),
+                                    "Retry"
+                                }
+                            },
+                        }
+                    }
 
                     if let Some(err) = error.read().clone() {
                         p { class: "alert-banner online-error", {err} }
@@ -154,7 +234,10 @@ fn try_join(
 
 /// Desktop-only settings; the browser continues to use its own origin.
 #[component]
-fn DesktopServerSettings(on_ready: EventHandler<bool>) -> Element {
+fn DesktopServerSettings(
+    on_ready: EventHandler<bool>,
+    on_server_changed: EventHandler<String>,
+) -> Element {
     #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
     {
         use crate::state::desktop_settings::{self, DEFAULT_SERVER};
@@ -168,6 +251,7 @@ fn DesktopServerSettings(on_ready: EventHandler<bool>) -> Element {
             });
             match result {
                 Ok(server) => {
+                    on_server_changed.call(server.clone());
                     address.set(server);
                     error.set(None);
                     on_ready.call(true);
@@ -215,7 +299,7 @@ fn DesktopServerSettings(on_ready: EventHandler<bool>) -> Element {
                             value: "{address}",
                             oninput: move |event| {
                                 let input = event.value();
-                                on_ready.call(desktop_settings::normalize_server(&input).is_ok());
+                                on_ready.call(false);
                                 address.set(input);
                                 error.set(None);
                             },
@@ -229,6 +313,7 @@ fn DesktopServerSettings(on_ready: EventHandler<bool>) -> Element {
                                 match desktop_settings::save("server-address", DEFAULT_SERVER) {
                                     Ok(()) => {
                                         address.set(DEFAULT_SERVER.into());
+                                        on_server_changed.call(DEFAULT_SERVER.into());
                                         error.set(None);
                                         on_ready.call(true);
                                     }

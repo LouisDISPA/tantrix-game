@@ -28,7 +28,20 @@ const INDEX_HTML: &str = include_str!(concat!(env!("OUT_DIR"), "/index.html"));
 static ROUTER: LazyLock<Router> = LazyLock::new(|| {
     let index = IndexHtml::new(INDEX_HTML, "main").expect("client index.html is missing #main");
     // No static assets here: the Workers static assets binding serves them.
-    Router::new().serve_api_application(ServeConfig::with_index_html(index), tantrix_app::app)
+    Router::new()
+        .route(
+            tantrix_proto::ONLINE_VERSION_PATH,
+            axum::routing::get(|| async {
+                (
+                    [
+                        ("cache-control", "no-store"),
+                        ("content-type", "application/json"),
+                    ],
+                    tantrix_proto::encode(&tantrix_proto::OnlineVersion::CURRENT),
+                )
+            }),
+        )
+        .serve_api_application(ServeConfig::with_index_html(index), tantrix_app::app)
 });
 
 #[event(start)]

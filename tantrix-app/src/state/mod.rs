@@ -7,6 +7,7 @@ pub mod game_driver;
 pub mod game_state;
 pub mod gesture;
 pub mod nickname;
+pub mod online_compatibility;
 pub mod online_state;
 pub mod room_connection;
 #[cfg(test)]
