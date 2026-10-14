@@ -21,7 +21,6 @@ pub fn Download() -> Element {
     });
 
     rsx! {
-        document::Title { "Get Tantrix" }
         MenuScreen { scroll: true,
             MenuCard {
                 title: "Get Tantrix",
