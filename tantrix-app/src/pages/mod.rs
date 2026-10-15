@@ -1,4 +1,6 @@
 pub mod about;
+#[cfg(feature = "desktop")]
+pub mod desktop_update;
 #[cfg(not(any(feature = "desktop", feature = "native")))]
 pub mod download;
 pub mod game;

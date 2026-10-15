@@ -1,4 +1,6 @@
 /target
+/bundles
+/artifacts
 .claude
 cloudflare/node_modules/
 cloudflare/.wrangler/

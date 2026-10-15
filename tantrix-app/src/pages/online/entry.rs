@@ -10,7 +10,9 @@ use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
-use crate::state::online_compatibility::{self, Compatibility, DOWNLOAD_URL};
+#[cfg(not(feature = "desktop"))]
+use crate::state::online_compatibility::DOWNLOAD_URL;
+use crate::state::online_compatibility::{self, Compatibility};
 use crate::state::room_connection;
 
 /// `/online` landing page: create a fresh room or enter a code to join.
@@ -136,13 +138,7 @@ pub fn OnlineEntry() -> Element {
                                             "Reload"
                                         }
                                     } else {
-                                        a {
-                                            class: "button button-primary button-full title-btn title-btn-primary",
-                                            href: DOWNLOAD_URL,
-                                            target: "_blank",
-                                            rel: "noopener noreferrer",
-                                            span { class: "title-btn-inner", "Download Tantrix ↗" }
-                                        }
+                                        DesktopUpdateAction {}
                                     }
                                 }
                             },
@@ -166,6 +162,16 @@ pub fn OnlineEntry() -> Element {
                 }
             }
         }
+    }
+}
+
+#[component]
+fn DesktopUpdateAction() -> Element {
+    #[cfg(feature = "desktop")]
+    return rsx! { crate::pages::desktop_update::DesktopUpdate { required: true } };
+    #[cfg(not(feature = "desktop"))]
+    rsx! {
+        a { class: "button button-primary button-full", href: DOWNLOAD_URL, "Download Tantrix ↗" }
     }
 }
 

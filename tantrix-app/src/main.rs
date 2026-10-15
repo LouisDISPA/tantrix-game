@@ -10,6 +10,10 @@ fn main() {
 
 #[cfg(not(feature = "server"))]
 fn main() {
+    #[cfg(feature = "desktop")]
+    velopack::VelopackApp::build()
+        .set_auto_apply_on_startup(false)
+        .run();
     tantrix_app::init_logging();
     #[cfg(feature = "desktop")]
     dioxus::LaunchBuilder::desktop()

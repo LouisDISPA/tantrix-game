@@ -24,7 +24,9 @@ pub fn MainMenu() -> Element {
             }
         }
     };
-    #[cfg(any(feature = "desktop", feature = "native"))]
+    #[cfg(feature = "desktop")]
+    let download_link = rsx! { crate::pages::desktop_update::DesktopUpdate {} };
+    #[cfg(all(feature = "native", not(feature = "desktop")))]
     let download_link = rsx! {};
 
     rsx! {

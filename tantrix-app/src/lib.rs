@@ -66,6 +66,8 @@ const APP_CSS: &str = "";
 const FAVICON: Asset = asset!("/assets/favicon.svg");
 
 pub fn app() -> Element {
+    #[cfg(feature = "desktop")]
+    hooks::desktop_updates::use_desktop_updates();
     #[cfg(not(any(feature = "desktop", feature = "native")))]
     hooks::downloads::use_download_context();
     let theme = *THEME.resolve().read();

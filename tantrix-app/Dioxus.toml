@@ -28,14 +28,6 @@ category = "BoardGame"
 short_description = "Play Tantrix, the hex tile strategy game."
 long_description = "A cross-platform implementation of the Tantrix hex tile strategy game."
 
-[bundle.windows]
-webview_install_mode = { DownloadBootstrapper = { silent = true } }
-
-[bundle.windows.nsis]
-install_mode = "CurrentUser"
-installer_icon = "icons/icon.ico"
-start_menu_folder = "Tantrix"
-
 [bundle.macos]
 bundle_name = "Tantrix"
 

@@ -1,6 +1,8 @@
 pub mod actions;
 pub mod ai_service;
 pub mod config;
+#[cfg(feature = "desktop")]
+pub mod desktop_updates;
 #[cfg(not(any(feature = "desktop", feature = "native")))]
 pub mod downloads;
 pub mod game_driver;

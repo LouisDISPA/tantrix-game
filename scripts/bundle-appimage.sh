@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Package Dioxus's Debian payload once, with GTK/WebKit runtime dependencies.
+# Package Dioxus's Debian payload with GTK/WebKit runtime dependencies.
+# An output ending in .AppDir stages the payload for Velopack instead.
 set -euo pipefail
 
 package="$(realpath "${1:?Usage: bundle-appimage.sh path/to/Tantrix.deb [output.AppImage]}")"
@@ -44,9 +45,17 @@ export APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true ARCH="$arch"
 export PATH="$work:$PATH"
 mkdir -p "$(dirname "$output")"
 cd "$work"
+output_args=()
+if [[ "$output" != *.AppDir ]]; then
+    output_args=(--output appimage)
+fi
 OUTPUT="$work/Tantrix.AppImage" "$work/linuxdeploy.AppImage" \
     --appdir "$appdir" \
     --desktop-file "$appdir/usr/share/applications/tantrix.desktop" \
     --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/tantrix.png" \
-    "${libraries[@]}" --plugin gtk --plugin gstreamer --output appimage
-mv "$work/Tantrix.AppImage" "$output"
+    "${libraries[@]}" --plugin gtk --plugin gstreamer "${output_args[@]}"
+if [[ "$output" == *.AppDir ]]; then
+    mv "$appdir" "$output"
+else
+    mv "$work/Tantrix.AppImage" "$output"
+fi

@@ -105,7 +105,7 @@ impl DownloadAsset {
             (Platform::Linux, ".AppImage") => Package::AppImage,
             (Platform::Linux, ".deb") => Package::Deb,
             (Platform::Windows, "-setup.exe") => Package::Installer,
-            (Platform::Windows, "-portable.exe") => Package::Portable,
+            (Platform::Windows, "-portable.exe" | "-portable.zip") => Package::Portable,
             _ => return None,
         };
         Some(Self {

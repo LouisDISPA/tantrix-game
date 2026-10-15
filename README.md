@@ -6,6 +6,8 @@
 
 **tantrix-app** includes touch and mouse controls, placement guides, live scores, light/dark themes and visual rules. Use the browser, install the web app or download a desktop release.
 
+Desktop releases check for updates in the background and let you restart from the menu to install them. See [desktop updates](doc/desktop-updates.md) for packaging and signing.
+
 <details>
 <summary>Screenshots</summary>
 
