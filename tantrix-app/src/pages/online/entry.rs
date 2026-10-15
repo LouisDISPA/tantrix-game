@@ -34,11 +34,12 @@ pub fn OnlineEntry() -> Element {
     });
     let can_join = use_memo(move || {
         server_ready()
-            && compatibility.state()() == UseResourceState::Ready
-            && matches!(
-                &*compatibility.read(),
-                Some(Some((checked, Ok(Compatibility::Compatible)))) if *checked == server()
-            )
+            && (compatibility.state()() != UseResourceState::Ready
+                || !matches!(
+                    &*compatibility.read(),
+                    Some(Some((checked, result)))
+                        if *checked == server() && *result != Ok(Compatibility::Compatible)
+                ))
     });
 
     rsx! {
@@ -108,11 +109,9 @@ pub fn OnlineEntry() -> Element {
                         },
                     }
 
-                    if compatibility.state()() == UseResourceState::Pending || !matches!(
+                    if compatibility.state()() == UseResourceState::Ready && matches!(
                         &*compatibility.read(), Some(Some((checked, _))) if *checked == server()
                     ) {
-                        p { role: "status", "Checking server…" }
-                    } else {
                         match &*compatibility.read() {
                             Some(Some((_, Ok(Compatibility::Compatible)))) => rsx! {},
                             Some(Some((_, Ok(status)))) => rsx! {
