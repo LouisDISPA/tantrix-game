@@ -1,18 +1,14 @@
 # Online multiplayer
 
-Online games are server-authoritative. The room rules and their
-orchestration live in `tantrix-room`; either the native Axum server or a
-Cloudflare Durable Object hosts a room: it keeps the sockets, persists the
-room, and carries out what the shared engine decides (see
-[Room servers](#room-servers)). Browsers only send intents (`tantrix-proto`)
-and render what the room sends back (`tantrix-net`). See
-[`cloudflare/README.md`](../cloudflare/README.md) for Worker routing and
-storage notes.
+Rooms are server-authoritative. `tantrix-room` owns rules and orchestration;
+native Axum or a Cloudflare Durable Object provides sockets and storage.
+`tantrix-proto` defines intents/snapshots; `tantrix-net` transports them in
+browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.md).
 
 ## Player flow
 
-1. **Create a room** generates a 6-letter code and opens the lobby. Share the
-   invite link (`/join/{CODE}`) or the code.
+1. **Create a room** opens a lobby with a six-letter code. Share the code or
+   `/join/{CODE}` invite link.
 2. Any number of people can be in the lobby; the four colors are seats.
    Take a free seat, or **Release my seat** to leave it for someone else. The
    lobby lists who is waiting for a seat. Clicking a seat someone else holds
@@ -39,8 +35,11 @@ storage notes.
   them. People without a seat who leave are removed.
 - Newcomers can join at any time; after the game started they watch. A room
   accepts up to 32 members, a bound that only guards against scripted joins.
-- There is no protocol versioning: deploy the client and its room server
-  together. A tab left open across a deploy should be reloaded.
+- `tantrix-proto::ONLINE_VERSION` identifies online compatibility; both
+  servers expose it at `/api/online-version`. The online menu checks in the
+  background and blocks Create/Join after a mismatch or failed check. Reload
+  a stale browser page; update an incompatible desktop app or server. This
+  preflight is not a version negotiation in the WebSocket handshake.
 
 ## Running locally
 
@@ -48,9 +47,8 @@ Both backends support online play:
 
 ```bash
 just dev          # native server at http://localhost:8080
-just native-e2e   # Playwright suite against the native server
-just worker-dev   # http://localhost:8787
-just worker-e2e   # Playwright suite against wrangler dev
+just test-e2e     # Playwright suite against the native server
+just worker-e2e   # build and test the Worker with wrangler dev
 ```
 
 The native server saves rooms in `tantrix-rooms.sqlite3` in its working
@@ -60,16 +58,14 @@ reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
 example `https://tantrix.example.com`) so cookie security and WebSocket origin
 checks use that origin.
 
-Rooms deal from the OS-seeded thread RNG (ChaCha12), not from a seed: the
-hidden bag order is the game's secret. A saved game keeps its bag and full
-move history, so undoing the history recovers the deal, and the history
-replays it exactly. Neither the bag nor the history is ever sent to players.
+Rooms deal with the OS-seeded thread RNG and retain no seed. Saves retain
+the bag and history; snapshots expose neither. See
+[history and persistence](game.md#history-seeds-and-persistence).
 
 ## Room servers
 
-Both backends run the same code for everything that happens on a room
-socket, `tantrix_room::engine::RoomEngine`, which does no I/O. Each server
-only owns its sockets, keepalives and storage:
+`tantrix_room::engine::RoomEngine` handles socket events without I/O;
+adapters provide sockets, keepalives and storage:
 
 | | Native (`tantrix-app/src/server/`) | Worker (`tantrix-worker/src/room.rs`) |
 | --- | --- | --- |
@@ -83,10 +79,9 @@ own site, else 400 / 403) and get the browser's identity with
 `session_cookie::identify`. `create=1` for a code with a room gets 409; a
 code with no room gets a rejected `Welcome` (`RoomNotFound`) and a close.
 
-The adapter then feeds each socket event to the engine (`on_open`,
-`on_text`, `on_binary`, `on_close`), which returns a `Step`: the room to
-persist, if it changed, and effects — send, broadcast, close. Both servers
-carry steps out the same way (`RoomEngine::run`):
+Events (`on_open`, `on_text`, `on_binary`, `on_close`) produce a `Step`: an
+optional room to persist and send/broadcast/close effects. Both adapters use
+`RoomEngine::run`:
 
 - **Save first.** A changed room is saved before the step is committed and
   before anyone hears of it. If the save fails, nothing is committed and
@@ -103,11 +98,3 @@ carry steps out the same way (`RoomEngine::run`):
   answered with an error and change nothing.
 - **Restarts.** A room loaded from storage forgets members without a seat
   whose sockets are gone; seated players keep their seats.
-
-## Why workers-rs (wasm32) and not the Emscripten target
-
-Cloudflare's Emscripten target for Rust Workers mainly helps crates that need
-a C toolchain or a libc. Everything here is pure Rust, and the Worker already
-builds with `workers-rs` for server rendering, so the room Durable Object
-lives in the same `wasm32-unknown-unknown` module rather than adding a second
-toolchain.

@@ -1,36 +1,32 @@
 # AI players and the tournament
 
-`tantrix-ai` holds the AIs, `tantrix-tournament` ranks them. Every AI
-implements `TantrixAi` (see [game.md](game.md#ai-service)) and chooses from
-an `AiView`: the board, every hand (face up, as in the real game), whose
-turn it is and at which step, how many tiles are left in the bag, and the
-legal moves. Never the draw order: an AI that plays ahead deals the unseen
-tiles into a bag of its own (`AiView::determinize`).
+`tantrix-ai` implements `TantrixAi`; `tantrix-tournament` compares AIs.
+[`AiView`](game.md#ai-service) exposes the board, face-up hands, turn,
+bag count and legal moves, never draw order. Simulations randomize the
+unseen tiles with `AiView::determinize`.
 
-## The AIs
+## AIs
 
-`all_ais()`, in order. Elo and speed are from the championship below.
+`all_ais()` returns these in order. Defaults are in `tantrix-ai/src/`.
+Historical Elo and timings appear in the championship results below.
 
-| AI | How it chooses | Elo | ms/move |
-|---|---|---|---|
-| `FirstMove` | The first legal move | 1172 | 0.000 |
-| `Random` | A random legal move (`RandomAi::seeded` for repeatable games) | 1199 | 0.000 |
-| `Greedy` | The move that most raises its own score | 1423 | 0.003 |
-| `Defensive` | Its score after the move, less the best opponent's | 1445 | 0.011 |
-| `LoopHunter` | Loops weigh 3× their tiles, lines 1× | 1421 | 0.007 |
-| `Smart` | Own gain ×1000, opponent's gain ×−100, −50 next to the opponent's path ends; the app's AI | 1457 | 0.012 |
-| `Builder` | The line evaluation one move ahead, opponents ignored | 1527 | 0.14 |
-| `Strategist` | The line evaluation one move ahead: its value less the best opponent's | 1593 | 0.16 |
-| `Lookahead` | Strategist's 8 best moves, each answered by the next player's best reply | 1686 | 0.56 |
-| `MonteCarlo` | Strategist's 16 best moves played out to the end on determinized bags, by successive halving | 2076 | 29.7 |
+| AI | Choice |
+|---|---|
+| `FirstMove` | First legal move |
+| `Random` | Random legal move |
+| `Greedy` | Largest own score gain |
+| `Defensive` | Own score minus best opponent's |
+| `LoopHunter` | Loops weighted 3× tiles, lines 1× |
+| `Smart` | Own gain ×1000 − leading opponent's gain ×100; −50 beside their best path's ends |
+| `Builder` | One-move line evaluation, opponents ignored |
+| `Strategist` | One-move line evaluation minus best opponent's |
+| `Lookahead` | Best reply to each of Strategist's top 8 moves |
+| `MonteCarlo` | Playouts from Strategist's top 16 moves, successive halving |
 
-The app offers four of them as difficulty levels, per AI seat (`Difficulty`
-in `tantrix-app/src/state/config.rs`): Easy `Smart`, Medium `Strategist`
-(the default), Hard `Lookahead`, Expert `MonteCarlo`.
-
-All are deterministic but `Random` and `MonteCarlo`, which draw from a
-seeded generator once `with_seed` gives them one (the tournament does, per
-game), so a seed always plays the same game.
+App difficulties (`tantrix-app/src/state/config.rs`): Easy = Smart,
+Medium = Strategist (default), Hard = Lookahead, Expert = MonteCarlo.
+Only Random and MonteCarlo use randomness; `with_seed` makes their choices
+repeatable. The tournament seeds both AIs per game.
 
 ### The line evaluation (`eval.rs`)
 
@@ -55,25 +51,23 @@ opponent's. `Weights::BALANCED` came out of two tuning rounds (below);
 
 ### Lookahead
 
-Ranks the legal moves by the line evaluation, keeps the best `width` (8),
-and answers each with the best next move by the same evaluation: the same
-player's if the move leaves them forced spaces to fill or their free move
-to play, else the next player's (whose hand is known). The tile drawn after
-the move is unknown, so it is left out.
+Ranks legal moves by line evaluation, keeps `width` (default 8), and
+answers each with the best next move: the same player's if their turn
+continues, otherwise the next player's. Known hands are used; unknown
+drawn tiles are omitted.
 
 ### MonteCarlo
 
-Ranks the legal moves by the line evaluation, keeps the best `width` (16),
-and plays them out to the end of the game, `playouts` (16) times each on
-average. Each playout deals the unseen tiles into the bag in a random order
-(`AiView::determinize`), and every move is played out on the same deals
-(common random numbers), so luck of the draw weighs on all of them alike.
-Playouts are greedy: every player picks the move that most raises their own
-score (`IndexedBoard::score_after`), ties broken at random. A playout is
-worth the final margin, plus 5 for a win. By successive halving (`halving`,
-the default) the `width × playouts` playouts are spent over rounds, the
-worse half of the moves dropped after each, so the best moves get the
-most.
+Keeps `width` (default 16) candidates by line evaluation and spends
+`width × playouts` simulations (`playouts` defaults to 16). Each candidate
+uses the same randomized deals to reduce draw noise. Greedy playouts
+maximize each player's score gain (`IndexedBoard::score_after`), breaking
+ties randomly. Reward is final margin against the best opponent, plus 5
+for a win or minus 5 for a loss.
+
+Successive halving (`halving = true`, default) drops the worse half each
+round and spends more on survivors. Flat mode gives each candidate the
+same number of playouts.
 
 ## The tournament
 
@@ -82,28 +76,20 @@ cargo run --release -p tantrix-tournament -- --help
 cargo run --release -p tantrix-tournament -- --config tantrix-tournament/configs/championship.toml --headless
 ```
 
-Every pairing of the AIs plays `games` games (1000 by default). Each deal
-is played twice in a row with the AIs' seats swapped (`--no-mirror` turns
-it off), so neither AI gets the better hands or turn order, and the
-deal's luck cancels out within the pairing. Each game's seed is drawn from
-the tournament seed before any game runs, deals the game and seeds both
-AIs: the same seed gives the same results whatever the threads. Worker
-threads take games round by round (the first game of every pairing, then
-the second…), so the standings are balanced across pairings at any time:
-stopping early (`s` in the TUI) leaves a fair sample, and the ETA holds.
+Each pairing plays `games` games (default 1000). Mirrored pairs swap
+seats on the same deal (`--no-mirror` disables this). Game seeds are drawn
+before execution and seed both the deal and AIs; results are independent
+of thread scheduling. Workers interleave pairings round by round.
 
-It shows, per AI: Elo (a Bradley–Terry fit of every head-to-head record,
-averaging 1500; one virtual draw per pairing keeps winless AIs finite),
-score (wins + ½ draws) with its 95% margin, wins, losses, draws, average
-points and margin, and the time it takes to choose a move (measured with
-every thread busy). Then the head-to-head score of every pairing, and how
-the first player to move fares.
+Standings show Bradley–Terry Elo (mean 1500; one virtual draw per pairing),
+score = wins + half draws with a 95% margin, W/L/D, average points/margin,
+and choice time under concurrent load. Results include head-to-head and
+first-player scores.
 
-- **TUI** (the default on a terminal): live leaderboard, score bars, score
-  trends, latest games; pause, stop, next seed.
-- **Headless** (`--headless`, or whenever stdout is not a terminal, as when
-  an LLM or a script runs it): a progress line on stderr at every tenth of
-  the games (and every 30 s), then the results as plain text on stdout.
+- **TUI:** default on a terminal; live standings/trends, pause, stop (`s`),
+  next seed.
+- **Headless:** `--headless` or redirected stdout; progress on stderr every
+  10% and 30 seconds, final plain-text results on stdout.
 
 ### Config files
 
@@ -130,8 +116,10 @@ every) AI.
 
 ## What the tournaments found
 
-Every run below is a config in `tantrix-tournament/configs/` (or was
-one), on mirrored deals; ± is the 95% margin of a score.
+Historical runs on mirrored deals; these are recorded results, not a
+benchmark of the current checkout. Configs live in
+`tantrix-tournament/configs/`; some tuning configs were replaced.
+± denotes a score's 95% margin.
 
 ### Championship: which AI is the best?
 
@@ -166,15 +154,9 @@ Random         0.6     7.8    10.8    13.6    20.0    20.6    20.4    18.5      
 FirstMove      1.1     6.4     8.3    13.5    15.9    14.5    17.0    17.4    48.4       -
 ```
 
-- **MonteCarlo is the best by far**: 96.7% of the points, at least 86%
-  against every AI, 99% against the old ones. It also costs the most:
-  30 ms a move, 0.8 s a game.
-- **Lookahead** is second at 1/50 of the cost; **Strategist** third, one
-  move ahead only, and beats `Smart`, the app's AI, 69–31 in 0.16 ms.
-- The old AIs that only count score are level (`Smart` 46.9%, `Defensive`
-  45.4%, `Greedy` 42.8%, `LoopHunter` 42.4%): looking at what lines can
-  still become is what pays.
-- The first player to move scores 50.3% (±0.5): no first-move advantage.
+MonteCarlo led this field at 96.7%, costing about 30 ms/move; Lookahead
+was second at roughly 1/50 the cost. Strategist beat Smart 69–31.
+First-player score was 50.3% ±0.5, consistent with no advantage in this run.
 
 ### Tuning the line evaluation
 
@@ -189,10 +171,6 @@ Strategist variants, one weight changed at a time, 1000 games per pairing
   of the others, the first guess last (46.5%), about 30 Elo below the best,
   which became `Weights::BALANCED`: `open_end` 3, `forced_end` 3,
   `ready_end` 0.5, `closable_loop` 0.25, `joinable` 1, `opponent` 1.
-
-The evaluation has reached what one move ahead can do with these features:
-better play now comes from searching (Lookahead, MonteCarlo) or new
-features (see the ideas below).
 
 ### How MonteCarlo should spend its playouts
 
@@ -232,30 +210,13 @@ checksum of every game's history and scores, unchanged throughout):
 
 Legal-move generation is now about half of MonteCarlo's time.
 
-## Ideas not done yet
+## Unimplemented options
 
-- **Incremental legal moves.** `Game` works out every contour space again
-  after each move, though a move only changes the spaces around it (and
-  the controlled sides through them). Legal moves are now about half of
-  MonteCarlo's time.
-- **Tree search.** Information-set MCTS: grow a tree over the
-  determinized deals instead of flat playouts, so the opponents' replies
-  are searched too.
-- **Smarter playouts.** A cheap policy that extends its own line ends and
-  keeps off the opponents' would make each playout tell more; or stop
-  playouts early and score them with the line evaluation.
-- **Exact endgame.** Once the bag is empty nothing is hidden: search the
-  last few tiles exactly.
-- **A time budget.** MonteCarlo playing for a set time rather than a set
-  number of playouts suits the app, where devices differ: Expert plays it
-  by playouts, and the browser e2e (`local-game.spec.ts`) only shows it
-  answers, not how long it takes on a slow device.
-- **Automatic tuning.** Drive headless tournaments from generated configs
-  (SPSA, CMA-ES) instead of tuning by hand; try new features (how many
-  tiles fit an end, not only whether one does).
-- **Fewer games for the same answer.** Stop a pairing once its result is
-  settled (a sequential test), or play one challenger against the field
-  (a gauntlet).
-- **3 and 4 players.** The AIs handle any number of players, but the
-  tournament only deals 2-player games.
-- **Machine-readable results** (`--json`) for scripts.
+- Incremental legal moves: update affected contour spaces and controlled sides.
+- Information-set MCTS; stronger or truncated playout policies.
+- Exact endgame search once the bag is empty.
+- Time-budgeted search; current Expert uses a fixed playout count.
+- Automated weight tuning (SPSA/CMA-ES) and richer line-end features.
+- Sequential stopping or challenger gauntlets to reduce tournament games.
+- 3–4-player tournaments (AIs support them; the runner deals two players).
+- Machine-readable results (`--json`).

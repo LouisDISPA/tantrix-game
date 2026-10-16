@@ -25,7 +25,9 @@ pub fn MainMenu() -> Element {
         }
     };
     #[cfg(feature = "desktop")]
-    let download_link = rsx! { crate::pages::desktop_update::DesktopUpdate {} };
+    let download_link = rsx! {
+        crate::pages::desktop_update::DesktopUpdate {}
+    };
     #[cfg(all(feature = "native", not(feature = "desktop")))]
     let download_link = rsx! {};
 

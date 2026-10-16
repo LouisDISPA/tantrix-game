@@ -21,7 +21,8 @@ pub fn DesktopUpdate(#[props(default)] required: bool) -> Element {
                         }
                     },
                     UpdateStatus::Ready { version } => rsx! {
-                        button { class: "button button-secondary desktop-update-badge",
+                        button {
+                            class: "button button-secondary desktop-update-badge",
                             title: "Restart to install Tantrix v{version}",
                             onclick: move |_| updates.install(),
                             span { aria_hidden: "true", "↑" }
@@ -30,18 +31,22 @@ pub fn DesktopUpdate(#[props(default)] required: bool) -> Element {
                         }
                     },
                     UpdateStatus::Installing => rsx! {
-                        button { class: "button button-secondary desktop-update-badge", disabled: true,
-                            "Restarting…"
-                        }
+                        button { class: "button button-secondary desktop-update-badge", disabled: true, "Restarting…" }
                     },
                     UpdateStatus::Checking => rsx! {
                         p { class: "desktop-update-meta", role: "status", "Checking for updates…" }
                     },
                     status => rsx! {
-                        a { class: "button button-secondary desktop-update-badge", href: DOWNLOAD_URL,
-                            target: "_blank", rel: "noopener noreferrer",
-                            if status.is_outdated() { "Update available · Download ↗" }
-                            else { "Download latest ↗" }
+                        a {
+                            class: "button button-secondary desktop-update-badge",
+                            href: DOWNLOAD_URL,
+                            target: "_blank",
+                            rel: "noopener noreferrer",
+                            if status.is_outdated() {
+                                "Update available · Download ↗"
+                            } else {
+                                "Download latest ↗"
+                            }
                         }
                     },
                 }

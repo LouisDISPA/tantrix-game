@@ -114,7 +114,7 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         },
                         onresize: move |_| measure(),
                         ondragstart: move |evt| evt.prevent_default(),
-                        onpointerdown: move |evt| { // Only a mouse hovers: a finger's "hover" would stick // Only a mouse hovers: a finger's "hover" would stick
+                        onpointerdown: move |evt| {
                             if interactive && evt.data().trigger_button() == Some(MouseButton::Primary) {
                                 if let Some(origin) = *bounds.peek() {
                                     #[cfg(feature = "web")]

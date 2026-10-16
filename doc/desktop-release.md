@@ -1,38 +1,41 @@
-# Desktop release process
+# Desktop releases
 
-The `Release` workflow builds desktop packages in one native runner matrix, then creates the GitHub Release only after every platform succeeds. GitHub generates the release notes; version suffixes such as `-rc.1` produce prereleases.
+`.github/workflows/release.yml` builds six native OS/architecture combinations, then publishes a GitHub Release only after every build succeeds. Desktop jobs use stable Rust, Dioxus CLI 0.7.10 and Velopack 1.2.161.
 
-## Release a version
+## Publish
 
-1. Update `tantrix-app/Cargo.toml`'s package version and commit the release.
-2. Push a tag matching the app package's version, for example:
+1. Update `tantrix-app/Cargo.toml`'s version and commit.
+2. Push a matching tag, e.g. `tantrix-app-v0.1.3`.
+3. Wait for **Release**. A version containing `-` creates a prerelease; GitHub generates notes.
 
-   ```sh
-   git tag tantrix-app-v0.1.1
-   git push origin tantrix-app-v0.1.1
-   ```
+Use **Actions → Release → Run workflow** to build downloadable artifacts without publishing. Optional macOS-only and Windows-only inputs build x86_64 signing diagnostics.
 
-3. Wait for the `Release` workflow. It produces macOS DMGs for Apple Silicon and Intel, Linux `.deb` and AppImage packages for x86_64 and ARM64, and Windows portable and NSIS setup executables for x86_64 and ARM64.
+| OS | Architectures | Downloads |
+| --- | --- | --- |
+| macOS | aarch64, x86_64 | DMG |
+| Linux | aarch64, x86_64 | AppImage, `.deb` |
+| Windows | aarch64, x86_64 | Setup EXE, portable ZIP |
 
-The desktop bundles are built on native GitHub-hosted runners. `dx bundle` does not cross-build native desktop packages; Linux packages also rely on WebKitGTK being available on the build runner. The Windows NSIS bundle uses its per-user install mode and the small WebView2 download bootstrapper. NSIS uses its standard Modern UI wizard.
+`scripts/pack-desktop.py` wraps Dioxus payloads with Velopack and writes downloads, feeds and update packages to `artifacts/`. Windows ZIPs include the updater; distributing a standalone EXE loses it. See [updates and signing](desktop-updates.md) for keys, feeds and installation tests.
 
-## Why these formats
+## Local packaging
 
-- **macOS:** DMG is a familiar drag-to-Applications download. Release both supported desktop architectures separately; DMGs are currently unsigned.
-- **Linux:** AppImage is a convenient portable download; `.deb` integrates with Debian/Ubuntu package managers and declares GTK/WebKitGTK runtime dependencies.
-- **Windows:** Dioxus/tauri-bundler's NSIS installer provides a small guided per-user install and WebView2 bootstrapper. The portable option is the app executable itself. MSIX is the Microsoft package format to consider later for Store/managed deployment, but it is not the simplest output supported by Dioxus's current bundler.
-
-## Local packaging commands
-
-Run each command on its target OS after installing the Dioxus desktop prerequisites:
+Run on the target OS with desktop prerequisites, .NET 8 and `vpk` 1.2.161 installed:
 
 ```sh
-dx bundle --release --macos --package tantrix-app --features desktop,bundle --package-types macos --package-types dmg
-dx bundle --release --linux --package tantrix-app --features desktop,bundle --package-types deb --out-dir bundles
-bash scripts/bundle-appimage.sh bundles/*.deb
-dx bundle --release --windows --package tantrix-app --features desktop,bundle --package-types nsis
+dotnet tool install -g vpk --version 1.2.161
+# macOS
+dx bundle --locked --release --platform macos --package tantrix-app --features desktop,bundle --package-types macos --out-dir bundles
+# Linux
+dx bundle --locked --release --platform linux --package tantrix-app --features desktop,bundle --package-types deb --out-dir bundles
+# Windows
+dx build --locked --release --platform windows --package tantrix-app --features desktop,bundle
+# Package the matching payload; substitute OS, architecture and app version.
+python3 scripts/pack-desktop.py macos aarch64 0.1.3
 ```
 
-On Linux, Dioxus builds the `.deb`; `scripts/bundle-appimage.sh` extracts its executable, resources and metadata into an AppDir and packages the AppImage once. Pinned Tauri GTK/GStreamer plugins handle modules, schemas, WebKit path relocation and runtime hooks. The script stages matching WebKit helpers, includes the excluded font libraries, and limits GStreamer to its appsink/core plugins. It requires the desktop development packages plus `curl`, `pkg-config`, `librsvg2-dev`, `patchelf`, `dpkg-dev` and `gstreamer1.0-plugins-base`. The release workflow runs this step automatically. It does not run a graphical startup check.
+Dioxus does not cross-build native desktop bundles. Linux requires GTK/WebKit development packages plus `curl`, `pkg-config`, `librsvg2-dev`, `patchelf`, `dpkg-dev` and `gstreamer1.0-plugins-base`; the workflow lists its installed packages.
 
-The AppImage still relies on the host's graphics stack (X11, OpenGL/EGL/OpenGL ES, GBM and DRM), fonts, CA certificates and a compatible glibc. The Ubuntu 24.04 build runners set that compatibility baseline; the published 0.1.0 executable requires glibc 2.39. Build on an older Linux baseline to support older distributions. Hosts without FUSE can use `APPIMAGE_EXTRACT_AND_RUN=1 ./Tantrix.AppImage`.
+The Linux packager extracts the `.deb` into an AppDir through `scripts/bundle-appimage.sh`, then Velopack creates the AppImage. The AppDir includes WebKit helpers, font libraries and minimal GStreamer plugins. Packaging does not verify graphical startup.
+
+AppImages still require host graphics libraries, fonts, CA certificates and compatible glibc. Ubuntu 24.04 runners set the build baseline; use older runners to support older distributions. Without FUSE, run `APPIMAGE_EXTRACT_AND_RUN=1 ./Tantrix.AppImage`.

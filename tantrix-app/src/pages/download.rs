@@ -40,6 +40,8 @@ pub fn Download() -> Element {
                         a {
                             class: "button button-ghost button-link",
                             href: RELEASES_URL,
+                            target: "_blank",
+                            rel: "noopener noreferrer",
                             "Releases & changelog ↗"
                         }
                     }

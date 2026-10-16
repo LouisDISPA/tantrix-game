@@ -1,25 +1,10 @@
 # Desktop updates
 
-Desktop packages use Velopack 1.2.161 (both the Rust crate and the `vpk` tool).
-The app checks GitHub Releases exactly once at startup and downloads available
-updates in the background. There is no manual check or repeat check on navigation.
-The main menu stays silent unless an update is known to be available, then shows
-a compact progress badge and **Restart and update** when the package is ready.
-An online compatibility mismatch uses the same startup result, with a manual
-download fallback if automatic updating is unavailable. Downloading survives navigation; installing
-requires an explicit click in a menu. Updates are never installed automatically
-on startup, and no restart control appears during a game.
-
-The game server address does not control where updates come from.
+Velopack 1.2.161 checks GitHub Releases once per launch and downloads updates in the background. Navigation and online compatibility reuse that result. Menus show progress, then **Restart and update**; installation requires a click. Games never show restart controls. Legacy, `.deb` and development installs fall back to a download link. The game server address does not affect the update source.
 
 ## Packages and release channels
 
-The release workflow builds six OS/architecture combinations. Each uses a
-separate channel, such as `stable-macos-aarch64` or `stable-windows-x86_64`.
-Prereleases use `preview-…` channels; stable installations ignore prereleases.
-Package IDs also include the channel and CPU, keeping pending downloads separate.
-Only newer versions are installed. Update packages are checked against the
-hashes in the GitHub-hosted feed before becoming ready to install.
+Each OS/architecture has a separate `stable-<os>-<arch>` channel and package ID; prereleases use `preview-…`. Stable installs ignore prereleases. Only newer versions install, after checking package hashes against the GitHub-hosted feed.
 
 `scripts/pack-desktop.py` packages the Dioxus output with `vpk`, then stages:
 
@@ -34,15 +19,7 @@ The Linux AppImage retains the GTK/WebKit/GStreamer payload assembled by
 `scripts/bundle-appimage.sh`. Passing a `.AppDir` output stages it for Velopack
 instead of generating a standalone AppImage.
 
-Every GitHub release must include its `releases.<channel>.json` and the `.nupkg`
-files referenced by that feed. The workflow publishes these together with the
-downloads. Do not rename update packages: feeds reference their exact filenames.
-Windows portable downloads are ZIPs containing the updater, not standalone EXEs.
-
-Existing releases without Velopack need a one-time install of a new managed
-package. Legacy installs, `.deb` installations and development builds show a
-download link instead of automatic updates. On Windows, the old NSIS installation
-can be removed separately after installing the new package.
+Publish `releases.<channel>.json` with every `.nupkg` it references. Never rename update packages. Windows portable downloads must include the entire ZIP. Existing unmanaged releases need a one-time managed install; old NSIS installations can then be removed separately.
 
 ## Local macOS build
 
@@ -58,10 +35,7 @@ Outputs are in `artifacts/`. Copy the app out of the DMG before running it.
 
 ## Free self-signed releases
 
-macOS and Windows use your own code-signing certificates; Linux uses your GPG key.
-No Apple membership, Azure account or paid certificate is needed. Generate keys
-**once**, back them up, and reuse them for later versions and both architectures.
-Do not regenerate them on each build.
+macOS and Windows use self-signed code-signing certificates; Linux uses GPG. Generate keys **once**, back them up outside Git, reuse across versions/architectures and renew before expiry. No paid signing service is required.
 
 Self-signing verifies who holds the key; it does **not** establish public publisher
 trust. Windows SmartScreen warnings can remain. macOS builds are **not notarized**
@@ -168,14 +142,7 @@ Run **Actions → Release → Run workflow** on the branch containing these chan
 It builds downloadable artifacts without publishing a release. Install them and
 test an older-to-newer update on each OS before creating a release tag normally.
 
-No `desktop-release` environment is required anymore. The former Apple notarization,
-Azure signing and `WINDOWS_SIGN_PARAMS` settings are no longer used and can be
-removed from GitHub. With all signing settings for a platform absent, that platform
-builds unsigned; a partial configuration or failed signature stops publication.
-
-Keep private keys/passwords backed up outside Git and renew before expiry. Public
-certificates are safe to distribute. Publish their SHA-256 fingerprints on the
-project website so users can compare them independently of downloaded files.
+No GitHub environment is required. With a platform's signing settings absent, it builds unsigned; partial settings or failed signatures stop publication. Publish public-key SHA-256 fingerprints separately from downloads so players can compare them independently.
 
 ### What players need to do
 
@@ -215,14 +182,13 @@ Signing configuration and temporary keychain cleanup tests:
 python3 -B -m unittest discover -s scripts -p 'test_pack_desktop.py'
 ```
 
-The desktop unit tests cover the no-update and corrupt-download paths:
+Desktop unit tests cover no-update and corrupt-download paths:
 
 ```sh
 cargo test -p tantrix-app --features desktop --lib
 ```
 
-To verify a real locally generated package is downloaded, validated and recovered
-as ready after another check without a feed, run:
+Verify download, hash validation and offline recovery of a locally packaged update:
 
 ```sh
 TANTRIX_UPDATE_FEED="$PWD/artifacts/releases.stable-macos-aarch64.json" cargo test -p tantrix-app --features desktop packaged_update_is_verified_and_remains_ready_offline --lib -- --ignored

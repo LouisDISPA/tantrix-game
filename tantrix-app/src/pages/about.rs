@@ -12,22 +12,23 @@ pub fn About() -> Element {
         MenuScreen { scroll: true,
             MenuCard {
                 title: "About",
-                subtitle: "A hexagonal strategy game",
+                subtitle: "Tantrix",
                 back: move |_| {
                     let _ = nav.push(Route::MainMenu {});
                 },
                 main { class: "about-copy",
-                    section {
-                        h2 { "What is this app?" }
-                        p {
-                            "Play Tantrix locally or in an online room. Place hexagonal tiles, connect your color, and build the longest line or loop."
-                        }
+                    p {
+                        "This application and website is a side project by Louis Dispa. It is not official and not affiliated with Tantrix."
                     }
-                    section {
-                        h2 { "An independent project" }
-                        p {
-                            "This is an unofficial implementation. It is not affiliated with the official Tantrix game."
-                        }
+                    p { "Developed with the help of AI tools such as codex and claude." }
+                    p { "All the code is open source and available on github." }
+                    a {
+                        class: "button",
+                        style: "text-decoration: none",
+                        href: "https://github.com/LouisDISPA/tantrix-game",
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        "View on GitHub"
                     }
                 }
             }

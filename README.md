@@ -2,11 +2,9 @@
 
 [Play](https://tantrix.louis-dispa.fr) · [Downloads](https://tantrix.louis-dispa.fr/download) · [Releases](https://github.com/LouisDISPA/tantrix-game/releases)
 
-**Tantrix in Rust, with a Dioxus application for web and desktop.** Match colored hex tiles and compete for the longest line or loop. Play locally or online with 2–4 players, human or AI.
+**Tantrix** is a tabletop game where you compete for the longest line or loop.
 
-**tantrix-app** includes touch and mouse controls, placement guides, live scores, light/dark themes and visual rules. Use the browser, install the web app or download a desktop release.
-
-Desktop releases check for updates in the background and let you restart from the menu to install them. See [desktop updates](doc/desktop-updates.md) for packaging and signing.
+This is small side project, unofficial and not affiliated with Tantrix.
 
 <details>
 <summary>Screenshots</summary>
@@ -82,3 +80,7 @@ just worker-e2e                  # Worker browser tests
 ```
 
 [Game engine](doc/game.md) · [Worker setup](cloudflare/README.md) · [Browser tests](e2e/README.md)
+
+## AI Disclaimer
+
+This project use a lot of AI tools for it's development.

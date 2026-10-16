@@ -50,7 +50,8 @@ pub fn OnlineEntry() -> Element {
                 back: move |_| {
                     let _ = nav.push(Route::MainMenu {});
                 },
-                div { class: "online-entry",
+                div {
+                    class: "online-entry",
                     onmounted: move |_| mounted.set(true),
                     div { class: "online-actions",
                         MenuButton {
@@ -109,9 +110,13 @@ pub fn OnlineEntry() -> Element {
                         },
                     }
 
-                    if compatibility.state()() == UseResourceState::Ready && matches!(
-                        &*compatibility.read(), Some(Some((checked, _))) if *checked == server()
-                    ) {
+                    if compatibility.state()() == UseResourceState::Ready
+                        && matches!(
+                            &*compatibility.read(),
+                            Some(Some((checked, _)))
+                            if *checked == server()
+                        )
+                    {
                         match &*compatibility.read() {
                             Some(Some((_, Ok(Compatibility::Compatible)))) => rsx! {},
                             Some(Some((_, Ok(status)))) => rsx! {
@@ -167,7 +172,9 @@ pub fn OnlineEntry() -> Element {
 #[component]
 fn DesktopUpdateAction() -> Element {
     #[cfg(feature = "desktop")]
-    return rsx! { crate::pages::desktop_update::DesktopUpdate { required: true } };
+    return rsx! {
+        crate::pages::desktop_update::DesktopUpdate { required: true }
+    };
     #[cfg(not(feature = "desktop"))]
     rsx! {
         a { class: "button button-primary button-full", href: DOWNLOAD_URL, "Download Tantrix ↗" }

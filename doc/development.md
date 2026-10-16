@@ -2,30 +2,32 @@
 
 ## Setup
 
-- Install [rustup](https://rust-lang.github.io/rustup/). The nightly toolchain,
-  Clippy, rustfmt, and Wasm target are declared in `rust-toolchain.toml`.
-- Install `just` and the prebuilt Dioxus CLI `dx` 0.7.10. With
-  [cargo-binstall](https://github.com/cargo-bins/cargo-binstall):
-
-  ```bash
-  cargo binstall just
-  cargo binstall dioxus-cli@0.7.10
-  ```
-
-- Use Node.js 24 (`.node-version`) and [pnpm](https://pnpm.io/installation)
-  12.8.1. The package manifests pin the pnpm version.
+- Install [rustup](https://rust-lang.github.io/rustup/). `rust-toolchain.toml` selects nightly, Clippy, rustfmt, rust-src and the Wasm target.
+- Install `just` and Dioxus CLI 0.7.10, e.g. `cargo binstall just dioxus-cli@0.7.10`.
+- Use Node.js 24 (`.node-version`) and pnpm 12.8.1 (pinned in package manifests).
 - For `just tunnel`, install [cloudflared](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/downloads/).
 
-```bash
+```sh
 just setup-e2e
 just setup-worker
 cd e2e && pnpm exec playwright install chromium
 ```
 
-Run `just` to list commands. `just dev` starts the fullstack web app; `just tunnel`
-shares it through a temporary Cloudflare Tunnel. `just native-e2e` and
-`just worker-e2e` run the focused browser suite against either backend. CI uses
-one job for format, lint, a production build, unit tests and native browser tests.
-Playwright builds and starts the server, reusing the production compilation
-outputs from the earlier step. See [browser tests](../e2e/README.md)
-and [Worker setup](../cloudflare/README.md) for details.
+## Commands
+
+Run `just` for the complete list.
+
+| Command | Purpose |
+| --- | --- |
+| `just dev` | Fullstack web app with hot reload, port 8080 |
+| `just run` | Production web build and server, port 8080 |
+| `just tunnel` | Share the local server through a temporary tunnel |
+| `just desktop` | Desktop development app |
+| `just fmt-check` / `just lint` / `just test` | CI Rust checks |
+| `just test-e2e` | Native-server browser suite |
+| `just worker-e2e` | Build client + Worker and run the same browser suite |
+| `just worker-deploy` | Build and deploy the Worker |
+
+CI runs format, lint, production build, unit tests and native browser tests in one job; browser startup reuses the production compilation outputs.
+
+See [browser tests](../e2e/README.md), [Worker operations](../cloudflare/README.md) and [desktop releases](desktop-release.md).
