@@ -25,7 +25,7 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                 back: move |_| {
                     let _ = nav.push(Route::MainMenu {});
                 },
-                div { class: "player-slots",
+                div { class: "player-slots stack",
                     for (color, kind) in config.read().players {
                         {
                             let is_active = kind != PlayerKind::Off;
@@ -38,7 +38,7 @@ pub fn PlayerSetup(seed: Option<u64>, on_start: EventHandler<GameConfig>) -> Ele
                             rsx! {
                                 div {
                                     key: "{color:?}",
-                                    class: "surface surface-inset player-slot {color_class}",
+                                    class: "surface surface-inset player-slot {color_class} row gap-3",
                                     class: if is_active { "active" },
                                     class: if matches!(kind, PlayerKind::Ai(_)) { "has-level" },
                                     ColorSwatch { color }

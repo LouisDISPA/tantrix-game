@@ -43,7 +43,7 @@ pub fn ShareChip(url: ReadSignal<String>) -> Element {
                     "Click to copy invite link"
                 }
             }
-            span { class: "lobby-share-url", "{url}" }
+            span { class: "lobby-share-url truncate", "{url}" }
         }
     }
 }

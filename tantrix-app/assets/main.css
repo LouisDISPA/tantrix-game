@@ -1,4 +1,4 @@
-@layer reset, tokens, base, components, features, responsive, motion;
+@layer reset, tokens, base, utilities, components, features, responsive, motion;
 
 @layer reset {
   /* ===== Reset & Base ===== */

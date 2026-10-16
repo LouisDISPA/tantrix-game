@@ -14,7 +14,7 @@ pub fn MenuScreen(
             class: if scroll { "menu-screen-scroll" },
             class: if quick { "menu-screen-quick" },
             div {
-                class: "title-content",
+                class: "title-content stack items-center justify-center",
                 class: if scroll { "menu-content-scroll" },
                 {children}
             }

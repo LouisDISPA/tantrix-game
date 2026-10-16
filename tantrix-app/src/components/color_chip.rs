@@ -39,15 +39,15 @@ pub fn ColorChip(
 
     rsx! {
         button {
-            class: "surface surface-inset lobby-color-chip {state_class} {color_class}",
+            class: "surface surface-inset lobby-color-chip {state_class} {color_class} row",
             onclick: move |_| on_click.call(()),
             ColorSwatch { color, large: true, selected: is_mine }
-            div { class: "lobby-color-meta",
-                span { class: "lobby-color-label", "{color}" }
+            div { class: "lobby-color-meta stack",
+                span { class: "lobby-color-label truncate", "{color}" }
                 if let Some(name) = seat_label().clone() {
-                    span { class: "lobby-color-player", {name} }
+                    span { class: "lobby-color-player truncate", {name} }
                 } else {
-                    span { class: "lobby-color-player empty", "Open" }
+                    span { class: "lobby-color-player empty truncate", "Open" }
                 }
             }
             if is_mine {

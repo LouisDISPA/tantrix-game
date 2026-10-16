@@ -15,7 +15,7 @@ pub fn MenuButton(
             class: if full_width { "button-full" },
             disabled,
             onclick: move |_| on_click.call(()),
-            div { class: "title-btn-inner", {children} }
+            div { class: "title-btn-inner stack items-center justify-center", {children} }
         }
     }
 }

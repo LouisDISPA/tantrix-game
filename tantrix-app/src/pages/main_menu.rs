@@ -33,13 +33,13 @@ pub fn MainMenu() -> Element {
 
     rsx! {
         MenuScreen { quick,
-            div { class: "title-logo-area",
+            div { class: "title-logo-area stack items-center gap-2",
                 div { class: "hex-frame title-hex-frame" }
                 h1 { class: "brand-heading brand-heading-animated title-logo", "TANTRIX" }
                 p { class: "title-subtitle", "Hexagonal Strategy Game" }
             }
 
-            div { class: "title-buttons",
+            div { class: "title-buttons stack",
                 MenuButton {
                     on_click: move |_| {
                         let _ = nav.push(Route::LocalGame { seed: None });

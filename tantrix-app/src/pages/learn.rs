@@ -23,11 +23,11 @@ pub fn Learn() -> Element {
                     back: move |_| {
                         let _ = nav.push(Route::MainMenu {});
                     },
-                    main { class: "learn-guide",
+                    main { class: "learn-guide stack gap-7",
                         p { class: "learn-intro", "2–4 players · 6 tiles each · hands face up" }
 
                         section {
-                            class: "learn-chapter",
+                            class: "learn-chapter stack gap-4",
                             aria_labelledby: "learn-goal",
                             h2 { id: "learn-goal",
                                 span { class: "learn-number", "01" }
@@ -64,7 +64,7 @@ pub fn Learn() -> Element {
                         }
 
                         section {
-                            class: "learn-chapter",
+                            class: "learn-chapter stack gap-4",
                             aria_labelledby: "learn-match",
                             h2 { id: "learn-match",
                                 span { class: "learn-number", "02" }
@@ -81,7 +81,7 @@ pub fn Learn() -> Element {
                         }
 
                         section {
-                            class: "learn-chapter",
+                            class: "learn-chapter stack gap-4",
                             aria_labelledby: "learn-turn",
                             h2 { id: "learn-turn",
                                 span { class: "learn-number", "03" }
@@ -120,7 +120,7 @@ pub fn Learn() -> Element {
                         }
 
                         section {
-                            class: "learn-chapter",
+                            class: "learn-chapter stack gap-4",
                             aria_labelledby: "learn-restrictions",
                             h2 { id: "learn-restrictions",
                                 span { class: "learn-number", "04" }
@@ -213,7 +213,7 @@ pub fn Learn() -> Element {
                         }
 
                         section {
-                            class: "learn-chapter",
+                            class: "learn-chapter stack gap-4",
                             aria_labelledby: "learn-endgame",
                             h2 { id: "learn-endgame",
                                 span { class: "learn-number", "05" }
@@ -226,7 +226,7 @@ pub fn Learn() -> Element {
                                 strong { "Still match colors and fill forced gaps whenever possible." }
                             }
                         }
-                        footer { class: "learn-footer",
+                        footer { class: "learn-footer stack gap-3 items-center",
                             MenuButton {
                                 full_width: true,
                                 on_click: move |_| {

@@ -96,6 +96,21 @@
         "rail board";
     }
 
+    /* Desktop panels share the same glass material. */
+    .hud-chip,
+    .hud-menu-items,
+    .online-hud-badge,
+    .hand-panel .player-hand:not(.shown),
+    .hand-panel .player-hand.shown,
+    .results-panel .board-results-card {
+      --surface-bg: var(--glass);
+      --surface-radius: var(--radius-panel);
+      --surface-shadow: var(--shadow-md), var(--glass-hi);
+      --surface-border: 1px;
+      --surface-line: var(--glass-line);
+      --surface-filter: var(--glass-filter);
+    }
+
     /* ===== Top bar: whose turn, the bag, the tools ===== */
 
     .game-hud {
@@ -108,10 +123,6 @@
     /* The turn: a floating panel. */
     .hud-chip {
       --surface-bg: var(--glass-strong);
-      --surface-radius: var(--radius-panel);
-      --surface-shadow: var(--shadow-md), var(--glass-hi);
-      --surface-border: 1px;
-      --surface-line: var(--glass-line);
       height: var(--btn-h);
       gap: 1.2em;
       padding: 0 1.3em;
@@ -228,12 +239,6 @@
     }
 
     .hud-menu-items {
-      --surface-bg: var(--glass);
-      --surface-radius: var(--radius-panel);
-      --surface-shadow: var(--shadow-md), var(--glass-hi);
-      --surface-border: 1px;
-      --surface-line: var(--glass-line);
-      --surface-filter: var(--glass-filter);
       display: flex;
       position: static;
       flex-direction: row;
@@ -324,12 +329,6 @@
 
     /* The online room's badge: another floating panel. */
     .online-hud-badge {
-      --surface-bg: var(--glass);
-      --surface-radius: var(--radius-panel);
-      --surface-shadow: var(--shadow-md), var(--glass-hi);
-      --surface-border: 1px;
-      --surface-line: var(--glass-line);
-      --surface-filter: var(--glass-filter);
       height: var(--btn-h);
       gap: 0.7em;
       padding: 0 1.1em;
@@ -511,12 +510,6 @@
       three tiles by two on the right. ----- */
 
     .hand-panel .player-hand:not(.shown) {
-      --surface-bg: var(--glass);
-      --surface-radius: var(--radius-panel);
-      --surface-shadow: var(--shadow-md), var(--glass-hi);
-      --surface-border: 1px;
-      --surface-line: var(--glass-line);
-      --surface-filter: var(--glass-filter);
       grid-template-columns: minmax(0, 1fr) auto;
       column-gap: 1em;
       align-items: center;
@@ -649,11 +642,7 @@
 
     .hand-panel .player-hand.shown {
       --surface-bg: var(--glass-strong);
-      --surface-radius: var(--radius-panel);
       --surface-shadow: var(--shadow-lg), var(--glass-hi);
-      --surface-border: 1px;
-      --surface-line: var(--glass-line);
-      --surface-filter: var(--glass-filter);
       position: absolute;
       grid-area: rack;
       left: 50%;
@@ -718,11 +707,7 @@
 
     .results-panel .board-results-card {
       --surface-bg: var(--glass-strong);
-      --surface-radius: var(--radius-panel);
       --surface-shadow: var(--shadow-lg), var(--glass-hi);
-      --surface-border: 1px;
-      --surface-line: var(--glass-line);
-      --surface-filter: var(--glass-filter);
       max-width: none;
       margin: 0;
       padding: 1.1em;

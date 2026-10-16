@@ -38,6 +38,8 @@ const APP_CSS: &str = concat!(
     "\n",
     include_str!("../assets/tokens.css"),
     "\n",
+    include_str!("../assets/utilities.css"),
+    "\n",
     include_str!("../assets/components.css"),
     "\n",
     include_str!("../assets/board.css"),

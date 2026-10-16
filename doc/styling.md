@@ -10,6 +10,7 @@ shared CSS plus `desktop.css` through `src/desktop.rs`.
 |---|---|
 | `main.css` | Cascade-layer order, reset, base, hex frames |
 | `tokens.css` | Spacing, radius, typography, motion, palette, surfaces, theme tokens |
+| `utilities.css` | Small opt-in layout, token spacing and truncation helpers |
 | `components.css` | Shared buttons, cards, inputs, badges, dialogs |
 | `board.css` | Board, tiles, empty slots, orientation picker, results |
 | `hand.css` | Hand headers/tiles and interaction states |
@@ -21,7 +22,7 @@ shared CSS plus `desktop.css` through `src/desktop.rs`.
 | `loading.css` | Startup overlay and its motion |
 | `desktop.css` | Native window chrome and update UI |
 
-Layers: `reset → tokens → base → components → features → responsive → motion`.
+Layers: `reset → tokens → base → utilities → components → features → responsive → motion`.
 
 ## Conventions
 
@@ -44,6 +45,18 @@ Layers: `reset → tokens → base → components → features → responsive �
 | Tile position/size | Tile wrappers: `--hx`, `--hy`, `--hw`, `--hh` |
 | Bag fill | `GameHud`: `--p` |
 | Rotation card | `OrientationPicker`: size/arrow properties from `svg/card_placement.rs` |
+
+## Utilities
+
+Use `stack` for vertical flex layout, `row` for a flex row with centered items,
+`items-center` for cross-axis alignment, `justify-center`/`justify-between` for
+main-axis alignment,
+`gap-2`/`3`/`4`/`7` for the corresponding spacing tokens, and `truncate` for
+single-line ellipsis. A flex or grid item's parent may also need `min-width: 0`
+for truncation to work. Keep semantic classes for component appearance, state,
+and responsive layout. Utilities sit below components and features in the cascade,
+so local and responsive rules can override them. Add helpers only for repeated
+patterns; avoid generating a full utility framework.
 
 ## Layout
 

@@ -51,9 +51,9 @@ pub fn OnlineEntry() -> Element {
                     let _ = nav.push(Route::MainMenu {});
                 },
                 div {
-                    class: "online-entry",
+                    class: "online-entry stack",
                     onmounted: move |_| mounted.set(true),
-                    div { class: "online-actions",
+                    div { class: "online-actions stack gap-4",
                         MenuButton {
                             full_width: true,
                             disabled: !can_join(),
@@ -68,7 +68,7 @@ pub fn OnlineEntry() -> Element {
                             "Create a room"
                         }
 
-                        div { class: "surface surface-inset online-join",
+                        div { class: "surface surface-inset online-join stack",
                             label { class: "field-group online-field",
                                 span { class: "field-label", "Join code" }
                                 input {
@@ -120,7 +120,9 @@ pub fn OnlineEntry() -> Element {
                         match &*compatibility.read() {
                             Some(Some((_, Ok(Compatibility::Compatible)))) => rsx! {},
                             Some(Some((_, Ok(status)))) => rsx! {
-                                div { class: "surface surface-inset online-compatibility", role: "alert",
+                                div {
+                                    class: "surface surface-inset online-compatibility stack gap-3",
+                                    role: "alert",
                                     p {
                                         if !cfg!(feature = "desktop") {
                                             "This page is out of date. Reload to play online."
@@ -207,7 +209,7 @@ pub fn JoinRoom(code: String) -> Element {
     rsx! {
         MenuScreen {
             MenuCard { title: "Join Room", subtitle: "Room code",
-                div { class: "online-entry",
+                div { class: "online-entry stack",
                     p { class: "online-room-code", {code_upper} }
                     if code_is_valid {
                         p { class: "lobby-waiting", "Connecting…" }
@@ -318,7 +320,7 @@ fn DesktopServerSettings(
                             onblur: move |_| save_address(false),
                         }
                     }
-                    div { class: "connection-settings-actions",
+                    div { class: "connection-settings-actions row justify-between gap-3",
                         button {
                             class: "button button-small button-secondary",
                             onclick: move |_| {

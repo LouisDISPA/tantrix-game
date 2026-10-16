@@ -16,7 +16,7 @@ pub fn About() -> Element {
                 back: move |_| {
                     let _ = nav.push(Route::MainMenu {});
                 },
-                main { class: "about-copy",
+                main { class: "about-copy stack",
                     p {
                         "This application and website is a side project by Louis Dispa. It is not official and not affiliated with Tantrix."
                     }

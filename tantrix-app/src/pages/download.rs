@@ -30,7 +30,7 @@ pub fn Download() -> Element {
                     let _ = nav.push(Route::MainMenu {});
                 },
                 main {
-                    class: "download-content",
+                    class: "download-content stack gap-4",
                     inert: (!mounted()).then_some(true),
                     onmounted: move |_| mounted.set(true),
                     NativeDownloads { release }
@@ -62,10 +62,10 @@ fn NativeDownloads(release: Resource<Option<Result<Release, ()>>>) -> Element {
 
     rsx! {
         section {
-            class: "download-section",
+            class: "download-section stack gap-2",
             "data-native": "",
             aria_busy: loading(),
-            div { class: "download-heading",
+            div { class: "download-heading row justify-between gap-3",
                 h2 { "Desktop app" }
                 match &*release.read() {
                     Some(Some(Ok(data))) => rsx! {
@@ -110,7 +110,7 @@ fn ReleaseDownloads(release: ReadSignal<Option<Release>>, loading: ReadSignal<bo
     });
 
     rsx! {
-        div { class: "download-control-row",
+        div { class: "download-control-row row",
             if loading() {
                 div {
                     class: "download-skeleton download-skeleton-action",
@@ -139,7 +139,7 @@ fn ReleaseDownloads(release: ReadSignal<Option<Release>>, loading: ReadSignal<bo
                 }
             }
         }
-        div { class: "download-control-row",
+        div { class: "download-control-row row",
             if loading() {
                 div {
                     class: "download-skeleton download-skeleton-action",
@@ -182,9 +182,11 @@ fn WebInstall(ready: ReadSignal<bool>) -> Element {
     let ctx = use_context::<DownloadContext>();
 
     rsx! {
-        section { class: "download-section download-web", "data-web": "",
+        section {
+            class: "download-section download-web stack gap-2",
+            "data-web": "",
             h2 { "Web app" }
-            div { class: "download-control-row",
+            div { class: "download-control-row row",
                 if !ready() {
                     div {
                         class: "download-skeleton download-skeleton-action",

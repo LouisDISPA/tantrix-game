@@ -68,17 +68,17 @@ pub fn OnlineLobbyView(
                 back: move |_| {
                     let _ = nav.push(Route::OnlineEntry {});
                 },
-                div { class: "lobby-header",
+                div { class: "lobby-header stack items-center",
                     RoomCodeBadge { code: state.room_code() }
                     ShareChip { url: share_url }
                 }
 
-                section { class: "lobby-section narrow",
+                section { class: "lobby-section narrow stack gap-3",
                     h2 { class: "lobby-section-title", "Your nickname" }
                     LobbyNicknameEditor { state, sender }
                 }
 
-                section { class: "lobby-section",
+                section { class: "lobby-section stack gap-3",
                     h2 { class: "lobby-section-title", "Pick your color" }
                     div { class: "lobby-color-row",
                         for color in COLORS.iter().copied() {
@@ -108,7 +108,7 @@ pub fn OnlineLobbyView(
 
                 AlertBanner { message: error_message }
 
-                div { class: "lobby-actions",
+                div { class: "lobby-actions stack gap-3 items-center",
                     MenuButton {
                         disabled: !can_start(),
                         on_click: move |_| {

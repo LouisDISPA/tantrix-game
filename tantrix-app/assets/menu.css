@@ -139,10 +139,6 @@
     z-index: 10;
     width: 100%;
     min-height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
     gap: 56px;
     padding: 40px 20px;
   }
@@ -161,10 +157,6 @@
   /* Logo area */
   .title-logo-area {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
     opacity: 0;
     animation: title-enter 0.8s ease 0.3s forwards;
   }
@@ -202,8 +194,6 @@
 
   /* Button area */
   .title-buttons {
-    display: flex;
-    flex-direction: column;
     gap: 14px;
     width: 100%;
     max-width: 340px;
@@ -235,24 +225,10 @@
 
   .download-content,
   .download-section {
-    display: flex;
-    flex-direction: column;
     min-width: 0;
   }
 
-  .download-content {
-    gap: var(--space-4);
-  }
-
-  .download-section {
-    gap: var(--space-2);
-  }
-
   .download-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
     min-height: 24px;
   }
 
@@ -280,8 +256,6 @@
      skeleton uses these same rows, including before browser detection. */
   .download-control-row {
     min-height: 48px;
-    display: flex;
-    align-items: center;
   }
 
   .download-select {
@@ -342,8 +316,6 @@
   }
 
   .about-copy {
-    display: flex;
-    flex-direction: column;
     gap: 18px;
     color: var(--text-primary);
     line-height: 1.6;
@@ -356,13 +328,6 @@
 
   .about-copy p {
     color: var(--text-secondary);
-  }
-
-  .title-btn-inner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
   }
 
   /* ===== Title Screen Responsive ===== */
@@ -484,16 +449,11 @@
   }
 
   .player-slots {
-    display: flex;
-    flex-direction: column;
     gap: 10px;
     margin-bottom: 28px;
   }
 
   .player-slot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
     padding: 10px 14px;
     opacity: 0.4;
     overflow: hidden;
@@ -560,8 +520,6 @@
   /* ============================================================ */
 
   .online-entry {
-    display: flex;
-    flex-direction: column;
     gap: 22px;
     align-items: stretch;
     max-width: 440px;
@@ -569,9 +527,6 @@
   }
 
   .online-compatibility {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
     padding: var(--space-4);
     text-align: center;
     font-size: var(--text-sm);
@@ -622,16 +577,8 @@
     text-align: center;
   }
 
-  .online-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
   .online-join {
     --surface-border: 1.5px;
-    display: flex;
-    flex-direction: column;
     gap: 10px;
     padding: var(--space-4);
     border-style: dashed;
@@ -683,13 +630,6 @@
     }
   }
 
-  .connection-settings-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-  }
-
   /* ---------- Lobby ---------- */
 
   .menu-card-wide .lobby-header,
@@ -698,10 +638,7 @@
   }
 
   .lobby-header {
-    display: flex;
-    flex-direction: column;
     gap: 14px;
-    align-items: center;
   }
 
   .lobby-room-code {
@@ -744,16 +681,7 @@
     font-size: 13px;
     font-family: var(--font-mono);
     color: var(--text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     max-width: 100%;
-  }
-
-  .lobby-section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
   }
 
   .lobby-section-title {
@@ -806,8 +734,6 @@
   .lobby-color-chip {
     --surface-border: 2px;
     position: relative;
-    display: flex;
-    align-items: center;
     gap: 14px;
     padding: 14px;
     color: var(--text-primary);
@@ -854,8 +780,6 @@
   }
 
   .lobby-color-meta {
-    display: flex;
-    flex-direction: column;
     gap: 2px;
     flex: 1;
     min-width: 0;
@@ -867,9 +791,6 @@
     letter-spacing: 1.1px;
     text-transform: uppercase;
     color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .lobby-color-chip.mine .lobby-color-label {
@@ -880,9 +801,6 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .lobby-color-player.empty {
@@ -901,13 +819,6 @@
     margin-top: var(--space-1);
     letter-spacing: 1.2px;
     text-transform: uppercase;
-  }
-
-  .lobby-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    align-items: center;
   }
 
   .lobby-waiting {
