@@ -1,36 +1,6 @@
-//! Desktop preferences and private reconnect identities, stored per server.
-
-use std::{fs, path::PathBuf};
+//! Shared online server address validation and defaults.
 
 pub const DEFAULT_SERVER: &str = "https://tantrix.louis-dispa.fr";
-
-pub fn settings_dir() -> Result<PathBuf, String> {
-    dirs::config_dir()
-        .map(|path| path.join("tantrix"))
-        .ok_or_else(|| "Could not locate the application settings directory.".into())
-}
-
-pub fn load(name: &str) -> Option<String> {
-    fs::read_to_string(settings_dir().ok()?.join(name)).ok()
-}
-
-pub fn save(name: &str, value: &str) -> Result<(), String> {
-    let directory = settings_dir()?;
-    fs::create_dir_all(&directory).map_err(|error| format!("Could not save settings: {error}"))?;
-    let path = directory.join(name);
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    use std::io::Write;
-    options
-        .open(path)
-        .and_then(|mut file| file.write_all(value.as_bytes()))
-        .map_err(|error| format!("Could not save settings: {error}"))
-}
 
 /// Store an origin, so socket URLs and invitation links agree about the server.
 pub fn normalize_server(address: &str) -> Result<String, String> {
@@ -64,21 +34,36 @@ pub fn normalize_server(address: &str) -> Result<String, String> {
     Ok(url.origin().ascii_serialization())
 }
 
+#[cfg(any(feature = "desktop", target_os = "android"))]
+use super::native_settings::{load, save};
+
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+))]
 pub fn server_address() -> String {
     load("server-address")
         .and_then(|address| normalize_server(&address).ok())
         .unwrap_or_else(|| DEFAULT_SERVER.into())
 }
 
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+))]
+pub fn save_server_address(address: &str) -> Result<String, String> {
+    let address = normalize_server(address)?;
+    save("server-address", &address)?;
+    Ok(address)
+}
+
+/// Keep private reconnect identities separate for each server on native clients.
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+))]
 pub fn session_cookie(server: &str) -> Result<String, String> {
-    let url = url::Url::parse(server).map_err(|error| error.to_string())?;
-    let address = normalize_server(&url.origin().ascii_serialization())?;
-    // Encode the origin as a filename: distinct servers never share identity.
-    let key = address
-        .bytes()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let filename = format!("session-{key}");
+    let filename = session_key(server)?;
     let token = match load(&filename) {
         Some(token) if token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit()) => {
             token
@@ -98,12 +83,41 @@ pub fn session_cookie(server: &str) -> Result<String, String> {
     Ok(format!("tantrix_session={token}"))
 }
 
+/// HTTP preflight and WebSocket connections to one origin share an identity.
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android"),
+    test
+))]
+fn session_key(server: &str) -> Result<String, String> {
+    let url = url::Url::parse(server).map_err(|error| error.to_string())?;
+    let address = normalize_server(&url.origin().ascii_serialization())?;
+    let key = address
+        .bytes()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(format!("session-{key}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn server_addresses_normalize_to_origins() {
+    fn reconnect_identity_is_scoped_to_the_server_origin() {
+        let https = session_key("https://example.com").unwrap();
+        assert_eq!(
+            https,
+            session_key("wss://example.com/room/ABCDEF?create=1").unwrap()
+        );
+        assert_ne!(https, session_key("https://other.example.com").unwrap());
+        assert_ne!(https, session_key("https://example.com:8443").unwrap());
+        assert_ne!(https, session_key("http://example.com").unwrap());
+        assert!(session_key("not a URL").is_err());
+    }
+
+    #[test]
+    fn addresses_normalize_to_origins() {
         for (input, expected) in [
             (" tantrix.louis-dispa.fr ", DEFAULT_SERVER),
             ("wss://tantrix.louis-dispa.fr/", DEFAULT_SERVER),

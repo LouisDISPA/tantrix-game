@@ -630,6 +630,24 @@
     }
   }
 
+  @media (max-width: 640px) {
+    .connection-settings-panel {
+      position: fixed;
+      top: 50%;
+      bottom: auto;
+      left: 50%;
+      right: auto;
+      width: min(calc(100vw - 32px), 440px);
+      max-height: calc(100dvh - 48px);
+      overflow: auto;
+      transform: translate(-50%, -50%);
+    }
+
+    .connection-settings-actions {
+      flex-wrap: wrap;
+    }
+  }
+
   /* ---------- Lobby ---------- */
 
   .menu-card-wide .lobby-header,
@@ -837,6 +855,10 @@
     top: var(--space-3);
     right: var(--space-3);
     z-index: var(--layer-modal);
+  }
+
+  .app-root[data-platform="android"] .theme-toggle {
+    top: max(calc(env(safe-area-inset-top, 0px) + var(--space-3)), 36px);
   }
 
   /* The game screen has the switch in its own menu: this one would float over it. */

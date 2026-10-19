@@ -32,10 +32,7 @@ pub(crate) async fn run_native_session(
     use std::time::Duration;
     use tantrix_proto::{decode, encode, HostMessage, PeerMessage, KEEPALIVE_PING, KEEPALIVE_PONG};
     // Platform TLS avoids choosing between Rustls providers enabled by other crates.
-    use tokio_tungstenite::{
-        connect_async,
-        tungstenite::{client::IntoClientRequest, Message},
-    };
+    use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
 
     // One deadline covers both the HTTP upgrade and the room's Welcome.
     let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
@@ -44,7 +41,7 @@ pub(crate) async fn run_native_session(
         if let Some(cookie) = cookie {
             request.headers_mut().insert("Cookie", cookie.parse()?);
         }
-        connect_async(request).await
+        connect(request).await
     };
     let result = tokio::select! {
         result = tokio::time::timeout_at(deadline, connection) => result,
@@ -140,4 +137,41 @@ pub(crate) async fn run_native_session(
     }
     // Dropping this future also drops the socket when its component unmounts.
     let _ = tokio::time::timeout(Duration::from_secs(1), socket.close(None)).await;
+}
+
+async fn connect(
+    request: tokio_tungstenite::tungstenite::handshake::client::Request,
+) -> Result<
+    (
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        tokio_tungstenite::tungstenite::handshake::client::Response,
+    ),
+    tokio_tungstenite::tungstenite::Error,
+> {
+    #[cfg(not(target_os = "android"))]
+    let connection = tokio_tungstenite::connect_async(request).await;
+    #[cfg(target_os = "android")]
+    let connection = {
+        // Select a provider explicitly: Dioxus dependencies can enable both
+        // Ring and AWS-LC, making Rustls's automatic selection ambiguous.
+        let roots =
+            rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let config = rustls::ClientConfig::builder_with_provider(
+            rustls::crypto::ring::default_provider().into(),
+        )
+        .with_safe_default_protocol_versions()
+        .expect("Ring supports the default TLS versions")
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+        tokio_tungstenite::connect_async_tls_with_config(
+            request,
+            None,
+            false,
+            Some(tokio_tungstenite::Connector::Rustls(config.into())),
+        )
+        .await
+    };
+    connection
 }

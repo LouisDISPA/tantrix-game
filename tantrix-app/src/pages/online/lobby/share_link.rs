@@ -10,12 +10,18 @@ pub fn share_link(code: &str) -> String {
             }
         }
     }
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
     {
         let server =
             dioxus::prelude::consume_context::<crate::state::room_connection::RoomServer>();
         format!("{}/join/{code}", server.0)
     }
-    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+    #[cfg(not(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    )))]
     format!("/join/{code}")
 }

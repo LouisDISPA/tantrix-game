@@ -14,6 +14,16 @@ impl Theme {
         }
     }
 
+    #[cfg(all(feature = "android", target_os = "android"))]
+    pub fn from_android_ui_mode(ui_mode: i32) -> Self {
+        // Configuration.UI_MODE_NIGHT_MASK and UI_MODE_NIGHT_YES.
+        if ui_mode & 0x30 == 0x20 {
+            Self::Dark
+        } else {
+            Self::Light
+        }
+    }
+
     pub fn toggle(&self) -> Self {
         match self {
             Theme::Light => Theme::Dark,
@@ -29,9 +39,19 @@ impl Theme {
     }
 }
 
-pub static THEME: GlobalStore<Theme> = Global::new(|| Theme::Dark);
+pub static THEME: GlobalStore<Theme> = Global::new(initial_theme);
+
+fn initial_theme() -> Theme {
+    #[cfg(all(feature = "android", target_os = "android"))]
+    return crate::platform::android::current_theme();
+    #[cfg(not(all(feature = "android", target_os = "android")))]
+    Theme::Dark
+}
 
 pub fn toggle_theme() {
     let current = *THEME.resolve().read();
-    THEME.resolve().set(current.toggle());
+    let next = current.toggle();
+    THEME.resolve().set(next);
+    #[cfg(all(feature = "android", target_os = "android"))]
+    crate::platform::android::set_theme(next);
 }

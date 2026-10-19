@@ -53,7 +53,7 @@ pub fn ShareChip(url: ReadSignal<String>) -> Element {
 /// landed (permission denials, insecure origins, and missing
 /// `navigator.clipboard` all resolve to `false`). No-op off the web.
 #[cfg(target_arch = "wasm32")]
-async fn copy_to_clipboard(text: String) -> bool {
+pub(crate) async fn copy_to_clipboard(text: String) -> bool {
     let Some(win) = web_sys::window() else {
         return false;
     };
@@ -61,13 +61,26 @@ async fn copy_to_clipboard(text: String) -> bool {
     wasm_bindgen_futures::JsFuture::from(promise).await.is_ok()
 }
 
-#[cfg(all(not(target_arch = "wasm32"), not(feature = "desktop")))]
-async fn copy_to_clipboard(_text: String) -> bool {
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    not(feature = "desktop"),
+    not(all(feature = "android", target_os = "android"))
+))]
+pub(crate) async fn copy_to_clipboard(_text: String) -> bool {
     false
 }
 
+#[cfg(all(
+    not(target_arch = "wasm32"),
+    feature = "android",
+    target_os = "android"
+))]
+pub(crate) async fn copy_to_clipboard(text: String) -> bool {
+    crate::platform::android::copy_text(&text).is_ok()
+}
+
 #[cfg(all(not(target_arch = "wasm32"), feature = "desktop"))]
-async fn copy_to_clipboard(text: String) -> bool {
+pub(crate) async fn copy_to_clipboard(text: String) -> bool {
     arboard::Clipboard::new()
         .and_then(|mut clipboard| clipboard.set_text(text))
         .is_ok()

@@ -3,7 +3,10 @@
 
 use dioxus::prelude::*;
 use futures::StreamExt;
-#[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+#[cfg(not(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+)))]
 use tantrix_net::open_session;
 use tantrix_net::SessionEvent;
 use tantrix_proto::RejectCode;
@@ -32,9 +35,12 @@ pub fn spawn_session(
         return;
     }
 
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
     let (handle, run_fut) = {
-        let cookie = match crate::state::desktop_settings::session_cookie(&url) {
+        let cookie = match crate::state::server_settings::session_cookie(&url) {
             Ok(cookie) => cookie,
             Err(reason) => {
                 store.phase().set(OnlinePhase::Failed {
@@ -45,7 +51,10 @@ pub fn spawn_session(
         };
         tantrix_net::open_native_session(url, nickname, cookie)
     };
-    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+    #[cfg(not(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    )))]
     let (handle, run_fut) = open_session(url, nickname);
 
     // Publish the command sender so child components can dispatch actions.

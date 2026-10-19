@@ -134,9 +134,75 @@ jobs:
           if-no-files-found: error
           compression-level: 0
 
+  android:
+    name: Bundle Android ARM64
+    if: ${{ !inputs.macos_only && !inputs.windows_only }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-10-18
+      ANDROID_NDK_VERSION: '28.2.13676358'
+      GRADLE_OPTS: -Dorg.gradle.caching=true
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: nightly-2026-10-18
+          targets: aarch64-linux-android
+          components: rust-src
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK tools
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;35.0.0" "ndk;$ANDROID_NDK_VERSION"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+        with:
+          # Release tags should also save caches for reruns of the same tag.
+          cache-read-only: false
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          key: android-dx-${{ env.DIOXUS_CLI_VERSION }}-ndk-${{ env.ANDROID_NDK_VERSION }}
+          cache-bin: false
+          cache-on-failure: true
+      - name: Cache Dioxus CLI
+        id: dx-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/dx
+          key: dx-${{ runner.os }}-${{ runner.arch }}-${{ env.DIOXUS_CLI_VERSION }}
+      - name: Install Dioxus CLI
+        if: steps.dx-cache.outputs.cache-hit != 'true'
+        uses: DioxusLabs/dioxus-ci/actions/install-dioxus-cli@68b5983fd6c83a02ed52638fe5063678ce8ad09c # v0.1.0
+        with:
+          version: ${{ env.DIOXUS_CLI_VERSION }}
+      - name: Build and verify signed APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: python3 scripts/pack-android.py
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: android-aarch64
+          path: artifacts/*
+          if-no-files-found: error
+          compression-level: 0
+
   publish:
     name: Publish GitHub release
-    needs: build
+    needs: [build, android]
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     permissions:
@@ -144,7 +210,6 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: desktop-*
           path: artifacts
           merge-multiple: true
 

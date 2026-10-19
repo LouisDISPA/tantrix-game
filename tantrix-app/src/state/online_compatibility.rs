@@ -2,6 +2,7 @@
 
 use tantrix_proto::{OnlineVersion, ONLINE_VERSION, ONLINE_VERSION_PATH};
 
+#[cfg(not(feature = "android"))]
 pub const DOWNLOAD_URL: &str = "https://tantrix.louis-dispa.fr/download";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,7 +37,10 @@ pub async fn check(server: &str) -> Result<Compatibility, ()> {
     Ok(Compatibility::of(version))
 }
 
-#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+))]
 async fn fetch(url: &str) -> Result<String, ()> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -84,7 +88,10 @@ async fn fetch(url: &str) -> Result<String, ()> {
 }
 
 #[cfg(not(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
+    any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ),
     all(feature = "web", target_arch = "wasm32")
 )))]
 async fn fetch(_url: &str) -> Result<String, ()> {

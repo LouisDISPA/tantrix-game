@@ -13,7 +13,7 @@ pub fn MainMenu() -> Element {
     let quick = use_hook(move || *visit.has_seen_main.peek());
     use_effect(move || visit.has_seen_main.set(true));
 
-    #[cfg(not(any(feature = "desktop", feature = "native")))]
+    #[cfg(not(any(feature = "desktop", feature = "native", feature = "android")))]
     let download_link = rsx! {
         div { class: "title-download-link",
             Link {
@@ -28,7 +28,11 @@ pub fn MainMenu() -> Element {
     let download_link = rsx! {
         crate::pages::desktop_update::DesktopUpdate {}
     };
-    #[cfg(all(feature = "native", not(feature = "desktop")))]
+    #[cfg(feature = "android")]
+    let download_link = rsx! {
+        crate::pages::android_update::AndroidUpdate {}
+    };
+    #[cfg(all(feature = "native", not(any(feature = "desktop", feature = "android"))))]
     let download_link = rsx! {};
 
     rsx! {

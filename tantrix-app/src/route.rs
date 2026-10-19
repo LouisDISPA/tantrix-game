@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::components::theme_toggle::ThemeToggle;
 use crate::components::title_decoration::TitleDecoration;
 use crate::pages::about::About;
-#[cfg(not(any(feature = "desktop", feature = "native")))]
+#[cfg(not(any(feature = "desktop", feature = "native", feature = "android")))]
 use crate::pages::download::Download;
 use crate::pages::learn::Learn;
 use crate::pages::local_game::LocalGame;
@@ -22,7 +22,7 @@ pub enum Route {
     Learn {},
     #[route("/about")]
     About {},
-    #[cfg(not(any(feature = "desktop", feature = "native")))]
+    #[cfg(not(any(feature = "desktop", feature = "native", feature = "android")))]
     #[route("/download")]
     Download {},
     #[route("/game?:seed")]

@@ -11,8 +11,15 @@ pub fn mark_create(room_code: &str) {
     if let Some(storage) = storage() {
         let _ = storage.set_item(&format!("{CREATE_PREFIX}{room_code}"), "1");
     }
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
-    CREATE_ROOM.with(|pending| *pending.borrow_mut() = Some(room_code.to_owned()));
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
+    {
+        *CREATE_ROOM
+            .lock()
+            .expect("room creation intent lock poisoned") = Some(room_code.to_owned());
+    }
     let _ = room_code;
 }
 
@@ -24,9 +31,20 @@ pub fn take_create(room_code: &str) -> bool {
         let _ = storage.remove_item(&key);
         return create;
     }
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
-    return CREATE_ROOM.with(|pending| pending.borrow_mut().take().as_deref() == Some(room_code));
-    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
+    return CREATE_ROOM
+        .lock()
+        .expect("room creation intent lock poisoned")
+        .take()
+        .as_deref()
+        == Some(room_code);
+    #[cfg(not(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    )))]
     {
         let _ = room_code;
         false
@@ -34,9 +52,15 @@ pub fn take_create(room_code: &str) -> bool {
 }
 
 pub fn room_url(room_code: &str, create: bool) -> String {
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
     let base = default_base();
-    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+    #[cfg(not(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    )))]
     let base = option_env!("TANTRIX_ROOM_URL")
         .map(str::to_string)
         .unwrap_or_else(default_base);
@@ -61,14 +85,14 @@ fn default_base() -> String {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn default_base() -> String {
-    #[cfg(feature = "desktop")]
+    #[cfg(any(feature = "desktop", all(feature = "android", target_os = "android")))]
     {
         format!(
             "{}/room",
-            super::desktop_settings::server_address().replacen("http", "ws", 1)
+            super::server_settings::server_address().replacen("http", "ws", 1)
         )
     }
-    #[cfg(not(feature = "desktop"))]
+    #[cfg(not(any(feature = "desktop", all(feature = "android", target_os = "android"))))]
     {
         "ws://localhost:8787/room".into()
     }
@@ -79,13 +103,19 @@ fn storage() -> Option<web_sys::Storage> {
     web_sys::window().and_then(|win| win.session_storage().ok().flatten())
 }
 
-#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
-thread_local! {
-    static CREATE_ROOM: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
-}
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+))]
+// Android WebView events and room rendering can run on different threads.
+// The creation intent must survive the handoff between them.
+static CREATE_ROOM: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
 /// The server captured by a room page, shared with its invitation UI.
-#[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+#[cfg(any(
+    all(feature = "desktop", not(target_arch = "wasm32")),
+    all(feature = "android", target_os = "android")
+))]
 #[derive(Clone)]
 pub struct RoomServer(pub String);
 
@@ -101,5 +131,12 @@ mod tests {
         mark_create("ABCDEF");
         assert!(!take_create("BCDEFG"));
         assert!(!take_create("ABCDEF"));
+
+        // Model a native WebView click followed by rendering on another thread.
+        std::thread::spawn(|| mark_create("BCDEFG")).join().unwrap();
+        let create = take_create("BCDEFG");
+        assert!(create);
+        assert!(room_url("BCDEFG", create).ends_with("/room/BCDEFG?create=1"));
+        assert!(!take_create("BCDEFG"));
     }
 }

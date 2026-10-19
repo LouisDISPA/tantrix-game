@@ -114,8 +114,8 @@ pub fn persist(nickname: &str) {
             let _ = storage.set_item(STORAGE_KEY, nickname);
         }
     }
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
-    if let Err(error) = super::desktop_settings::save("nickname", nickname) {
+    #[cfg(any(feature = "desktop", feature = "android"))]
+    if let Err(error) = super::native_settings::save("nickname", nickname) {
         log::warn!("{error}");
     }
     let _ = nickname;
@@ -126,16 +126,16 @@ fn load_stored() -> Option<String> {
     {
         local_storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten())
     }
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(
+        not(target_arch = "wasm32"),
+        any(feature = "desktop", feature = "android")
+    ))]
     {
-        #[cfg(feature = "desktop")]
-        {
-            super::desktop_settings::load("nickname")
-        }
-        #[cfg(not(feature = "desktop"))]
-        {
-            None
-        }
+        super::native_settings::load("nickname")
+    }
+    #[cfg(not(any(target_arch = "wasm32", feature = "desktop", feature = "android")))]
+    {
+        None
     }
 }
 
@@ -156,7 +156,7 @@ fn local_storage() -> Option<web_sys::Storage> {
 #[cfg(test)]
 mod tests {
     use super::{generate, pick_index, ADJECTIVES, MAX_CHARS, NOUNS};
-    #[cfg(not(feature = "desktop"))]
+    #[cfg(not(any(feature = "desktop", feature = "android")))]
     use super::{load_or_generate, persist};
 
     /// `name` split into its adjective and noun, from the lists.
@@ -203,7 +203,7 @@ mod tests {
         assert_eq!(pick_index(0), 0);
     }
 
-    #[cfg(not(feature = "desktop"))]
+    #[cfg(not(any(feature = "desktop", feature = "android")))]
     #[test]
     fn off_the_web_nothing_is_stored_so_a_fresh_name_is_drawn() {
         persist("Louis");

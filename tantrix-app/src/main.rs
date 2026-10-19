@@ -19,6 +19,10 @@ fn main() {
     dioxus::LaunchBuilder::desktop()
         .with_cfg(tantrix_app::desktop::config())
         .launch(tantrix_app::app);
-    #[cfg(not(feature = "desktop"))]
+    #[cfg(all(feature = "mobile", not(feature = "desktop")))]
+    dioxus::LaunchBuilder::mobile()
+        .with_cfg(tantrix_app::mobile::config())
+        .launch(tantrix_app::app);
+    #[cfg(not(any(feature = "desktop", feature = "mobile")))]
     dioxus::launch(tantrix_app::app);
 }

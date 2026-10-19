@@ -31,6 +31,8 @@ futures-channel = "0.3.34"
 # browser transport (tantrix-net) depends on it anyway.
 futures-timer = "3.0.4"
 log = "0.4.34"
+webbrowser = { version = "1", optional = true }
+semver = { version = "1", optional = true }
 
 # Server-only: Axum serves the native fullstack app and online rooms.
 axum = { version = "0.8.9", features = ["ws"], optional = true }
@@ -42,10 +44,18 @@ serde_json = { version = "1.0.151", optional = true }
 dirs = { version = "6", optional = true }
 url = { version = "2", optional = true }
 arboard = { version = "3", optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["native-tls"], optional = true }
 velopack = { version = "=1.2.161", optional = true }
 
 tower-http = { version = "0.6.11", default-features = false, features = ["compression-br", "compression-gzip"], optional = true }
+
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["native-tls"], optional = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# Android does not ship an OpenSSL development library; bundle Rustls roots.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+jni = { version = "=0.21.1", optional = true }
+ndk-context = { version = "=0.1.1", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = { version = "0.3.106", features = ["Element", "Window", "Location", "Navigator", "Clipboard", "Storage", "console"] }
@@ -89,3 +99,5 @@ desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep
 bundle = []
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
+# Android uses the shared mobile WebView UI and native WebSocket transport.
+android = ["dep:webbrowser", "dep:dirs", "dep:serde_json", "dep:semver", "mobile", "tantrix-net/native", "dep:reqwest", "dep:jni", "dep:ndk-context", "dep:url"]

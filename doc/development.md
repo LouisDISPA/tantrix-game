@@ -30,4 +30,4 @@ Run `just` for the complete list.
 
 CI runs format, lint, production build, unit tests and native browser tests in one job; browser startup reuses the production compilation outputs. A separate job runs `just worker-e2e`, rebuilding matching browser and Worker SSR assets before running the browser suite against Wrangler. Keep the CLI and framework on the same exact prerelease version.
 
-See [browser tests](../e2e/README.md), [Worker operations](../cloudflare/README.md) and [desktop releases](desktop-release.md).
+See [browser tests](../e2e/README.md), [Worker operations](../cloudflare/README.md), [desktop releases](desktop-release.md) and [Android releases](android-release.md).

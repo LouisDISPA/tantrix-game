@@ -70,6 +70,7 @@ pub enum Package {
     Deb,
     Installer,
     Portable,
+    Apk,
 }
 
 #[derive(Clone, PartialEq)]
@@ -93,6 +94,7 @@ impl DownloadAsset {
             "macos" => Platform::Mac,
             "windows" => Platform::Windows,
             "linux" => Platform::Linux,
+            "android" => Platform::Android,
             _ => return None,
         };
         let (architecture, suffix) = if let Some(suffix) = suffix.strip_prefix("aarch64") {
@@ -102,6 +104,7 @@ impl DownloadAsset {
         };
         let package = match (platform, suffix) {
             (Platform::Mac, ".dmg") => Package::Dmg,
+            (Platform::Android, ".apk") => Package::Apk,
             (Platform::Linux, ".AppImage") => Package::AppImage,
             (Platform::Linux, ".deb") => Package::Deb,
             (Platform::Windows, "-setup.exe") => Package::Installer,
@@ -122,6 +125,7 @@ impl DownloadAsset {
         let system = match self.platform {
             Platform::Mac => "macOS",
             Platform::Windows => "Windows",
+            Platform::Android => "Android",
             _ => "Linux",
         };
         let chip = match (self.platform, self.architecture) {
@@ -136,6 +140,7 @@ impl DownloadAsset {
             Package::Deb => "Debian / Ubuntu",
             Package::Installer => "Installer",
             Package::Portable => "Portable",
+            Package::Apk => "APK",
         };
         format!("{system} · {chip} · {package}")
     }
@@ -154,7 +159,9 @@ pub struct Release {
 impl Release {
     pub fn preferred(choices: &[DownloadAsset], device: Device) -> Option<String> {
         let platform = match device.platform {
-            Platform::Mac | Platform::Windows | Platform::Linux => device.platform,
+            Platform::Mac | Platform::Windows | Platform::Linux | Platform::Android => {
+                device.platform
+            }
             _ => Platform::Windows,
         };
         let architecture = device.architecture.unwrap_or(Architecture::X64);
@@ -243,6 +250,7 @@ mod tests {
             asset("windows-x86_64-setup.exe"),
             asset("linux-x86_64.deb"),
             asset("linux-x86_64.AppImage"),
+            asset("android-aarch64.apk"),
         ];
         for (platform, architecture, expected) in [
             (Platform::Mac, Some(Architecture::Arm64), 0),
@@ -253,7 +261,8 @@ mod tests {
             (Platform::Linux, Some(Architecture::X64), 6),
             (Platform::Unknown, None, 4),
             (Platform::Ios, None, 4),
-            (Platform::Android, Some(Architecture::Arm64), 2),
+            (Platform::Android, Some(Architecture::Arm64), 7),
+            (Platform::Android, None, 7),
         ] {
             assert_eq!(
                 Release::preferred(

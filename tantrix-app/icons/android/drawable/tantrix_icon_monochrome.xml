@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Transparent tile interior preserves the curves when Android tints the alpha mask. -->
+    <group android:translateX="22" android:translateY="22">
+        <group>
+            <clip-path android:pathData="M32,2 L58,17 L58,47 L32,62 L6,47 L6,17 Z" />
+            <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="8" android:pathData="M19,9.5 Q32,22 45,9.5 M6,32 Q21,38 19,54.5 M58,32 Q43,38 45,54.5" />
+        </group>
+        <path android:fillColor="#00000000" android:strokeColor="#FFFFFF" android:strokeWidth="1.5" android:pathData="M32,2 L58,17 L58,47 L32,62 L6,47 L6,17 Z" />
+    </group>
+</vector>

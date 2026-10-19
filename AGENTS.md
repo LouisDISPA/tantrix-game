@@ -95,7 +95,7 @@ Keep tests beside code and deterministic: seeded games/fixed data, no timers. Ex
 
 ## Domain docs
 
-[Engine](doc/game.md) · [AI/tournaments](doc/ai.md) · [Multiplayer](doc/MULTIPLAYER.md) · [Components](doc/components.md) · [State](doc/signals.md) · [Styling](doc/styling.md) · [Worker](cloudflare/README.md) · [Browser tests](e2e/README.md) · [Desktop releases](doc/desktop-release.md) · [Updates](doc/desktop-updates.md)
+[Engine](doc/game.md) · [AI/tournaments](doc/ai.md) · [Multiplayer](doc/MULTIPLAYER.md) · [Components](doc/components.md) · [State](doc/signals.md) · [Styling](doc/styling.md) · [Worker](cloudflare/README.md) · [Browser tests](e2e/README.md) · [Desktop releases](doc/desktop-release.md) · [Android releases](doc/android-release.md) · [Updates](doc/desktop-updates.md)
 
 ## Skills
 

@@ -10,7 +10,7 @@ use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
-#[cfg(not(feature = "desktop"))]
+#[cfg(not(any(feature = "desktop", feature = "android")))]
 use crate::state::online_compatibility::DOWNLOAD_URL;
 use crate::state::online_compatibility::{self, Compatibility};
 use crate::state::room_connection;
@@ -38,7 +38,7 @@ pub fn OnlineEntry() -> Element {
                 || !matches!(
                     &*compatibility.read(),
                     Some(Some((checked, result)))
-                        if *checked == server() && *result != Ok(Compatibility::Compatible)
+                        if *checked == server() && !matches!(result, Ok(Compatibility::Compatible))
                 ))
     });
 
@@ -101,7 +101,7 @@ pub fn OnlineEntry() -> Element {
                         }
                     }
 
-                    DesktopServerSettings {
+                    ServerSettings {
                         on_ready: move |ready| server_ready.set(ready),
                         on_server_changed: move |origin| {
                             if *server.peek() != origin {
@@ -124,7 +124,7 @@ pub fn OnlineEntry() -> Element {
                                     class: "surface surface-inset online-compatibility stack gap-3",
                                     role: "alert",
                                     p {
-                                        if !cfg!(feature = "desktop") {
+                                        if !cfg!(any(feature = "desktop", feature = "android")) {
                                             "This page is out of date. Reload to play online."
                                         } else if *status == Compatibility::AppOutdated {
                                             "Update Tantrix to play online with this server."
@@ -132,7 +132,7 @@ pub fn OnlineEntry() -> Element {
                                             "This server needs updating to work with your app."
                                         }
                                     }
-                                    if !cfg!(feature = "desktop") {
+                                    if !cfg!(any(feature = "desktop", feature = "android")) {
                                         MenuButton {
                                             full_width: true,
                                             on_click: move |_| {
@@ -144,14 +144,12 @@ pub fn OnlineEntry() -> Element {
                                             "Reload"
                                         }
                                     } else {
-                                        DesktopUpdateAction {}
+                                        UpdateAction {}
                                     }
                                 }
                             },
                             _ => rsx! {
-                                p { class: "alert-banner online-error", role: "alert",
-                                    "Couldn’t check server compatibility. The server may be unavailable or need updating."
-                                }
+                                p { class: "alert-banner online-error", role: "alert", "Couldn’t check server compatibility." }
                                 button {
                                     class: "button button-secondary",
                                     onclick: move |_| compatibility.restart(),
@@ -164,7 +162,6 @@ pub fn OnlineEntry() -> Element {
                     if let Some(err) = error.read().clone() {
                         p { class: "alert-banner online-error", {err} }
                     }
-
                 }
             }
         }
@@ -172,14 +169,18 @@ pub fn OnlineEntry() -> Element {
 }
 
 #[component]
-fn DesktopUpdateAction() -> Element {
+fn UpdateAction() -> Element {
     #[cfg(feature = "desktop")]
     return rsx! {
         crate::pages::desktop_update::DesktopUpdate { required: true }
     };
-    #[cfg(not(feature = "desktop"))]
+    #[cfg(not(any(feature = "desktop", feature = "android")))]
     rsx! {
         a { class: "button button-primary button-full", href: DOWNLOAD_URL, "Download Tantrix ↗" }
+    }
+    #[cfg(feature = "android")]
+    rsx! {
+        crate::pages::android_update::AndroidUpdate { required: true }
     }
 }
 
@@ -246,23 +247,24 @@ fn try_join(
     let _ = nav.push(Route::OnlineRoom { code });
 }
 
-/// Desktop-only settings; the browser continues to use its own origin.
+/// Shared native settings; the browser continues to use its own origin.
 #[component]
-fn DesktopServerSettings(
+fn ServerSettings(
     on_ready: EventHandler<bool>,
     on_server_changed: EventHandler<String>,
 ) -> Element {
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
     {
-        use crate::state::desktop_settings::{self, DEFAULT_SERVER};
-        let mut address = use_signal(desktop_settings::server_address);
+        use crate::state::server_settings::{self, DEFAULT_SERVER};
+        let mut address = use_signal(server_settings::server_address);
         let mut error = use_signal(|| None::<String>);
         let mut open = use_signal(|| false);
         let mut save_address = move |close: bool| {
             let input = address.read().clone();
-            let result = desktop_settings::normalize_server(&input).and_then(|server| {
-                desktop_settings::save("server-address", &server).map(|_| server)
-            });
+            let result = server_settings::save_server_address(&input);
             match result {
                 Ok(server) => {
                     on_server_changed.call(server.clone());
@@ -309,7 +311,11 @@ fn DesktopServerSettings(
                         span { class: "field-label", "Server address" }
                         input {
                             class: "field",
-                            r#type: "text",
+                            r#type: "url",
+                            inputmode: "url",
+                            autocapitalize: "none",
+                            autocomplete: "url",
+                            spellcheck: false,
                             value: "{address}",
                             oninput: move |event| {
                                 let input = event.value();
@@ -324,10 +330,10 @@ fn DesktopServerSettings(
                         button {
                             class: "button button-small button-secondary",
                             onclick: move |_| {
-                                match desktop_settings::save("server-address", DEFAULT_SERVER) {
-                                    Ok(()) => {
-                                        address.set(DEFAULT_SERVER.into());
-                                        on_server_changed.call(DEFAULT_SERVER.into());
+                                match server_settings::save_server_address(DEFAULT_SERVER) {
+                                    Ok(server) => {
+                                        address.set(server.clone());
+                                        on_server_changed.call(server);
                                         error.set(None);
                                         on_ready.call(true);
                                     }
@@ -349,6 +355,9 @@ fn DesktopServerSettings(
             }
         };
     }
-    #[cfg(not(all(feature = "desktop", not(target_arch = "wasm32"))))]
+    #[cfg(not(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    )))]
     rsx! {}
 }

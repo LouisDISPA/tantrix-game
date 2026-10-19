@@ -22,7 +22,10 @@ use crate::state::room_connection;
 #[component]
 pub fn OnlineRoom(code: String) -> Element {
     let url = use_hook(|| room_connection::room_url(&code, false));
-    #[cfg(all(feature = "desktop", not(target_arch = "wasm32")))]
+    #[cfg(any(
+        all(feature = "desktop", not(target_arch = "wasm32")),
+        all(feature = "android", target_os = "android")
+    ))]
     use_context_provider(|| {
         room_connection::RoomServer(
             url.split("/room/")
