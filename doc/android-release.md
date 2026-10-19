@@ -10,8 +10,9 @@ Push `tantrix-app-v<version>` to publish the signed ARM64 APK with desktop relea
 - Key backup: Proton Pass → **Tantrix signing** → **Tantrix - Release signing**.
   Keep it: updates require the same certificate.
 - Version code: `major × 1,000,000 + minor × 1,000 + patch`. Increase for each release.
-- The app checks the latest stable GitHub release at startup. **Update** opens the
-  APK in the browser; Android verifies its signature and confirms installation.
+- The app checks the latest stable GitHub release at startup. **Download and install**
+  downloads privately, checks the package and signing certificate, then opens Android’s
+  installer. Allow installs when prompted, then tap **Install update**.
   Velopack supports desktop only.
 
 [Android signing](https://developer.android.com/studio/publish/app-signing) ·

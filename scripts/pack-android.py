@@ -36,6 +36,13 @@ def prepare(project, root):
     buildTypes {''')
     replace(app, '        getByName("release") {', '''        getByName("release") {
             signingConfig = signingConfigs.getByName("release")''')
+    replace(project / "app/src/main/AndroidManifest.xml", "    </application>", '''        <provider android:name="androidx.core.content.FileProvider"
+            android:authorities="io.github.louisdispa.tantrix.updates"
+            android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
+    </application>''')
     resources = project / "app/src/main/res"
     for source in [root / "tantrix-app/icons/android", root / "tantrix-app/android/res"]:
         shutil.copytree(source, resources, dirs_exist_ok=True)

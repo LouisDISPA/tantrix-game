@@ -1,7 +1,7 @@
 [package]
 license = "MIT"
 name = "tantrix-app"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 description = "A cross-platform implementation of the Tantrix hex tile strategy game"
 repository = "https://github.com/LouisDISPA/tantrix-game"
@@ -31,7 +31,6 @@ futures-channel = "0.3.34"
 # browser transport (tantrix-net) depends on it anyway.
 futures-timer = "3.0.4"
 log = "0.4.34"
-webbrowser = { version = "1", optional = true }
 semver = { version = "1", optional = true }
 
 # Server-only: Axum serves the native fullstack app and online rooms.
@@ -100,4 +99,4 @@ bundle = []
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
 # Android uses the shared mobile WebView UI and native WebSocket transport.
-android = ["dep:webbrowser", "dep:dirs", "dep:serde_json", "dep:semver", "mobile", "tantrix-net/native", "dep:reqwest", "dep:jni", "dep:ndk-context", "dep:url"]
+android = ["tokio/fs", "tokio/io-util", "dep:dirs", "dep:serde_json", "dep:semver", "mobile", "tantrix-net/native", "dep:reqwest", "dep:jni", "dep:ndk-context", "dep:url"]

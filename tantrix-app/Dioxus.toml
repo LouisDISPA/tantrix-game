@@ -1,11 +1,15 @@
 [application]
 name = "Tantrix"
 android_min_sdk_version = 34
+android_main_activity = "android/MainActivity.kt"
 
 [android]
 min_sdk = 34
 target_sdk = 36
 compile_sdk = 36
+
+[android.raw]
+manifest = '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />'
 
 [web]
 pre_compress = true

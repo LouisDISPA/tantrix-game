@@ -8141,7 +8141,7 @@ dependencies = [
 
 [[package]]
 name = "tantrix-app"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "arboard",
  "axum",
@@ -8177,7 +8177,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webbrowser",
 ]
 
 [[package]]

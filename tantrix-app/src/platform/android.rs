@@ -177,3 +177,34 @@ pub fn apply_system_bar_theme(theme: Theme) {
         }
     });
 }
+
+/// Returns false after opening permission settings; the downloaded APK stays ready.
+pub async fn install_update(path: std::path::PathBuf) -> Result<bool, String> {
+    let (sender, receiver) = futures_channel::oneshot::channel();
+    dispatch(move |env, activity, _webview| {
+        let result = (|| -> jni::errors::Result<String> {
+            let path = env.new_string(path.to_string_lossy())?;
+            let result = env
+                .call_method(
+                    activity,
+                    "installUpdate",
+                    "(Ljava/lang/String;)Ljava/lang/String;",
+                    &[JValue::Object(&path)],
+                )?
+                .l()?;
+            let result = JString::from(result);
+            let message = env.get_string(&result)?.into();
+            Ok(message)
+        })()
+        .map_err(|error| error.to_string())
+        .and_then(|message| match message.as_str() {
+            "" => Ok(true),
+            "permission" => Ok(false),
+            _ => Err(message),
+        });
+        let _ = sender.send(result);
+    });
+    receiver
+        .await
+        .map_err(|_| "The Android installer is unavailable.".to_string())?
+}
