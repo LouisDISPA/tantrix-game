@@ -16,7 +16,7 @@ pub fn HudMenu(children: Element) -> Element {
             class: "hud-menu",
             class: if open() { "open" },
             onkeydown: move |e| {
-                if open() && e.key() == Key::Escape {
+                if open() && e.key() == Key::Named(NamedKey::Escape) {
                     // Closing the menu is all Escape does: not a step back.
                     e.stop_propagation();
                     open.set(false);

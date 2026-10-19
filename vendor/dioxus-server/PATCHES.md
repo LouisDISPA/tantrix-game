@@ -1,24 +1,27 @@
-# Local patches to `dioxus-server` 0.7.10
+# Local patches to `dioxus-server` 0.8.0-alpha.3
 
-This is the published `dioxus-server` 0.7.10 crate, vendored and wired in via
+This is the published `dioxus-server` 0.8.0-alpha.3 crate, vendored and wired in via
 `[patch.crates-io]` in the workspace `Cargo.toml`. Everything is upstream except
 the items below, all of which make the crate build **and run** on
 `wasm32-unknown-unknown` inside a Cloudflare Worker (`tantrix-worker`). Native
 builds keep upstream's exact dependency features and behaviour.
 
 Drop this directory (and the `[patch]` entry) once upstream supports wasm32
-servers — see DioxusLabs/dioxus#3275. Upstream `main` (0.8.0-alpha.1) has the
-same problems, at the same lines.
+servers — see DioxusLabs/dioxus#3275. The published 0.8.0-alpha.3 crate still
+has these limitations. This rebase retains its markerless SSR renderer and
+hydration-data traversal unchanged; the old renderer implementation is not
+carried forward.
 
 ## 1. Networking dependencies are native-only (`Cargo.toml`)
 
-Upstream enables axum `ws`/`tokio`/`http1`/`http2`, `hyper-util/full`,
-`tokio-tungstenite` (default `connect`) and `tower-http/fs` for every target.
+Upstream enables axum `ws`/`tokio`/`http1`/`http2`, `hyper-util/full`
+and `tower-http/fs` for every target.
 They all pull in tokio `net`/`fs`, which do not compile for wasm32 (`mio`).
 They are only used by `launch`/`serve` (already `cfg(not(wasm32))`) and by
 static file serving, so they moved to `[target.'cfg(not(target_arch =
 "wasm32"))'.dependencies]` with the same features. `dioxus-devtools/serve`
-moved the same way.
+moved the same way. The old direct `tokio-tungstenite` dependency was removed
+upstream; this rebase does not reintroduce it.
 
 The wasm32 `tokio` dependency was `optional = true` with no feature enabling
 it, so wasm32 builds had no tokio at all; it is now a plain dependency.
@@ -59,6 +62,13 @@ client `index.html`.
 `cfg(debug_assertions)`, so native release builds warned about an unused
 import (registry crates hide this; a path dependency prints it on every
 build). The import is now gated the same way.
+
+## Rebase source
+
+The base is the published crate at
+<https://static.crates.io/crates/dioxus-server/dioxus-server-0.8.0-alpha.3.crate>.
+Its normalized manifest uses edition 2024 and exact Dioxus alpha dependencies.
+`Cargo.toml.orig` is omitted because it inherits from the upstream workspace.
 
 ## Not changed
 

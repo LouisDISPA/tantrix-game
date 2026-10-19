@@ -34,7 +34,7 @@ pub fn NicknameInput(
             oninput: move |e| draft.set(e.value()),
             onblur: move |_| on_commit.call(draft.read().clone()),
             onkeydown: move |e| {
-                if e.key() == Key::Enter {
+                if e.key() == Key::Named(NamedKey::Enter) {
                     on_commit.call(draft.read().clone());
                 }
             },

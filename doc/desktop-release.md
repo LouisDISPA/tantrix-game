@@ -1,6 +1,6 @@
 # Desktop releases
 
-`.github/workflows/release.yml` builds six native OS/architecture combinations, then publishes a GitHub Release only after every build succeeds. Desktop jobs use stable Rust, Dioxus CLI 0.7.10 and Velopack 1.2.161.
+`.github/workflows/release.yml` builds six native OS/architecture combinations, then publishes a GitHub Release only after every build succeeds. Desktop jobs use stable Rust, Dioxus CLI 0.8.0-alpha.3 and Velopack 1.2.161.
 
 ## Publish
 

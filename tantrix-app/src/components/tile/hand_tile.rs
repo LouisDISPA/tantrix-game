@@ -154,7 +154,7 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         },
                         onkeydown: move |e| {
                             if interactive
-                                && (matches!(e.key(), Key::Enter)
+                                && (matches!(e.key(), Key::Named(NamedKey::Enter))
                                     || matches!(e.key(), Key::Character(c) if c == " "))
                             {
                                 click_tile(ctx, color, index());

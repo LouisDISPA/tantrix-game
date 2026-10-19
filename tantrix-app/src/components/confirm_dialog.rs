@@ -25,7 +25,7 @@ pub fn ConfirmDialog(
                     // The keys are the dialog's: Escape must not also step the
                     // game back behind it.
                     e.stop_propagation();
-                    if e.key() == Key::Escape {
+                    if e.key() == Key::Named(NamedKey::Escape) {
                         on_cancel.call(());
                     }
                 },

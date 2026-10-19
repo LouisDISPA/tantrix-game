@@ -85,6 +85,14 @@ pub fn app() -> Element {
         document::Style { id: "app-styles", {APP_CSS} }
     };
 
+    // Dioxus 0.8 alpha.3 can bind a child insertion anchor as the root's mounted ID.
+    // Keep all children in one fragment so the root retains its own binding.
+    let content = rsx! {
+        {platform_ui}
+        StartupLoading { ready: ready() }
+        div { class: "app-content", inert: (!ready()).then_some(true), Router::<Route> {} }
+    };
+
     rsx! {
         document::Link {
             rel: "icon",
@@ -102,9 +110,7 @@ pub fn app() -> Element {
             "data-theme": "{theme.as_str()}",
             "data-app-ready": "{ready}",
             onmounted: move |_| ready.set(true),
-            {platform_ui}
-            StartupLoading { ready: ready() }
-            div { class: "app-content", inert: (!ready()).then_some(true), Router::<Route> {} }
+            {content}
         }
     }
 }

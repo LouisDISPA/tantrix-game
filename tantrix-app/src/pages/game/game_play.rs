@@ -91,7 +91,7 @@ pub fn GamePlay(children: Element) -> Element {
             },
             onpointerleave: move |_| cancel_tile_drag(ctx),
             onkeydown: move |evt: KeyboardEvent| {
-                if evt.key() == Key::Escape {
+                if evt.key() == Key::Named(NamedKey::Escape) {
                     if ui.tile_drag().peek().is_some_and(|drag| drag.holds_pointer()) {
                         cancel_tile_drag(ctx);
                     } else {

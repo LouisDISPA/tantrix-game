@@ -51,7 +51,7 @@ pub fn EmptyHex(
                 }
             },
             onkeydown: move |e| {
-                if matches!(e.key(), Key::Enter)
+                if matches!(e.key(), Key::Named(NamedKey::Enter))
                     || matches!(e.key(), Key::Character(c) if c == " ")
                 {
                     click_position(ctx, position);

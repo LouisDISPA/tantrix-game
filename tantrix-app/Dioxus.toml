@@ -32,4 +32,4 @@ long_description = "A cross-platform implementation of the Tantrix hex tile stra
 bundle_name = "Tantrix"
 
 [bundle.deb]
-depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0", "libxdo3"]
+depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0"]

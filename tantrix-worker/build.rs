@@ -1,8 +1,8 @@
 //! Embeds the web client's `index.html` into the Worker.
 //!
 //! dx writes it next to the hashed JS/wasm bundle it references, so the client
-//! must be built first (`just worker-client`). The SSR renderer splices each
-//! rendered page into its `<div id="main">`.
+//! is built first by `just worker-e2e` / `just worker-deploy`. The SSR renderer
+//! splices each rendered page into its `<div id="main">`.
 
 use std::path::PathBuf;
 use std::{env, fs};
@@ -29,7 +29,7 @@ fn main() {
     let html = fs::read_to_string(&source).unwrap_or_else(|err| {
         panic!(
             "cannot read the client index.html at {}: {err}\n\
-             Build the web client first: `just worker-client`",
+             Build the client and Worker together: `just worker-e2e` or `just worker-deploy`",
             source.display()
         )
     });

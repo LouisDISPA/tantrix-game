@@ -7,16 +7,13 @@
 #
 # If you are reading this file be aware that the original Cargo.toml
 # will likely look very different (and much more reasonable).
-# (Cargo.toml.orig is not vendored: it inherits from the Dioxus workspace.)
-#
-# VENDORED: this is the published dioxus-server 0.7.10 manifest with the
-# dependency changes listed in PATCHES.md (networking crates moved under
-# `cfg(not(target_arch = "wasm32"))` so the crate builds for Cloudflare Workers).
+# Cargo.toml.orig is not vendored: it inherits from the Dioxus workspace.
+# Local changes for Cloudflare Workers are documented in PATCHES.md.
 
 [package]
-edition = "2021"
+edition = "2024"
 name = "dioxus-server"
-version = "0.7.10"
+version = "0.8.0-alpha.3"
 authors = [
     "Jonathan Kelley",
     "Evan Almloff",
@@ -46,11 +43,6 @@ cargo-args = [
     "-Zunstable-options",
     "-Zrustdoc-scrape-examples",
 ]
-features = [
-    "axum",
-    "web",
-    "aws-lc-rs",
-]
 
 [features]
 axum-no-default = []
@@ -73,13 +65,13 @@ name = "dioxus_server"
 path = "src/lib.rs"
 
 [dependencies.anyhow]
-version = "1.0.98"
+version = "1.0.102"
 
 [dependencies.async-trait]
-version = "0.1.88"
+version = "0.1.89"
 
 [dependencies.axum]
-version = "0.8.4"
+version = "0.8.9"
 features = [
     "multipart",
     "json",
@@ -92,66 +84,66 @@ default-features = false
 version = "0.22.1"
 
 [dependencies.bytes]
-version = "1.10.1"
+version = "1.11.1"
 features = ["serde"]
 
 [dependencies.chrono]
-version = "0.4.39"
+version = "0.4.44"
 
 [dependencies.ciborium]
 version = "0.2.2"
 
 [dependencies.dashmap]
-version = "6.1.0"
+version = "6.2.1"
 
 [dependencies.dioxus-cli-config]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-core]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-core-macro]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-devtools]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-document]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 default-features = false
 
 [dependencies.dioxus-fullstack-core]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 features = ["server"]
 default-features = false
 
 [dependencies.dioxus-history]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 default-features = false
 
 [dependencies.dioxus-hooks]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-html]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 default-features = false
 
 [dependencies.dioxus-interpreter-js]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-logger]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-router]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 features = ["streaming"]
 optional = true
 
 [dependencies.dioxus-signals]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.dioxus-ssr]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 default-features = false
 
 [dependencies.enumset]
@@ -159,6 +151,7 @@ version = "1.1.6"
 
 [dependencies.futures]
 version = "0.3.32"
+default-features = true
 
 [dependencies.futures-channel]
 version = "0.3.32"
@@ -168,10 +161,10 @@ version = "0.3.32"
 default-features = false
 
 [dependencies.generational-box]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.http]
-version = "1.3.1"
+version = "1.4.0"
 
 [dependencies.http-body-util]
 version = "0.1.3"
@@ -193,11 +186,12 @@ default-features = false
 version = "0.3"
 
 [dependencies.lru]
-version = "0.16.0"
+version = "0.18.0"
 
 [dependencies.multer]
 version = "3.1.0"
 optional = true
+default-features = true
 
 [dependencies.parking_lot]
 version = "0.12.4"
@@ -215,7 +209,7 @@ default-features = true
 version = "2.1.1"
 
 [dependencies.rustls]
-version = "0.23.28"
+version = "0.23.46"
 features = [
     "logging",
     "std",
@@ -226,19 +220,20 @@ optional = true
 default-features = false
 
 [dependencies.serde]
-version = "1.0.225"
+version = "1.0.228"
 
 [dependencies.serde_json]
-version = "1.0.140"
+version = "1.0.149"
 
 [dependencies.serde_qs]
 version = "0.15.0"
+default-features = true
 
 [dependencies.subsecond]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 
 [dependencies.thiserror]
-version = "2.0.12"
+version = "2.0.18"
 
 [dependencies.tokio-util]
 version = "0.7.15"
@@ -256,19 +251,20 @@ version = "0.3.3"
 optional = true
 
 [dependencies.tracing]
-version = "0.1.41"
+version = "0.1.44"
 
 [dependencies.tracing-futures]
 version = "0.2.5"
 
 [dependencies.url]
-version = "2.5.4"
+version = "2.5.8"
+default-features = true
 
 [dependencies.walkdir]
 version = "2.5.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio]
-version = "1.48"
+version = "1.52.1"
 features = [
     "rt",
     "sync",
@@ -278,7 +274,7 @@ features = [
 ]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.tokio]
-version = "1.48"
+version = "1.52.1"
 features = [
     "rt",
     "sync",
@@ -288,31 +284,22 @@ features = [
 [target.'cfg(target_arch = "wasm32")'.dependencies.wasm-bindgen-futures]
 version = "0.4"
 
-# Native-only: the HTTP server, devserver connection and static file serving
-# used by `launch`/`serve`. None of these compile for wasm32 (tokio `net`).
+# Native-only networking and filesystem support. Preserve upstream features.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.axum]
-version = "0.8.4"
-features = [
-    "ws",
-    "tokio",
-    "http1",
-    "http2",
-]
+version = "0.8.9"
+features = ["ws", "tokio", "http1", "http2"]
 default-features = false
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.dioxus-devtools]
-version = "0.7.10"
+version = "=0.8.0-alpha.3"
 features = ["serve"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.hyper]
-version = "1.6.0"
+version = "1.8.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.hyper-util]
-version = "0.1.12"
+version = "0.1.18"
 features = ["full"]
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies.tokio-tungstenite]
-version = "0.28.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.tower-http]
 version = "0.6.8"

@@ -5,7 +5,7 @@ import native from './playwright.native.config';
 const port = 4174;
 const baseURL = process.env.BASE_URL ?? `http://127.0.0.1:${port}`;
 
-// Build the Worker and client with `just worker-build` first.
+// Use `just worker-e2e` to build matching Worker and client assets before this suite.
 export default defineConfig({
   ...native,
   retries: process.env.CI ? 1 : 0,

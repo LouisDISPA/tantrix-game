@@ -1,6 +1,6 @@
 # Tantrix Game
 
-Rust nightly workspace: nine crates for a 2–4-player hex-tile game. Dioxus 0.7.10 web/desktop UI; Ratatui 0.30.2 terminal UI. Players build their color's longest line or loop.
+Rust nightly workspace: nine crates for a 2–4-player hex-tile game. Dioxus 0.8.0-alpha.3 web/desktop UI; Ratatui 0.30.2 terminal UI. Players build their color's longest line or loop.
 
 ## Workspace map
 
@@ -27,7 +27,7 @@ Other paths:
 | `cloudflare/` | Worker JS entry, Wrangler configuration |
 | `scripts/` | Worker build, release packaging, local tunnel |
 | `e2e/` | Playwright tests for both backends |
-| `vendor/dioxus-server/` | Dioxus 0.7.10 wasm32 patch; see `PATCHES.md` |
+| `vendor/dioxus-server/` | Dioxus 0.8.0-alpha.3 wasm32 patch; see `PATCHES.md` |
 
 ## Commands
 

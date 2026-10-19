@@ -202,16 +202,16 @@ impl Default for UiState {
 /// write through the whole store (`ui_state.write()`) marks *every* field
 /// dirty — the camera, the animation hints, the scoring overlay — and wakes
 /// all of their readers for nothing.
-#[store(pub)]
+#[store(pub(crate))]
 impl<Lens> Store<UiState, Lens> {
     /// Clear all selection/hover state and return to SelectTile phase.
-    fn reset_selection(&mut self) {
+    pub(crate) fn reset_selection(&mut self) {
         self.reset_selection_with_message("");
     }
 
     /// [`reset_selection`](UiStateStoreImplExt::reset_selection), then show
     /// `message` in the HUD (none when empty).
-    fn reset_selection_with_message(&mut self, message: &str) {
+    pub(crate) fn reset_selection_with_message(&mut self, message: &str) {
         self.clear_selection();
         set_if_changed(self.phase(), TurnPhase::SelectTile);
         let stale = *self.message().peek() != message;
@@ -222,7 +222,7 @@ impl<Lens> Store<UiState, Lens> {
 
     /// Forget the selected tile and position and what is hovered; the phase
     /// and message stay as they are.
-    fn clear_selection(&mut self) {
+    pub(crate) fn clear_selection(&mut self) {
         set_if_changed(self.tile_drag(), None);
         set_if_changed(self.selected_tile(), None);
         set_if_changed(self.selected_position(), None);
@@ -230,7 +230,7 @@ impl<Lens> Store<UiState, Lens> {
     }
 
     /// Navigate one step back in the turn flow.
-    fn go_back(&mut self) {
+    pub(crate) fn go_back(&mut self) {
         // Copy the phase out: a read guard held across the writes below
         // would conflict with them.
         let phase = *self.phase().peek();
@@ -249,7 +249,7 @@ impl<Lens> Store<UiState, Lens> {
     }
 
     /// Select a tile and enter position-selection phase.
-    fn select_tile(&mut self, idx: usize) {
+    pub(crate) fn select_tile(&mut self, idx: usize) {
         set_if_changed(self.selected_tile(), Some(idx));
         set_if_changed(self.selected_position(), None);
         set_if_changed(self.hovered(), Hovered::None);
@@ -258,7 +258,7 @@ impl<Lens> Store<UiState, Lens> {
     }
 
     /// Record that a move was just played: recenter camera and mark new tile.
-    fn after_move(&mut self, player_color: Color, tile_idx: usize, position: Position) {
+    pub(crate) fn after_move(&mut self, player_color: Color, tile_idx: usize, position: Position) {
         set_if_changed(self.pan_x(), 0.0);
         set_if_changed(self.pan_y(), 0.0);
         set_if_changed(self.new_tile(), Some((player_color, tile_idx)));

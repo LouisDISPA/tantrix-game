@@ -1,6 +1,6 @@
 use crate::{
-    ssr::{SSRError, SsrRendererPool},
     ServeConfig, ServerFunction,
+    ssr::{SSRError, SsrRendererPool},
 };
 use axum::{
     body::Body,
@@ -13,18 +13,15 @@ use dioxus_core::{ComponentFunction, VirtualDom};
 use http::header::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-// wasm32 hosts (Cloudflare Workers) are single-threaded: the pinned-task pool
-// is replaced by one that spawns onto the JS event loop (see `local_pool`).
+// Workers render pinned tasks on the JS event loop instead of OS threads.
 #[cfg(target_arch = "wasm32")]
 use crate::local_pool::LocalPoolHandle;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio_util::task::LocalPoolHandle;
 
-// Static file serving needs a filesystem, so it only exists on native targets.
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    std::path::Path, tower::util::MapResponse, tower::ServiceExt,
+    std::path::Path, tower::ServiceExt, tower::util::MapResponse,
     tower_http::services::fs::ServeFileSystemResponseBody,
 };
 
@@ -161,8 +158,7 @@ impl DioxusRouterExt for Router<FullstackState> {
         serve_dir_cached(self, &public_path, &public_path)
     }
 
-    /// wasm32 hosts have no filesystem: static assets are served by the platform
-    /// (e.g. the Workers static assets binding) in front of the app.
+    /// Static assets are served by the wasm32 host (Workers' asset binding).
     #[cfg(target_arch = "wasm32")]
     fn serve_static_assets(self) -> Router<FullstackState> {
         self
@@ -421,7 +417,6 @@ fn serve_dir_cached<S>(mut router: Router<S>, public_path: &Path, directory: &Pa
 where
     S: Send + Sync + Clone + 'static,
 {
-    // `ServeDir` is only used by the debug-build branch below.
     #[cfg(debug_assertions)]
     use tower_http::services::ServeDir;
     use tower_http::services::ServeFile;

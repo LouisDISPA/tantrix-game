@@ -50,6 +50,5 @@ pub mod isrg;
 pub use isrg::*;
 
 mod index_html;
-// Public so `ServeConfig::with_index_html` can be called from outside the crate
-// (needed where there is no public dir to read index.html from, e.g. Workers).
+// Public so hosts without a filesystem can supply the client index.html.
 pub use index_html::IndexHtml;

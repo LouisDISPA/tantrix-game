@@ -9,7 +9,8 @@ use dioxus_core_macro::rsx;
 use dioxus_document::{
     Document, Eval, LinkProps, MetaProps, NoOpDocument, ScriptProps, StyleProps,
 };
-use dioxus_html as dioxus_elements;
+use dioxus_html::elements::prelude::*;
+use dioxus_html::*;
 use dioxus_ssr::Renderer;
 use parking_lot::RwLock;
 use std::sync::LazyLock;
@@ -17,7 +18,6 @@ use std::sync::LazyLock;
 static RENDERER: LazyLock<RwLock<Renderer>> = LazyLock::new(|| RwLock::new(Renderer::new()));
 
 /// Reset the static renderer to a fresh state, clearing its cache.
-// Only called by the hot-reload loop in `launch`, which is native-only.
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn reset_renderer() {
     RENDERER.write().clear();
@@ -42,24 +42,16 @@ impl ServerDocument {
         myself.title.as_ref().map(|title| {
             RENDERER
                 .write()
-                .render_element(rsx! {
-                    title { "{title}" }
-                })
+                .render_element(rsx! { title { "{title}" } })
         })
     }
 
     pub(crate) fn render(&self, to: &mut impl std::fmt::Write) -> std::fmt::Result {
         let myself = self.0.borrow();
         let element = rsx! {
-            {myself.meta.iter().map(|m| rsx! {
-                {m}
-            })}
-            {myself.link.iter().map(|l| rsx! {
-                {l}
-            })}
-            {myself.script.iter().map(|s| rsx! {
-                {s}
-            })}
+            {myself.meta.iter().map(|m| rsx! { {m} })}
+            {myself.link.iter().map(|l| rsx! { {l} })}
+            {myself.script.iter().map(|s| rsx! { {s} })}
         };
 
         RENDERER.write().render_element_to(to, element)?;
@@ -73,7 +65,9 @@ impl ServerDocument {
 
     pub(crate) fn warn_if_streaming(&self) {
         if self.0.borrow().streaming {
-            tracing::warn!("Attempted to insert content into the head after the initial streaming frame. Inserting content into the head only works during the initial render of SSR outside before resolving any suspense boundaries.");
+            tracing::warn!(
+                "Attempted to insert content into the head after the initial streaming frame. Inserting content into the head only works during the initial render of SSR outside before resolving any suspense boundaries."
+            );
         }
     }
 

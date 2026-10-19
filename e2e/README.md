@@ -1,6 +1,6 @@
 # Browser tests
 
-Eight Chromium tests run against native Axum (CI, in-memory SQLite) or the Worker.
+Eleven Chromium tests run against native Axum (CI, in-memory SQLite) or the Worker.
 
 | Spec | Coverage |
 | --- | --- |
@@ -9,6 +9,7 @@ Eight Chromium tests run against native Axum (CI, in-memory SQLite) or the Worke
 | `tile-drag` | Commit on release under production script policy; reject invalid drop |
 | `mobile-play` | Tap selection, End Game confirmation, touch drag, pan, pinch |
 | `online` | Two sessions synchronize, reload/resume and finish; missing-room error |
+| `startup` | Direct visits to home, online and download hydrate, dismiss the loader and enable content without browser errors |
 
 Optional `screens` cases capture phone/desktop boards. Core rules and scoring are tested in `tantrix-game`; room rules, sessions and persistence in `tantrix-room` and backend tests; gesture state in `tantrix-app`.
 
@@ -37,9 +38,9 @@ pnpm run test:worker    # requires a prior Worker build
 BASE_URL=http://127.0.0.1:8080 pnpm run test:native
 ```
 
-`BASE_URL` skips server startup for either backend. Otherwise, local runs reuse an existing server; CI starts a fresh process. Plain `pnpm exec playwright test` selects native. Every page waits for hydration.
+`DIOXUS_CLI=/absolute/path/to/dx` selects a versioned CLI for native startup. `BASE_URL` skips server startup for either backend. Otherwise, local runs reuse an existing server; CI starts a fresh process. Plain `pnpm exec playwright test` selects native. Every page waits for hydration.
 
-Native startup has ten minutes; Worker startup has one minute; the suite has fifteen minutes. Local runs use eight workers and no retries. CI native runs use four workers and one retry; Worker runs use eight workers. CI's production build shares release outputs with native startup, and Rust caches retain compilation outputs.
+Native startup has ten minutes; Worker startup has one minute; the suite has fifteen minutes. Local runs use eight workers and no retries. CI native runs use four workers and one retry; Worker runs use eight workers. CI's production build shares release outputs with native startup, and Rust caches retain compilation outputs. The Worker job uses `just worker-e2e` to rebuild both browser and SSR assets before starting Wrangler.
 
 ## Screenshots and diagnosis
 

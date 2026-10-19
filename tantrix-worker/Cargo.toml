@@ -24,7 +24,7 @@ uuid = { version = "1", features = ["v4", "js"] }
 # Patched for wasm32 via `[patch.crates-io]` (vendor/dioxus-server). Used
 # directly rather than through `dioxus/server`, whose re-exports (`serve`,
 # `launch`) only exist on native targets.
-dioxus-server = "0.7.10"
+dioxus-server = "=0.8.0-alpha.3"
 worker = { version = "0.8.7", features = ["http"] }
 wasm-bindgen = "0.2.129"
 axum = { version = "0.8.9", default-features = false }

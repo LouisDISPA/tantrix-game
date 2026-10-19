@@ -35,7 +35,7 @@ fn ScoreRow(color: Color, score: usize, is_winner: bool) -> Element {
                 }
             },
             onkeydown: move |e| {
-                if matches!(e.key(), Key::Enter)
+                if matches!(e.key(), Key::Named(NamedKey::Enter))
                     || matches!(e.key(), Key::Character(c) if c == " ")
                 {
                     let current = *ui_state.highlighted_color().read();

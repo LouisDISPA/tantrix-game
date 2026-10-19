@@ -24,7 +24,7 @@ The game engine is independent of the interface and server. The web app, desktop
 
 | Layer | Technology |
 | --- | --- |
-| Application | Rust nightly, Dioxus 0.7 |
+| Application | Rust nightly, Dioxus 0.8.0-alpha.3 |
 | Browser | WebAssembly, SSR + hydration |
 | Graphics | SVG tiles and paths, responsive CSS |
 | Native backend | Axum, Tokio, SQLite |
@@ -52,7 +52,7 @@ Seeded local games and tournaments are reproducible. The app exposes four AI dif
 
 ## Development
 
-Install Rust through rustup, `just`, and Dioxus CLI **0.7.10**. The checked-in toolchain selects nightly, rustfmt, Clippy and the Wasm target. Node.js and pnpm are used for Worker tooling and browser tests. [Setup instructions](doc/development.md).
+Install Rust through rustup, `just`, and Dioxus CLI **0.8.0-alpha.3**. The checked-in toolchain selects nightly, rustfmt, Clippy and the Wasm target. Node.js and pnpm are used for Worker tooling and browser tests. [Setup instructions](doc/development.md).
 
 ```sh
 just dev                         # Web app + native backend

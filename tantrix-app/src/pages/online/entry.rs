@@ -82,7 +82,7 @@ pub fn OnlineEntry() -> Element {
                                         c.set(e.value().to_ascii_uppercase());
                                     },
                                     onkeydown: move |e| {
-                                        if e.key() == Key::Enter && can_join() {
+                                        if e.key() == Key::Named(NamedKey::Enter) && can_join() {
                                             try_join(code_input, error, nav);
                                         }
                                     },
@@ -284,7 +284,7 @@ fn DesktopServerSettings(
                 class: "connection-settings",
                 class: if open() { "open" },
                 onkeydown: move |event| {
-                    if open() && event.key() == Key::Escape {
+                    if open() && event.key() == Key::Named(NamedKey::Escape) {
                         event.stop_propagation();
                         open.set(false);
                     }

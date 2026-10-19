@@ -27,7 +27,7 @@ just worker-e2e       # build client + SSR module, then run browser tests
 just worker-deploy    # build client + SSR module, then deploy
 ```
 
-The private `worker-client-build` recipe builds the production browser client with rebuilt std and silent panics. `worker-ssr-build` then runs `scripts/build-worker-ssr.sh`: install the matching `worker-build`, compile Rust SSR, validate shared asset names and package into `cloudflare/build/ssr/`. Build order matters: `tantrix-worker/build.rs` embeds the generated client HTML.
+The private `worker-client-build` recipe builds the production browser client with rebuilt std and silent panics. `worker-ssr-build` then runs `scripts/build-worker-ssr.sh`: install the matching `worker-build`, compile Rust SSR, validate shared asset names and package into `cloudflare/build/ssr/`. Build order matters: `tantrix-worker/build.rs` embeds the generated client HTML. CI runs this same build and browser test pipeline through `just worker-e2e`. The vendored `dioxus-server` patch must match Dioxus 0.8.0-alpha.3; see [`PATCHES.md`](../vendor/dioxus-server/PATCHES.md). The browser uses the published `dioxus-web` crate. In [`app()`](../tantrix-app/src/lib.rs), all root children share one RSX fragment to avoid alpha.3's mounted-event hydration bug; keep that boundary until the upstream renderer is fixed.
 
 After a build, serve locally without rebuilding:
 

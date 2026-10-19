@@ -5,7 +5,7 @@ import { defineConfig } from '@playwright/test';
 const port = 4175;
 const root = path.join(__dirname, '..');
 const baseURL = process.env.BASE_URL ?? `http://127.0.0.1:${port}`;
-const dioxus = path.join(process.env.CARGO_HOME ?? path.join(os.homedir(), '.cargo'), 'bin', 'dx');
+const dioxus = process.env.DIOXUS_CLI ?? path.join(process.env.CARGO_HOME ?? path.join(os.homedir(), '.cargo'), 'bin', 'dx');
 
 export default defineConfig({
   testDir: './tests',
