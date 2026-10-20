@@ -1,10 +1,8 @@
 //! Fullstack server entrypoint.
 //!
 //! Serves the Dioxus app and native online rooms, with **server-side rendering
-//! and hydration** out of the box — `dioxus::server::router(app)` returns an
-//! Axum router that renders each route on the server into HTML, ships a
-//! hydration payload, and the wasm bundle picks up interactivity on the
-//! client. See https://dioxuslabs.com/learn/0.7/essentials/fullstack/ssr.
+//! and hydration** through Dioxus's Axum handlers. Known application routes
+//! render on the server; unknown paths return the shared static 404 page.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,15 +10,17 @@ use std::sync::Arc;
 use axum::extract::{ws::WebSocketUpgrade, Extension, Path, RawQuery, State};
 use axum::http::{header, HeaderMap, HeaderValue, Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+use dioxus::server::{DioxusRouterExt, FullstackState, ServeConfig};
 use tantrix_room::handshake::{self, Refusal};
 use tantrix_room::session_cookie::{self, SessionToken};
 #[cfg(not(debug_assertions))]
 use tower_http::compression::CompressionLayer;
 
 use crate::app;
+use crate::route::Route;
 
 mod room;
 mod store;
@@ -91,7 +91,13 @@ pub fn run() {
                 }),
             )
             .with_state(state.clone())
-            .merge(dioxus::server::router(app))
+            .merge(
+                Router::new()
+                    .register_server_functions()
+                    .serve_static_assets()
+                    .fallback(get(render_page))
+                    .with_state(FullstackState::new(ServeConfig::new(), app)),
+            )
             .layer(from_fn_with_state(state, session_cookie_layer));
 
         #[cfg(not(debug_assertions))]
@@ -104,6 +110,19 @@ pub fn run() {
             .await
             .expect("fullstack server exited with an error");
     });
+}
+
+async fn render_page(state: State<FullstackState>, request: Request<axum::body::Body>) -> Response {
+    // Reuse the application's route parser rather than maintaining a second
+    // allowlist. Static assets and server endpoints are matched before this.
+    match request.uri().path().parse::<Route>() {
+        Ok(Route::NotFound { .. }) | Err(_) => (
+            StatusCode::NOT_FOUND,
+            Html(include_str!("../public/404.html")),
+        )
+            .into_response(),
+        Ok(_) => FullstackState::render_handler(state, request).await,
+    }
 }
 
 async fn session_cookie_layer(
@@ -181,4 +200,47 @@ fn setup_logging() {
         .with(filter)
         .with(tracing_subscriber::fmt::layer().compact())
         .init();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use dioxus::prelude::*;
+
+    #[tokio::test]
+    async fn unknown_pages_skip_ssr_and_known_pages_still_render() {
+        fn test_app() -> Element {
+            rsx! { p { "SSR route reached" } }
+        }
+
+        let state = FullstackState::new(ServeConfig::new(), test_app);
+        for path in ["/firebase-key.json", "/www/phpinfo.php", "/missing?query=1"] {
+            let response = render_page(
+                State(state.clone()),
+                Request::builder().uri(path).body(Body::empty()).unwrap(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(
+                response.headers()[header::CONTENT_TYPE],
+                "text/html; charset=utf-8"
+            );
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert_eq!(&body[..], include_bytes!("../public/404.html"));
+        }
+
+        for path in ["/", "/game?seed=123", "/online/ABCDEF", "/join/ABCDEF"] {
+            let response = render_page(
+                State(state.clone()),
+                Request::builder().uri(path).body(Body::empty()).unwrap(),
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+            assert!(std::str::from_utf8(&body)
+                .unwrap()
+                .contains("SSR route reached"));
+        }
+    }
 }
