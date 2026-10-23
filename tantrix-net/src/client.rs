@@ -132,7 +132,7 @@ async fn run_session(
     let mut welcomed = false;
     let mut keepalive = futures_timer::Delay::new(KEEPALIVE_INTERVAL).fuse();
 
-    loop {
+    'session: loop {
         futures::select! {
             socket_event = socket_rx.next().fuse() => match socket_event {
                 Some(SocketEvent::Open) => {
@@ -155,37 +155,15 @@ async fn run_session(
                             continue;
                         }
                     };
-                    match message {
-                        HostMessage::Welcome { your_peer_id, lobby, rejected } => {
-                            if let Some(code) = rejected {
-                                let _ = events.unbounded_send(SessionEvent::Error {
-                                    code: Some(code),
-                                    message: "The room rejected this connection.".into(),
-                                });
-                                let _ = events.unbounded_send(SessionEvent::Disconnected {
-                                    reason: "The room rejected this connection.".into(),
-                                });
-                                break;
-                            }
+                    for event in crate::session::incoming_events(message) {
+                        if matches!(event, SessionEvent::Connected { .. }) {
                             welcomed = true;
                             timeout = future::Either::Right(future::pending()).fuse();
-                            let _ = events.unbounded_send(SessionEvent::Connected { my_peer_id: your_peer_id });
-                            let _ = events.unbounded_send(SessionEvent::Lobby(lobby));
                         }
-                        HostMessage::LobbyUpdate { lobby } => {
-                            let _ = events.unbounded_send(SessionEvent::Lobby(lobby));
-                        }
-                        HostMessage::GameStarted { snapshot } => {
-                            let _ = events.unbounded_send(SessionEvent::GameStarted { snapshot });
-                        }
-                        HostMessage::StateUpdate { snapshot, last_move } => {
-                            let _ = events.unbounded_send(SessionEvent::StateUpdate { snapshot, last_move });
-                        }
-                        HostMessage::GameEnded { reason, snapshot } => {
-                            let _ = events.unbounded_send(SessionEvent::GameEnded { reason, snapshot });
-                        }
-                        HostMessage::Error { code, message } => {
-                            let _ = events.unbounded_send(SessionEvent::Error { code: Some(code), message });
+                        let disconnected = matches!(event, SessionEvent::Disconnected { .. });
+                        let delivered = events.unbounded_send(event).is_ok();
+                        if disconnected || !delivered {
+                            break 'session;
                         }
                     }
                 }
@@ -203,14 +181,8 @@ async fn run_session(
             command = commands.next().fuse() => match command {
                 Some(SessionCommand::Leave) | None => break,
                 Some(command) if welcomed => {
-                    let message = match command {
-                        SessionCommand::PickColor(color) => PeerMessage::PickColor { color },
-                        SessionCommand::ReplaceSeat(color) => PeerMessage::ReplaceSeat { color },
-                        SessionCommand::StartGame => PeerMessage::StartGame,
-                        SessionCommand::PlayMove(placement) => PeerMessage::PlayMove { placement },
-                        SessionCommand::EndGame => PeerMessage::EndGame,
-                        SessionCommand::UpdateNickname(nickname) => PeerMessage::UpdateNickname { nickname },
-                        SessionCommand::Leave => unreachable!(),
+                    let Some(message) = command.into_peer_message() else {
+                        break;
                     };
                     if !send(&socket, &message) {
                         let _ = events.unbounded_send(SessionEvent::Disconnected {

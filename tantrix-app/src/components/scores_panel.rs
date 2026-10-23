@@ -91,21 +91,17 @@ pub fn ScoresPanel(children: Element) -> Element {
     rsx! {
         section { class: "surface surface-raised surface-blur results-panel",
             div { class: "surface surface-raised surface-blur board-results-card",
-
                 div { class: "results-header",
                     if winners.read().len() > 1 {
                         div { class: "results-winner-label", "Tie" }
                         div { class: "results-tie-names",
                             for (i, color) in winners.read().iter().copied().enumerate() {
-                                {
-                                    let color_class = format!("color-{}", color_slug(color));
-                                    rsx! {
-                                        span { key: "{color:?}",
-                                            if i > 0 {
-                                                span { class: "results-tie-separator", " & " }
-                                            }
-                                            span { class: "results-winner-name {color_class}", "{color}" }
-                                        }
+                                span { key: "{color:?}",
+                                    if i > 0 {
+                                        span { class: "results-tie-separator", " & " }
+                                    }
+                                    span { class: format!("results-winner-name color-{}", color_slug(color)),
+                                        "{color}"
                                     }
                                 }
                             }

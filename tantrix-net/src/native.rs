@@ -76,7 +76,7 @@ pub(crate) async fn run_native_session(
         tokio::time::Instant::now() + Duration::from_secs(30),
         Duration::from_secs(30),
     );
-    let reason = loop {
+    let reason = 'session: loop {
         tokio::select! {
             incoming = socket.next() => {
                 let text = match incoming {
@@ -91,34 +91,25 @@ pub(crate) async fn run_native_session(
                     Ok(message) => message,
                     Err(_) => continue,
                 };
-                let event = match message {
-                    HostMessage::Welcome { your_peer_id, lobby, rejected } => {
-                        if let Some(code) = rejected {
-                            let _ = events.unbounded_send(SessionEvent::Error { code: Some(code), message: "The room rejected this connection.".into() });
-                            break "The room rejected this connection.".into();
-                        }
+                for event in crate::session::incoming_events(message) {
+                    if matches!(event, SessionEvent::Connected { .. }) {
                         welcomed = true;
-                        let _ = events.unbounded_send(SessionEvent::Connected { my_peer_id: your_peer_id });
-                        SessionEvent::Lobby(lobby)
                     }
-                    HostMessage::LobbyUpdate { lobby } => SessionEvent::Lobby(lobby),
-                    HostMessage::GameStarted { snapshot } => SessionEvent::GameStarted { snapshot },
-                    HostMessage::StateUpdate { snapshot, last_move } => SessionEvent::StateUpdate { snapshot, last_move },
-                    HostMessage::GameEnded { reason, snapshot } => SessionEvent::GameEnded { reason, snapshot },
-                    HostMessage::Error { code, message } => SessionEvent::Error { code: Some(code), message },
-                };
-                if events.unbounded_send(event).is_err() { break String::new(); }
+                    let disconnected = matches!(event, SessionEvent::Disconnected { .. });
+                    let delivered = events.unbounded_send(event).is_ok();
+                    if disconnected || !delivered {
+                        break 'session String::new();
+                    }
+                }
             }
             command = commands.next() => {
-                let message = match command {
+                let command = match command {
                     Some(SessionCommand::Leave) | None => break String::new(),
                     Some(_) if !welcomed => continue,
-                    Some(SessionCommand::PickColor(color)) => PeerMessage::PickColor { color },
-                    Some(SessionCommand::ReplaceSeat(color)) => PeerMessage::ReplaceSeat { color },
-                    Some(SessionCommand::StartGame) => PeerMessage::StartGame,
-                    Some(SessionCommand::PlayMove(placement)) => PeerMessage::PlayMove { placement },
-                    Some(SessionCommand::EndGame) => PeerMessage::EndGame,
-                    Some(SessionCommand::UpdateNickname(nickname)) => PeerMessage::UpdateNickname { nickname },
+                    Some(command) => command,
+                };
+                let Some(message) = command.into_peer_message() else {
+                    break String::new();
                 };
                 let text = String::from_utf8(encode(&message)).unwrap();
                 if socket.send(Message::Text(text.into())).await.is_err() { break "Could not send to the game server.".into(); }

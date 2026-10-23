@@ -14,6 +14,8 @@ async fn next_event(session: &mut SessionHandle) -> SessionEvent {
 }
 
 #[tokio::test]
+// Tungstenite requires a concrete HTTP error response from this callback.
+#[allow(clippy::result_large_err)]
 async fn native_handshake_sends_cookie_and_commands_and_closes_on_leave() {
     use futures::SinkExt;
     use tantrix_proto::{decode, encode, HostMessage, LobbyState, PeerId, PeerMessage};
@@ -98,7 +100,7 @@ async fn native_handshake_sends_cookie_and_commands_and_closes_on_leave() {
     client.await.unwrap();
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn a_server_that_never_finishes_the_upgrade_times_out() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -109,6 +111,8 @@ async fn a_server_that_never_finishes_the_upgrade_times_out() {
     );
     let client = tokio::spawn(run);
     let (_stream, _) = listener.accept().await.unwrap();
+    // Auto-advancing a paused clock can time out before TCP acceptance.
+    tokio::time::pause();
     tokio::time::advance(Duration::from_secs(21)).await;
     assert!(matches!(
         session.events.next().await,

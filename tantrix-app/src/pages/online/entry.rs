@@ -13,7 +13,7 @@ use crate::route::Route;
 #[cfg(not(any(feature = "desktop", feature = "android")))]
 use crate::state::online_compatibility::DOWNLOAD_URL;
 use crate::state::online_compatibility::{self, Compatibility};
-use crate::state::room_connection;
+use crate::state::{room_connection, server_endpoints};
 
 /// `/online` landing page: create a fresh room or enter a code to join.
 #[component]
@@ -22,7 +22,7 @@ pub fn OnlineEntry() -> Element {
     let code_input = use_signal(String::new);
     let error = use_signal(|| Option::<String>::None);
     let mut server_ready = use_signal(|| true);
-    let mut server = use_signal(online_compatibility::server_origin);
+    let mut server = use_signal(server_endpoints::server_origin);
     let mut mounted = use_signal(|| false);
     let mut compatibility = use_resource(move || async move {
         let server = server();

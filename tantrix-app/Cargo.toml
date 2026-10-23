@@ -31,17 +31,17 @@ futures-channel = "0.3.34"
 # browser transport (tantrix-net) depends on it anyway.
 futures-timer = "3.0.4"
 log = "0.4.34"
-semver = { version = "1", optional = true }
+semver = "1"
+url = "2"
+serde_json = "1.0.151"
 
 # Server-only: Axum serves the native fullstack app and online rooms.
 axum = { version = "0.8.9", features = ["ws"], optional = true }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"], optional = true }
 rusqlite = { version = "0.37.0", features = ["bundled"], optional = true }
-serde_json = { version = "1.0.151", optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 dirs = { version = "6", optional = true }
-url = { version = "2", optional = true }
 arboard = { version = "3", optional = true }
 velopack = { version = "=1.2.161", optional = true }
 
@@ -82,7 +82,6 @@ server = [
     "dep:axum",
     "dep:tantrix-room",
     "dep:rusqlite",
-    "dep:serde_json",
     "tokio/net",
     "tokio/sync",
     "dep:tracing-subscriber",
@@ -94,9 +93,9 @@ fullstack = ["dioxus/fullstack"]
 # the SSR host lives in the worker crate.
 worker = ["dep:gloo-timers", "dep:dioxus-fullstack-core", "dep:http"]
 liveview = ["dioxus/liveview"]
-desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep:url", "dep:arboard", "dep:reqwest", "dep:velopack"]
+desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep:arboard", "dep:reqwest", "dep:velopack"]
 bundle = []
 native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
 # Android uses the shared mobile WebView UI and native WebSocket transport.
-android = ["tokio/fs", "tokio/io-util", "dep:dirs", "dep:serde_json", "dep:semver", "mobile", "tantrix-net/native", "dep:reqwest", "dep:jni", "dep:ndk-context", "dep:url"]
+android = ["tokio/fs", "tokio/io-util", "dep:dirs", "mobile", "tantrix-net/native", "dep:reqwest", "dep:jni", "dep:ndk-context"]

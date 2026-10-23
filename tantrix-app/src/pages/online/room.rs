@@ -17,23 +17,17 @@ use crate::pages::online::lobby::OnlineLobbyView;
 use crate::pages::online::screens::{ConnectingView, FailedView};
 use crate::state::nickname;
 use crate::state::online_state::{FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt};
-use crate::state::room_connection;
+use crate::state::{room_connection, server_endpoints};
 
 #[component]
 pub fn OnlineRoom(code: String) -> Element {
-    let url = use_hook(|| room_connection::room_url(&code, false));
+    let server = use_hook(server_endpoints::server_origin);
+    let url = use_hook(|| server_endpoints::room_url(&server, &code, false));
     #[cfg(any(
         all(feature = "desktop", not(target_arch = "wasm32")),
         all(feature = "android", target_os = "android")
     ))]
-    use_context_provider(|| {
-        room_connection::RoomServer(
-            url.split("/room/")
-                .next()
-                .unwrap_or(&url)
-                .replacen("ws", "http", 1),
-        )
-    });
+    use_context_provider(|| room_connection::RoomServer(server.clone()));
     let mut attempt = use_signal(|| 0u32);
     let create = use_hook({
         let code = code.clone();

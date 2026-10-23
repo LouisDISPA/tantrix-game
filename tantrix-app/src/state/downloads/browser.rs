@@ -9,9 +9,9 @@ use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{AbortSignal, Event, Headers, Request, RequestInit, Response, Window};
 
-use super::{Architecture, Device, DownloadAsset, DownloadContext, InstallStatus, Release};
+use super::{Architecture, Device, DownloadContext, InstallStatus, Release};
 
-const RELEASE_API: &str = "https://api.github.com/repos/LouisDISPA/tantrix-game/releases/latest";
+use crate::state::releases::RELEASE_API;
 
 #[wasm_bindgen]
 extern "C" {
@@ -181,42 +181,14 @@ async fn request_release() -> Result<Release, JsValue> {
     if !response.ok() {
         return Err(JsValue::from_str("Release unavailable"));
     }
-    let value = JsFuture::from(response.json()?).await?;
-    let tag = string(&value, "tag_name")?;
-    let version = tag
-        .strip_prefix("tantrix-app-v")
-        .filter(|version| {
-            !version.is_empty() && version.bytes().all(|b| b.is_ascii_digit() || b == b'.')
-        })
-        .ok_or_else(|| JsValue::from_str("Not an app release"))?;
-    if property(&value, "draft")?.as_bool() != Some(false)
-        || property(&value, "prerelease")?.as_bool() != Some(false)
-    {
-        return Err(JsValue::from_str("Not a stable release"));
-    }
-    let raw_assets: Array = property(&value, "assets")?.dyn_into()?;
-    let mut assets = Vec::new();
-    for value in raw_assets.iter() {
-        let asset = (|| {
-            let name = string(&value, "name").ok()?;
-            let url = string(&value, "browser_download_url").ok()?;
-            let size = property(&value, "size").ok()?.as_f64()?;
-            if !size.is_finite() || size < 0.0 {
-                return None;
-            }
-            DownloadAsset::parse(name, url, size as u64, version)
-        })();
-        if let Some(asset) = asset {
-            assets.push(asset);
-        }
-    }
-    if assets.is_empty() {
-        return Err(JsValue::from_str("No app downloads"));
-    }
-    Ok(Release {
-        version: version.to_owned(),
-        assets,
-    })
+    let body = JsFuture::from(response.text()?)
+        .await?
+        .as_string()
+        .ok_or_else(|| JsValue::from_str("Missing release body"))?;
+    Release::parse(&body)
+        .map_err(|error| JsValue::from_str(&error))?
+        .filter(|release| !release.assets.is_empty())
+        .ok_or_else(|| JsValue::from_str("No stable app downloads"))
 }
 
 fn property(value: &JsValue, name: &str) -> Result<JsValue, JsValue> {

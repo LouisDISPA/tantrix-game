@@ -33,33 +33,19 @@ pub fn HexSvg(
     rsx! {
         g { class: base_class,
             polygon { points, class: "hex-tile-fill" }
-            for (d1, d2, color) in pairs.iter().copied() {
-                {
-                    let path_d = color_link_path(cx, cy, d1, d2, hex_size);
-                    let css_class = color_css_class(color);
-                    rsx! {
-                        path {
-                            key: "{color:?}-{d1:?}-{d2:?}",
-                            d: path_d,
-                            class: "hex-curve {css_class}",
-                        }
-                    }
+            for (start, end, color) in pairs.iter().copied() {
+                path {
+                    key: "{color:?}-{start:?}-{end:?}",
+                    d: color_link_path(cx, cy, start, end, hex_size),
+                    class: format!("hex-curve {}", color_css_class(color)),
                 }
             }
         }
-        for (d1, d2, color) in pairs.iter().copied() {
-            if highlight_colors.contains(&color) {
-                {
-                    let path_d = color_link_path(cx, cy, d1, d2, hex_size);
-                    let name = color_name(color);
-                    rsx! {
-                        path {
-                            key: "score-{color:?}-{d1:?}-{d2:?}",
-                            d: path_d,
-                            class: "scoring-curve scoring-curve-{name}",
-                        }
-                    }
-                }
+        for (start, end, color) in pairs.iter().copied().filter(|(_, _, color)| highlight_colors.contains(color)) {
+            path {
+                key: "score-{color:?}-{start:?}-{end:?}",
+                d: color_link_path(cx, cy, start, end, hex_size),
+                class: format!("scoring-curve scoring-curve-{}", color_name(color)),
             }
         }
     }

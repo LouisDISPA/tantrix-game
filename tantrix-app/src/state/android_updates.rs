@@ -1,5 +1,7 @@
 //! Direct APK updates. Android verifies the signing key during installation.
 
+use super::releases::{Architecture, Package, Platform, Release, RELEASE_API};
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Update {
     pub version: String,
@@ -13,7 +15,7 @@ pub async fn check() -> Result<Option<Update>, String> {
         .user_agent("Tantrix")
         .build()
         .map_err(|error| error.to_string())?
-        .get("https://api.github.com/repos/LouisDISPA/tantrix-game/releases/latest")
+        .get(RELEASE_API)
         .send()
         .await
         .map_err(|error| error.to_string())?
@@ -26,40 +28,23 @@ pub async fn check() -> Result<Option<Update>, String> {
 }
 
 fn parse_release(body: &str, installed: &str) -> Result<Option<Update>, String> {
-    let release: serde_json::Value =
-        serde_json::from_str(body).map_err(|error| error.to_string())?;
-    if release["draft"] == true || release["prerelease"] == true {
-        return Ok(None);
-    }
-    let Some(version) = release["tag_name"]
-        .as_str()
-        .and_then(|tag| tag.strip_prefix("tantrix-app-v"))
-    else {
+    let Some(release) = Release::parse(body)? else {
         return Ok(None);
     };
-    let latest = semver::Version::parse(version).map_err(|error| error.to_string())?;
     let installed = semver::Version::parse(installed).map_err(|error| error.to_string())?;
-    if !latest.pre.is_empty() || latest <= installed {
+    if release.version <= installed {
         return Ok(None);
     }
-    let name = format!("Tantrix-{version}-android-aarch64.apk");
-    let url = format!("https://github.com/LouisDISPA/tantrix-game/releases/download/tantrix-app-v{version}/{name}");
-    let asset = release["assets"].as_array().and_then(|assets| {
-        assets.iter().find(|asset| {
-            asset["name"].as_str() == Some(&name)
-                && asset["browser_download_url"].as_str() == Some(&url)
-        })
+    let asset = release.assets.into_iter().find(|asset| {
+        asset.platform == Platform::Android
+            && asset.architecture == Architecture::Arm64
+            && asset.package == Package::Apk
+            && (1..=512 * 1024 * 1024).contains(&asset.size)
     });
-    let Some(size) = asset
-        .and_then(|asset| asset["size"].as_u64())
-        .filter(|size| (1..=512 * 1024 * 1024).contains(size))
-    else {
-        return Ok(None);
-    };
-    Ok(Some(Update {
-        version: version.into(),
-        url,
-        size,
+    Ok(asset.map(|asset| Update {
+        version: release.version.to_string(),
+        url: asset.url,
+        size: asset.size,
     }))
 }
 
@@ -124,5 +109,42 @@ pub async fn install(path: std::path::PathBuf) -> Result<bool, String> {
     {
         let _ = path;
         Err("APK installation requires Android.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn updates_require_a_newer_version_and_a_bounded_arm64_apk() {
+        let name = "Tantrix-1.2.3-android-aarch64.apk";
+        let url = format!("https://github.com/LouisDISPA/tantrix-game/releases/download/tantrix-app-v1.2.3/{name}");
+        let mut release = json!({
+            "tag_name": "tantrix-app-v1.2.3", "draft": false, "prerelease": false,
+            "assets": [{"name": name, "browser_download_url": url, "size": 1024}]
+        });
+        assert_eq!(
+            parse_release(&release.to_string(), "1.2.2").unwrap(),
+            Some(Update {
+                version: "1.2.3".into(),
+                url,
+                size: 1024,
+            })
+        );
+        for installed in ["1.2.3", "1.3.0", "2.0.0"] {
+            assert_eq!(
+                parse_release(&release.to_string(), installed).unwrap(),
+                None
+            );
+        }
+        for size in [0, 512 * 1024 * 1024 + 1] {
+            release["assets"][0]["size"] = json!(size);
+            assert_eq!(parse_release(&release.to_string(), "1.2.2").unwrap(), None);
+        }
+        release["assets"][0]["size"] = json!(1024);
+        release["assets"][0]["browser_download_url"] = json!("https://example.com/update.apk");
+        assert_eq!(parse_release(&release.to_string(), "1.2.2").unwrap(), None);
     }
 }

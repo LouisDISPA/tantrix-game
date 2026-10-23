@@ -22,14 +22,6 @@ impl Compatibility {
     }
 }
 
-/// Use the same origin as the room transport, including desktop settings and
-/// the browser's optional TANTRIX_ROOM_URL override.
-pub fn server_origin() -> String {
-    super::room_connection::room_url("", false)
-        .trim_end_matches("/room/")
-        .replacen("ws", "http", 1)
-}
-
 pub async fn check(server: &str) -> Result<Compatibility, ()> {
     let url = format!("{}{ONLINE_VERSION_PATH}", server.trim_end_matches('/'));
     let body = fetch(&url).await?;

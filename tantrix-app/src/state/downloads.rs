@@ -9,25 +9,8 @@ use dioxus::prelude::*;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 pub mod browser;
 
-pub const RELEASES_URL: &str = "https://github.com/LouisDISPA/tantrix-game/releases/latest";
-const ASSET_URL_PREFIX: &str = "https://github.com/LouisDISPA/tantrix-game/releases/download/";
-
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
-pub enum Platform {
-    Mac,
-    Windows,
-    Linux,
-    Ios,
-    Android,
-    #[default]
-    Unknown,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Architecture {
-    Arm64,
-    X64,
-}
+use super::releases::Package;
+pub use super::releases::{Architecture, DownloadAsset, Platform, Release, RELEASES_URL};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct Device {
@@ -61,99 +44,6 @@ impl Device {
                 && !contains(&["Chrome", "Chromium", "CriOS", "Edg", "FxiOS"]),
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Package {
-    Dmg,
-    AppImage,
-    Deb,
-    Installer,
-    Portable,
-    Apk,
-}
-
-#[derive(Clone, PartialEq)]
-pub struct DownloadAsset {
-    pub name: String,
-    pub url: String,
-    pub size: u64,
-    pub platform: Platform,
-    pub architecture: Architecture,
-    pub package: Package,
-}
-
-impl DownloadAsset {
-    pub fn parse(name: String, url: String, size: u64, version: &str) -> Option<Self> {
-        if !url.starts_with(&format!("{ASSET_URL_PREFIX}tantrix-app-v{version}/")) {
-            return None;
-        }
-        let suffix = name.strip_prefix(&format!("Tantrix-{version}-"))?;
-        let (system, suffix) = suffix.split_once('-')?;
-        let platform = match system {
-            "macos" => Platform::Mac,
-            "windows" => Platform::Windows,
-            "linux" => Platform::Linux,
-            "android" => Platform::Android,
-            _ => return None,
-        };
-        let (architecture, suffix) = if let Some(suffix) = suffix.strip_prefix("aarch64") {
-            (Architecture::Arm64, suffix)
-        } else {
-            (Architecture::X64, suffix.strip_prefix("x86_64")?)
-        };
-        let package = match (platform, suffix) {
-            (Platform::Mac, ".dmg") => Package::Dmg,
-            (Platform::Android, ".apk") => Package::Apk,
-            (Platform::Linux, ".AppImage") => Package::AppImage,
-            (Platform::Linux, ".deb") => Package::Deb,
-            (Platform::Windows, "-setup.exe") => Package::Installer,
-            (Platform::Windows, "-portable.exe" | "-portable.zip") => Package::Portable,
-            _ => return None,
-        };
-        Some(Self {
-            name,
-            url,
-            size,
-            platform,
-            architecture,
-            package,
-        })
-    }
-
-    pub fn label(&self) -> String {
-        let system = match self.platform {
-            Platform::Mac => "macOS",
-            Platform::Windows => "Windows",
-            Platform::Android => "Android",
-            _ => "Linux",
-        };
-        let chip = match (self.platform, self.architecture) {
-            (Platform::Mac, Architecture::Arm64) => "Apple Silicon",
-            (Platform::Mac, Architecture::X64) => "Intel",
-            (_, Architecture::Arm64) => "ARM64",
-            (_, Architecture::X64) => "x64",
-        };
-        let package = match self.package {
-            Package::Dmg => "DMG",
-            Package::AppImage => "AppImage",
-            Package::Deb => "Debian / Ubuntu",
-            Package::Installer => "Installer",
-            Package::Portable => "Portable",
-            Package::Apk => "APK",
-        };
-        format!("{system} · {chip} · {package}")
-    }
-
-    pub fn size_mb(&self) -> String {
-        format!("{:.1}", self.size as f64 / 1024.0 / 1024.0)
-    }
-}
-
-#[derive(Clone, PartialEq)]
-pub struct Release {
-    pub version: String,
-    pub assets: Vec<DownloadAsset>,
 }
 
 impl Release {
@@ -207,7 +97,7 @@ mod tests {
 
     fn asset(suffix: &str) -> DownloadAsset {
         let name = format!("Tantrix-0.1.0-{suffix}");
-        let url = format!("{ASSET_URL_PREFIX}tantrix-app-v0.1.0/{name}");
+        let url = format!("https://github.com/LouisDISPA/tantrix-game/releases/download/tantrix-app-v0.1.0/{name}");
         DownloadAsset::parse(name, url, 3 * 1024 * 1024, "0.1.0").unwrap()
     }
 
