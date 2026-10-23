@@ -184,6 +184,7 @@ mod tests {
     fn a_round_where_nobody_can_move_stalls_the_game() {
         // Tiles are left in the bag, but no one holds any: nobody can move.
         let snapshot = GameSnapshot {
+            match_id: 0,
             board: Board::default(),
             hands: EnumMap::default(),
             bag_count: 10,

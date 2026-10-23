@@ -52,6 +52,7 @@ impl FixtureMove {
 
     fn intent(&self) -> PeerMessage {
         PeerMessage::PlayMove {
+            match_id: 0,
             placement: self.placement(),
         }
     }
@@ -89,7 +90,7 @@ fn setup() -> (RoomData, SessionToken, SessionToken, HashSet<SessionToken>) {
 fn server_validates_turn_and_move_then_persists_hidden_state() {
     let (mut room, red, blue, connected) = setup();
     let started = room
-        .apply(&blue, PeerMessage::StartGame, &connected)
+        .apply(&blue, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
     assert!(matches!(started.message, HostMessage::GameStarted { .. }));
     let snapshot = room.snapshot(&connected).unwrap();
@@ -100,6 +101,7 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
     };
     let tile = snapshot.hands[snapshot.current_player][0];
     let invalid = PeerMessage::PlayMove {
+        match_id: 0,
         placement: Placement {
             tile,
             position: Position::default()
@@ -133,7 +135,7 @@ fn server_validates_turn_and_move_then_persists_hidden_state() {
 fn server_games_keep_no_seed_and_undo_back_to_their_deal() {
     let (mut room, red, blue, connected) = setup();
     let started = room
-        .apply(&red, PeerMessage::StartGame, &connected)
+        .apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
     // The deal comes from the thread RNG: there is no seed to give it away.
     let dealt = Game::from_data(room.game.clone().unwrap());
@@ -148,7 +150,14 @@ fn server_games_keep_no_seed_and_undo_back_to_their_deal() {
         };
         let placement = game.legal_moves()[0].placement();
         let change = room
-            .apply(token, PeerMessage::PlayMove { placement }, &connected)
+            .apply(
+                token,
+                PeerMessage::PlayMove {
+                    match_id: 0,
+                    placement,
+                },
+                &connected,
+            )
             .unwrap();
         sent.push(change.message);
     }
@@ -281,7 +290,7 @@ fn state_updates_carry_the_move_as_the_server_placed_it() {
 #[test]
 fn started_game_reserves_disconnected_seat_for_token_reconnect() {
     let (mut room, red, blue, connected) = setup();
-    room.apply(&red, PeerMessage::StartGame, &connected)
+    room.apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
     assert!(!room.disconnect(&blue));
     let offline = HashSet::from([red.clone()]);
@@ -317,7 +326,7 @@ fn started_game_reserves_disconnected_seat_for_token_reconnect() {
 #[test]
 fn a_watcher_can_replace_a_player_mid_game_and_inherit_the_turn() {
     let (mut room, red, blue, connected) = setup();
-    room.apply(&red, PeerMessage::StartGame, &connected)
+    room.apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
     let watcher = join(&mut room, "watcher");
     let online = HashSet::from([red.clone(), watcher.clone()]);
@@ -361,6 +370,7 @@ fn a_watcher_can_replace_a_player_mid_game_and_inherit_the_turn() {
     // left the room.) Who starts is dealt at random, so either can happen.
     let game = Game::from_data(room.game.clone().unwrap());
     let play = PeerMessage::PlayMove {
+        match_id: 0,
         placement: game.legal_moves()[0].placement(),
     };
     let refused = if online.contains(&current_holder) {
@@ -401,7 +411,9 @@ fn lobby_disconnect_keeps_seat_until_someone_else_takes_it() {
             .unwrap()
             .connected
     );
-    assert!(room.apply(&red, PeerMessage::StartGame, &online).is_err());
+    assert!(room
+        .apply(&red, PeerMessage::StartGame { match_id: 0 }, &online)
+        .is_err());
 
     // A reconnect with the same cookie gets the same player and seat back.
     let id = room
@@ -499,7 +511,7 @@ fn the_room_can_start_after_its_unseated_creator_leaves() {
     assert!(room.disconnect(&creator));
     assert!(room.player(&creator).is_none());
     let change = room
-        .apply(&blue, PeerMessage::StartGame, &connected)
+        .apply(&blue, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
     assert!(matches!(change.message, HostMessage::GameStarted { .. }));
     assert_eq!(room.snapshot(&connected).unwrap().participants.len(), 2);
@@ -540,9 +552,9 @@ fn more_than_four_members_share_four_seats_by_releasing_them() {
     pick(&mut room, fifth, Some(Color::Red), &connected);
     assert_eq!(room.color_of(fifth), Some(Color::Red));
     assert!(room
-        .apply(sixth, PeerMessage::StartGame, &connected)
+        .apply(sixth, PeerMessage::StartGame { match_id: 0 }, &connected)
         .is_err());
-    room.apply(fifth, PeerMessage::StartGame, &connected)
+    room.apply(fifth, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
 
     // Unseated members stay in the room and watch, but can never move.
@@ -551,6 +563,7 @@ fn more_than_four_members_share_four_seats_by_releasing_them() {
     assert_eq!(snapshot.playing_colors.len(), 4);
     let game = Game::from_data(room.game.clone().unwrap());
     let play = PeerMessage::PlayMove {
+        match_id: 0,
         placement: game.legal_moves()[0].placement(),
     };
     assert_eq!(
@@ -650,11 +663,113 @@ fn time_seeded_games_through_the_room() {
             )
             .unwrap();
             let placement = game.legal_moves()[0].placement();
-            room.apply(token, PeerMessage::PlayMove { placement }, &connected)
-                .unwrap();
+            room.apply(
+                token,
+                PeerMessage::PlayMove {
+                    match_id: 0,
+                    placement,
+                },
+                &connected,
+            )
+            .unwrap();
             room.current_message(&connected);
             moves += 1;
         }
     }
     println!("{moves} moves in {:?}", start.elapsed());
+}
+
+#[test]
+fn rematch_returns_everyone_to_the_lobby_and_starts_a_fresh_match() {
+    let (mut room, red, blue, connected) = setup();
+    room.apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
+        .unwrap();
+    room.apply(&blue, PeerMessage::EndGame { match_id: 0 }, &connected)
+        .unwrap();
+    let finished = serde_json::to_value(room.completed_match().unwrap()).unwrap();
+    let change = room
+        .apply(&red, PeerMessage::Rematch { match_id: 0 }, &connected)
+        .unwrap();
+    let HostMessage::LobbyUpdate { lobby } = change.message else {
+        panic!("expected lobby")
+    };
+    assert!(change.persist);
+    assert_eq!(lobby.match_id, 1);
+    assert_eq!(room.color_of(&red), Some(Color::Red));
+    assert_eq!(room.color_of(&blue), Some(Color::Blue));
+    assert!(!room.ended);
+    assert!(room.end_reason.is_none());
+    assert!(room.game.is_none());
+
+    room.apply(&blue, PeerMessage::StartGame { match_id: 1 }, &connected)
+        .unwrap();
+    let snapshot = room.snapshot(&connected).unwrap();
+    assert_eq!(snapshot.match_id, 1);
+    assert!(snapshot.board.is_empty());
+    assert!(Game::from_data(room.game.clone().unwrap())
+        .history()
+        .is_empty());
+    // An old double-click must not restart or end the new match.
+    let duplicate = room
+        .apply(&blue, PeerMessage::Rematch { match_id: 0 }, &connected)
+        .unwrap();
+    assert!(!duplicate.persist);
+    assert_eq!(room.match_id, 1);
+    assert!(!room.ended);
+    let old_placement = Game::from_data(room.game.clone().unwrap()).legal_moves()[0].placement();
+    for stale in [
+        PeerMessage::StartGame { match_id: 0 },
+        PeerMessage::PlayMove {
+            match_id: 0,
+            placement: old_placement,
+        },
+        PeerMessage::EndGame { match_id: 0 },
+    ] {
+        assert!(room.apply(&red, stale, &connected).is_err());
+    }
+    assert_eq!(finished["id"], 0);
+    assert_eq!(snapshot.board.len(), 0);
+}
+
+#[test]
+fn rematch_keeps_connected_watchers_and_releases_offline_seats() {
+    let (mut room, red, blue, mut connected) = setup();
+    let watcher = SessionToken::new("watcher-token-123456789");
+    room.hello(watcher.clone(), "Watcher".into(), PeerId::new("watcher"))
+        .unwrap();
+    connected.insert(watcher.clone());
+    room.apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
+        .unwrap();
+    assert!(room
+        .apply(&red, PeerMessage::Rematch { match_id: 0 }, &connected)
+        .is_err());
+    room.apply(&red, PeerMessage::EndGame { match_id: 0 }, &connected)
+        .unwrap();
+    assert!(room
+        .apply(&watcher, PeerMessage::Rematch { match_id: 0 }, &connected)
+        .is_err());
+    connected.remove(&blue);
+    room.apply(&red, PeerMessage::Rematch { match_id: 0 }, &connected)
+        .unwrap();
+    assert!(room.seats[Color::Blue].is_none());
+    assert!(room.player(&blue).is_none());
+    assert!(room.player(&watcher).is_some());
+    assert_eq!(
+        room.lobby(&connected).unseated[0].peer_id,
+        PeerId::new("watcher")
+    );
+    assert!(room
+        .apply(&red, PeerMessage::StartGame { match_id: 1 }, &connected)
+        .is_err());
+    room.apply(
+        &watcher,
+        PeerMessage::PickColor {
+            color: Some(Color::Blue),
+        },
+        &connected,
+    )
+    .unwrap();
+    assert!(room
+        .apply(&red, PeerMessage::StartGame { match_id: 1 }, &connected)
+        .is_ok());
 }

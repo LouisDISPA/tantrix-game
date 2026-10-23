@@ -354,6 +354,7 @@ mod tests {
         let mut hands = EnumMap::default();
         hands[Color::Blue] = seeded(0).hand(Color::Blue).clone();
         GameState::from_snapshot(&GameSnapshot {
+            match_id: 0,
             board: Board::default(),
             hands,
             bag_count: 10,
@@ -688,7 +689,10 @@ mod tests {
         let (mut page, mut commands) = GamePage::online(game, Some(mover), EnumMap::default());
         page.act(|ctx| click_tile(ctx, mover, idx));
         match sent(&mut commands).as_slice() {
-            [SessionCommand::PlayMove(placement)] => assert_eq!(*placement, only),
+            [SessionCommand::PlayMove {
+                match_id: 0,
+                placement,
+            }] => assert_eq!(*placement, only),
             other => panic!("expected the move, sent {other:?}"),
         }
         assert_eq!(placed_at(&page, only.position), None);
@@ -849,7 +853,7 @@ mod tests {
         page.act(end_game);
         assert!(matches!(
             sent(&mut commands).as_slice(),
-            [SessionCommand::EndGame]
+            [SessionCommand::EndGame { match_id: 0 }]
         ));
         // The room's `GameEnded` ends it here, not the click.
         assert_eq!(selection(&page).0, TurnPhase::SelectPosition);

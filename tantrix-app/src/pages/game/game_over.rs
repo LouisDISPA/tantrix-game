@@ -9,14 +9,15 @@ use crate::route::Route;
 /// [`Board`] so the final tile layout and scoring highlights stay visible,
 /// with the scores card in the panel where the hands were.
 ///
-/// The primary button leads to the next game, wherever the page starts one:
-/// `again_label` / `on_again` ("Play Again" back to the local setup screen,
-/// "Online Menu" online). Main Menu uses the router to leave the game page
-/// entirely. `children` go in the HUD (the online room's badge).
+/// `children` go in the HUD; `banners` show connection feedback online.
 #[component]
 pub fn GameOver(
     #[props(into)] again_label: String,
     on_again: EventHandler<()>,
+    #[props(default)] again_disabled: bool,
+    #[props(default = "Main Menu".to_string())] leave_label: String,
+    #[props(default)] on_leave: Option<EventHandler<()>>,
+    #[props(default = VNode::empty())] banners: Element,
     children: Element,
 ) -> Element {
     let nav = navigator();
@@ -28,18 +29,25 @@ pub fn GameOver(
 
             div { class: "board-slot", Board {} }
 
+            div { class: "game-announcements", {banners} }
+
             ScoresPanel {
                 button {
                     class: "button button-primary results-btn results-btn-primary",
+                    disabled: again_disabled,
                     onclick: move |_| on_again.call(()),
                     {again_label}
                 }
                 button {
                     class: "button button-secondary results-btn results-btn-secondary",
                     onclick: move |_| {
-                        let _ = nav.push(Route::MainMenu {});
+                        if let Some(on_leave) = on_leave {
+                            on_leave.call(());
+                        } else {
+                            let _ = nav.push(Route::MainMenu {});
+                        }
                     },
-                    "Main Menu"
+                    {leave_label}
                 }
             }
         }

@@ -1,7 +1,10 @@
 //! Persistent room identity, invitation allocation and inactivity policy.
 //! Both adapters serialize access to one record; all time is supplied by the host.
 
-use crate::{room_logic::RoomData, session_cookie::SessionToken};
+use crate::{
+    room_logic::{CompletedMatch, RoomData},
+    session_cookie::SessionToken,
+};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use tantrix_proto::{RoomApiError, RoomReference, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
@@ -57,6 +60,18 @@ pub struct RoomRecord {
 }
 
 impl RoomRecord {
+    /// Archive only at a match transition, keeping history out of the active
+    /// room record and its per-move clones/writes.
+    pub fn replace_room(&mut self, room: &RoomData) -> Option<CompletedMatch> {
+        let archive = self
+            .room
+            .as_ref()
+            .filter(|old| old.match_id != room.match_id)
+            .and_then(RoomData::completed_match);
+        self.room = Some(room.clone());
+        archive
+    }
+
     pub fn new(id: String, now: u64) -> Self {
         Self {
             id,
@@ -87,7 +102,7 @@ impl RoomRecord {
     pub fn deadline(&self) -> Option<u64> {
         let needs_expiry = self.invitation.is_some()
             || self.pending.is_some()
-            || self.room.as_ref().is_some_and(|r| r.game.is_none());
+            || self.room.as_ref().is_some_and(|r| !r.has_started());
         needs_expiry
             .then_some(self.vacant_since)
             .flatten()
@@ -100,7 +115,7 @@ impl RoomRecord {
         }
         self.retired.extend(self.invitation.take());
         self.retired.extend(self.pending.take());
-        if self.room.as_ref().is_some_and(|r| r.game.is_none()) {
+        if self.room.as_ref().is_some_and(|r| !r.has_started()) {
             self.room = None;
         }
         true
@@ -171,6 +186,21 @@ mod tests {
     use super::*;
     use futures::executor::block_on;
     use std::collections::HashMap;
+
+    #[test]
+    fn a_lobby_between_matches_releases_its_code_but_keeps_the_room() {
+        let mut record = RoomRecord::new("room".into(), 0);
+        record.room.as_mut().unwrap().match_id = 1;
+        record.invitation = Some(Invitation {
+            code: "ABCDEF".into(),
+            claim: "claim".into(),
+        });
+        assert!(record.expire(IDLE_TTL_MS));
+        assert!(record.room.is_some());
+        assert!(record.invitation.is_none());
+        assert_eq!(record.deadline(), None);
+        assert!(record.reference().is_ok());
+    }
 
     #[derive(Default)]
     struct Memory {

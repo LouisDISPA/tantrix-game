@@ -13,6 +13,16 @@ use tantrix_proto::PeerId;
 use super::phase::OnlinePhase;
 use super::state::{OnlineState, OnlineStateStoreExt};
 
+pub fn match_id_of(state: Store<OnlineState>) -> u32 {
+    match &*state.phase().read() {
+        OnlinePhase::Lobby { lobby } => lobby.match_id,
+        OnlinePhase::Playing { snapshot, .. } | OnlinePhase::Ended { snapshot, .. } => {
+            snapshot.match_id
+        }
+        _ => 0,
+    }
+}
+
 /// Which color this peer currently occupies, if any.
 pub fn my_color(phase: &OnlinePhase, me: Option<&PeerId>) -> Option<Color> {
     let me = me?;

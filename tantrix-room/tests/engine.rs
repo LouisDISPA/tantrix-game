@@ -356,7 +356,7 @@ fn bad_frames_are_answered_before_they_reach_the_room() {
     // A message the protocol doesn't have (any more) is invalid too.
     assert_eq!(only_error(room.text(1, r#""SkipTurn""#)), "invalid message");
     assert_eq!(
-        only_error(room.send(1, &PeerMessage::StartGame)),
+        only_error(room.send(1, &PeerMessage::StartGame { match_id: 0 })),
         "say hello first"
     );
     room.send(1, &hello("Red"));
@@ -412,7 +412,7 @@ fn changes_go_to_everyone_and_answers_to_the_sender() {
     ));
 
     room.pick(2, Color::Blue);
-    let effects = room.send(2, &PeerMessage::StartGame);
+    let effects = room.send(2, &PeerMessage::StartGame { match_id: 0 });
     let [Effect::Broadcast {
         to,
         message: HostMessage::GameStarted { snapshot },
@@ -582,4 +582,39 @@ fn loading_lets_go_of_watchers_whose_sockets_died_with_the_server() {
     let step = woken.engine.on_load();
     assert!(step.persist().is_none());
     assert!(step.effects().is_empty());
+}
+
+#[test]
+fn rematch_is_saved_before_broadcast_and_a_failed_save_keeps_results() {
+    let mut room = Room::new();
+    room.join(1, "Red");
+    room.join(2, "Blue");
+    room.pick(1, Color::Red);
+    room.pick(2, Color::Blue);
+    room.send(1, &PeerMessage::StartGame { match_id: 0 });
+    room.send(2, &PeerMessage::EndGame { match_id: 0 });
+    room.saves();
+    let before = serde_json::to_value(room.engine.room()).unwrap();
+    room.host.fail_saves = true;
+    let step = room.engine.on_text(
+        ConnId(1),
+        &serde_json::to_string(&PeerMessage::Rematch { match_id: 0 }).unwrap(),
+    );
+    let (_, delivered) = room.run_failing(step);
+    assert_eq!(
+        closes(&delivered),
+        [(1, STORAGE_UNAVAILABLE), (2, STORAGE_UNAVAILABLE)]
+    );
+    assert_eq!(delivered.len(), 2, "no unsaved lobby is broadcast");
+    assert_eq!(serde_json::to_value(room.engine.room()).unwrap(), before);
+
+    room.host.fail_saves = false;
+    room.open(1, &token("Red"));
+    room.send(1, &hello("Red"));
+    room.saves();
+    let effects = room.send(1, &PeerMessage::Rematch { match_id: 0 });
+    assert_eq!(room.saves(), 1);
+    assert!(
+        matches!(received(&effects, 1)[0], HostMessage::LobbyUpdate { lobby } if lobby.match_id == 1)
+    );
 }

@@ -35,7 +35,9 @@ pub fn spawn_session(
         let mut recovery = Recovery::default();
         let mut recovering = matches!(&*store.phase().peek(), OnlinePhase::Playing { .. });
         if !recovering {
-            store.phase().set(OnlinePhase::Connecting);
+            if !matches!(&*store.phase().peek(), OnlinePhase::Ended { .. }) {
+                store.phase().set(OnlinePhase::Connecting);
+            }
             store.connection().set(ConnectionStatus::Connecting);
         }
         loop {
@@ -103,7 +105,10 @@ async fn run_attempt(
 ) -> Option<u64> {
     let current = *generation.peek();
     let previous_seat = queries::my_color_of(store);
-    let recovering = matches!(&*store.phase().peek(), OnlinePhase::Playing { .. });
+    let recovering = matches!(
+        &*store.phase().peek(),
+        OnlinePhase::Playing { .. } | OnlinePhase::Ended { .. }
+    );
     #[cfg(any(
         all(feature = "desktop", not(target_arch = "wasm32")),
         all(feature = "android", target_os = "android")
@@ -166,6 +171,11 @@ async fn run_attempt(
                             pending_identity = Some(my_peer_id.clone());
                             continue;
                         }
+                        SessionEvent::Lobby(lobby) if lobby.match_id > queries::match_id_of(store) => {
+                            if let Some(peer_id) = pending_identity.take() {
+                                store.my_peer_id().set(Some(peer_id));
+                            }
+                        }
                         SessionEvent::GameStarted { .. } | SessionEvent::StateUpdate { .. } | SessionEvent::GameEnded { .. } => {
                             if let Some(peer_id) = pending_identity.take() {
                                 store.my_peer_id().set(Some(peer_id));
@@ -194,10 +204,7 @@ async fn run_attempt(
 /// network task exited early. Recover a cached game or show the initial
 /// failure screen; a finished game keeps its results.
 fn events_closed(store: Store<OnlineState>) {
-    if matches!(
-        &*store.phase().peek(),
-        OnlinePhase::Failed { .. } | OnlinePhase::Ended { .. }
-    ) {
+    if matches!(&*store.phase().peek(), OnlinePhase::Failed { .. }) {
         return;
     }
     apply_event(
@@ -224,13 +231,17 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
         SessionEvent::Lobby(lobby) => {
             // Welcome includes lobby information even for a running game.
             // It is identity only until the fresh game snapshot arrives.
-            if !matches!(
-                &*store.phase().peek(),
-                OnlinePhase::Playing { .. } | OnlinePhase::Ended { .. }
-            ) {
+            let accepts_lobby = match &*store.phase().peek() {
+                OnlinePhase::Playing { snapshot, .. } | OnlinePhase::Ended { snapshot, .. } => {
+                    lobby.match_id > snapshot.match_id
+                }
+                _ => true,
+            };
+            if accepts_lobby {
                 store.phase().set(OnlinePhase::Lobby { lobby });
                 store.connection().set(ConnectionStatus::Connected);
                 store.last_error().set(None);
+                store.seat_changed().set(false);
             }
         }
         SessionEvent::GameStarted { snapshot } => {
@@ -289,9 +300,7 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
         }
         SessionEvent::Disconnected { reason } => {
             store.connection().set(ConnectionStatus::Stopped);
-            // The results screen is final: the server keeps the socket open after
-            // the game ends, and its later teardown must not replace the
-            // scores with a "Disconnected" screen.
+            // Keep results visible; Retry can reconnect for another match.
             if matches!(&*store.phase().read(), OnlinePhase::Ended { .. }) {
                 log::info!("online: ignoring disconnect after the game ended ({reason})");
                 return;
@@ -378,6 +387,7 @@ mod tests {
     /// A lobby where `waiting` wait for a seat.
     fn lobby(waiting: &[&str]) -> LobbyState {
         LobbyState {
+            match_id: 0,
             seats: EnumMap::default(),
             unseated: waiting
                 .iter()
@@ -393,6 +403,7 @@ mod tests {
     /// A game snapshot, told apart by its bag count.
     fn snapshot(bag_count: usize) -> GameSnapshot {
         GameSnapshot {
+            match_id: 0,
             board: Board::default(),
             hands: EnumMap::default(),
             bag_count,
@@ -426,6 +437,39 @@ mod tests {
             },
             snapshot: snapshot(0),
         }
+    }
+
+    #[test]
+    fn a_new_match_lobby_replaces_results_or_a_cached_game() {
+        let mut next_lobby = lobby(&["Ann"]);
+        next_lobby.match_id = 1;
+        for previous in [
+            ended(),
+            SessionEvent::GameStarted {
+                snapshot: snapshot(40),
+            },
+        ] {
+            let state = after([
+                previous,
+                closed("lost"),
+                welcome(),
+                rejected(RejectCode::InvalidMove),
+                SessionEvent::Lobby(next_lobby.clone()),
+            ]);
+            assert_eq!(
+                state.phase,
+                OnlinePhase::Lobby {
+                    lobby: next_lobby.clone()
+                }
+            );
+            assert_eq!(state.connection, ConnectionStatus::Connected);
+            assert_eq!(state.last_error, None);
+        }
+        // The Welcome's same-match lobby must not hide saved results.
+        assert!(matches!(
+            after([ended(), welcome(), SessionEvent::Lobby(lobby(&[]))]).phase,
+            OnlinePhase::Ended { .. }
+        ));
     }
 
     #[test]

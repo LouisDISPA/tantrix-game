@@ -73,21 +73,24 @@ impl GameDriver {
 /// the seats as the room's latest snapshot shows them.
 #[derive(Clone, Copy)]
 pub struct RoomLink {
+    match_id: ReadSignal<u32>,
     sender: Signal<Option<CommandSender>>,
-    my_color: Memo<Option<Color>>,
-    names: Memo<EnumMap<Color, Option<String>>>,
+    my_color: ReadSignal<Option<Color>>,
+    names: ReadSignal<EnumMap<Color, Option<String>>>,
     connected: ReadSignal<bool>,
 }
 
 impl RoomLink {
     pub fn new(
         sender: Signal<Option<CommandSender>>,
-        my_color: Memo<Option<Color>>,
-        names: Memo<EnumMap<Color, Option<String>>>,
+        my_color: ReadSignal<Option<Color>>,
+        names: ReadSignal<EnumMap<Color, Option<String>>>,
         connected: ReadSignal<bool>,
+        match_id: ReadSignal<u32>,
     ) -> Self {
         Self {
             sender,
+            match_id,
             my_color,
             names,
             connected,
@@ -107,13 +110,18 @@ impl RoomLink {
     /// belt-and-braces one). The room's next snapshot shows the result.
     pub fn play(self, player: Color, placement: Placement) {
         if self.my_color() == Some(player) {
-            self.send(SessionCommand::PlayMove(placement));
+            self.send(SessionCommand::PlayMove {
+                match_id: (self.match_id)(),
+                placement,
+            });
         }
     }
 
     /// Ask the room to end the game for everyone.
     pub fn end_game(self) {
-        self.send(SessionCommand::EndGame);
+        self.send(SessionCommand::EndGame {
+            match_id: (self.match_id)(),
+        });
     }
 
     fn send(self, command: SessionCommand) {
@@ -206,7 +214,7 @@ mod tests {
         assert!(
             matches!(
                 sent.as_slice(),
-                [SessionCommand::PlayMove(p), SessionCommand::EndGame] if *p == placement()
+                [SessionCommand::PlayMove { placement: p, .. }, SessionCommand::EndGame { match_id: 0 }] if *p == placement()
             ),
             "{sent:?}"
         );

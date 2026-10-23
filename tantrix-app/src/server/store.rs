@@ -9,6 +9,7 @@ use std::{
 };
 use tantrix_proto::RoomApiError;
 use tantrix_room::lifecycle::{Catalog, Invitation, RoomRecord};
+use tantrix_room::room_logic::CompletedMatch;
 
 pub type StoreError = Box<dyn Error + Send + Sync>;
 pub type StoreResult<T> = Result<T, StoreError>;
@@ -32,7 +33,8 @@ impl RoomStore {
         }
         conn.execute_batch("CREATE TABLE IF NOT EXISTS online_games (id TEXT PRIMARY KEY, record_json TEXT NOT NULL, deadline INTEGER);
             CREATE INDEX IF NOT EXISTS online_games_deadline ON online_games(deadline);
-            CREATE TABLE IF NOT EXISTS online_codes (code TEXT PRIMARY KEY, game_id TEXT NOT NULL, claim TEXT NOT NULL);")?;
+            CREATE TABLE IF NOT EXISTS online_codes (code TEXT PRIMARY KEY, game_id TEXT NOT NULL, claim TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS online_matches (room_id TEXT NOT NULL, match_id INTEGER NOT NULL, state_json TEXT NOT NULL, PRIMARY KEY (room_id, match_id));")?;
         Ok(Self {
             connection: Arc::new(Mutex::new(conn)),
         })
@@ -78,6 +80,14 @@ impl RoomStore {
     }
 
     pub async fn save_record(&self, record: &RoomRecord) -> StoreResult<()> {
+        self.save_with_archive(record, None).await
+    }
+
+    pub async fn save_with_archive(
+        &self,
+        record: &RoomRecord,
+        archive: Option<CompletedMatch>,
+    ) -> StoreResult<()> {
         let json = serde_json::to_string(record)?;
         let id = record.id.clone();
         let deadline = if record.retired.is_empty() {
@@ -86,14 +96,40 @@ impl RoomStore {
             Some(0)
         };
         self.with(move |conn| {
-            if conn.execute(
+            let transaction = conn.unchecked_transaction()?;
+            if let Some(archive) = archive {
+                transaction.execute("INSERT OR IGNORE INTO online_matches (room_id, match_id, state_json) VALUES (?1, ?2, ?3)", (&id, archive.id, serde_json::to_string(&archive)?))?;
+            }
+            if transaction.execute(
                 "UPDATE online_games SET record_json = ?2, deadline = ?3 WHERE id = ?1",
                 (&id, &json, deadline),
             )? != 1
             {
                 return Err(std::io::Error::other("room disappeared from storage").into());
             }
+            transaction.commit()?;
             Ok(())
+        })
+        .await
+    }
+
+    #[cfg(test)]
+    pub async fn load_match(
+        &self,
+        room_id: &str,
+        match_id: u32,
+    ) -> StoreResult<Option<CompletedMatch>> {
+        let room_id = room_id.to_owned();
+        self.with(move |conn| {
+            let json: Option<String> = conn
+                .query_row(
+                    "SELECT state_json FROM online_matches WHERE room_id = ?1 AND match_id = ?2",
+                    (&room_id, match_id),
+                    |row| row.get(0),
+                )
+                .optional()?;
+            json.map(|json| serde_json::from_str(&json).map_err(Into::into))
+                .transpose()
         })
         .await
     }
@@ -174,6 +210,35 @@ impl Catalog for RoomStore {
 mod tests {
     use super::*;
     use tantrix_room::lifecycle::{self, IDLE_TTL_MS};
+
+    #[tokio::test]
+    async fn a_failed_room_update_rolls_back_the_archive_too() {
+        use tantrix_game::{Color, Game, Player};
+        use tantrix_proto::EndReason;
+        let store = RoomStore::open(":memory:").unwrap();
+        let game = Game::new_seeded(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            42,
+        )
+        .unwrap();
+        let archive = CompletedMatch {
+            id: 0,
+            game: game.to_data(),
+            seats: Default::default(),
+            reason: EndReason::Completed {
+                winners: vec![Color::Red],
+            },
+        };
+        let missing = RoomRecord::new("missing".into(), 0);
+        assert!(store
+            .save_with_archive(&missing, Some(archive))
+            .await
+            .is_err());
+        assert!(store.load_match("missing", 0).await.unwrap().is_none());
+    }
 
     #[tokio::test]
     async fn allocation_survives_reopen_and_expiry_releases_only_the_claim() {

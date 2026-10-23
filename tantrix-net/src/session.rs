@@ -17,11 +17,13 @@ pub enum SessionCommand {
     /// Take a seat someone else holds (after the user confirmed).
     ReplaceSeat(Color),
     /// Transition the lobby into a running game.
-    StartGame,
+    StartGame { match_id: u32 },
     /// Place a tile for the current turn.
-    PlayMove(Placement),
+    PlayMove { match_id: u32, placement: Placement },
     /// Finish the running game early.
-    EndGame,
+    EndGame { match_id: u32 },
+    /// Return a finished match to the same lobby.
+    Rematch { match_id: u32 },
     /// Change the local player's display name.
     UpdateNickname(String),
     /// Leave the room. After this the session task exits.
@@ -35,9 +37,16 @@ impl SessionCommand {
         Some(match self {
             Self::PickColor(color) => PeerMessage::PickColor { color },
             Self::ReplaceSeat(color) => PeerMessage::ReplaceSeat { color },
-            Self::StartGame => PeerMessage::StartGame,
-            Self::PlayMove(placement) => PeerMessage::PlayMove { placement },
-            Self::EndGame => PeerMessage::EndGame,
+            Self::StartGame { match_id } => PeerMessage::StartGame { match_id },
+            Self::PlayMove {
+                match_id,
+                placement,
+            } => PeerMessage::PlayMove {
+                match_id,
+                placement,
+            },
+            Self::EndGame { match_id } => PeerMessage::EndGame { match_id },
+            Self::Rematch { match_id } => PeerMessage::Rematch { match_id },
             Self::UpdateNickname(nickname) => PeerMessage::UpdateNickname { nickname },
             Self::Leave => return None,
         })
@@ -170,6 +179,7 @@ mod tests {
     #[test]
     fn welcome_emits_identity_before_lobby_and_rejection_never_connects() {
         let lobby = LobbyState {
+            match_id: 0,
             seats: Default::default(),
             unseated: vec![],
             participants: vec![],

@@ -89,6 +89,7 @@
 
     /* Nothing is played at the end: the board takes the rack's height. */
     .game-over-layout {
+      --rail-w: clamp(360px, calc(28 * var(--fs)), 560px);
       grid-template-rows: var(--top-h) minmax(0, 1fr);
       grid-template-areas:
         "hud hud"

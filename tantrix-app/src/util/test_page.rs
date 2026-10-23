@@ -49,8 +49,15 @@ fn page_root(props: Props) -> Element {
     let my_color = use_memo(move || seat);
     let names = use_memo(move || names.clone().unwrap_or_default());
     let connected = use_memo(|| true);
+    let match_id = use_memo(|| 0);
     let driver = match room {
-        Some(_) => GameDriver::Online(RoomLink::new(sender, my_color, names, connected.into())),
+        Some(_) => GameDriver::Online(RoomLink::new(
+            sender,
+            my_color.into(),
+            names.into(),
+            connected.into(),
+            match_id.into(),
+        )),
         None => GameDriver::Local,
     };
     use_game_ctx(driver, move || game);

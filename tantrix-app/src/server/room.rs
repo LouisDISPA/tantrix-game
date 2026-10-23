@@ -310,8 +310,8 @@ impl RoomHost for Host<'_> {
     type Error = StoreError;
 
     fn save(&mut self, room: &RoomData) -> impl Future<Output = StoreResult<()>> {
-        self.record.room = Some(room.clone());
-        self.store.save_record(self.record)
+        let archive = self.record.replace_room(room);
+        self.store.save_with_archive(self.record, archive)
     }
 
     fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
@@ -453,6 +453,166 @@ mod tests {
         let (outgoing, messages) = mpsc::channel(8);
         let (close, _closed) = watch::channel(None);
         (Socket { outgoing, close }, messages)
+    }
+
+    #[tokio::test]
+    async fn rematches_archive_history_and_keep_the_room_after_reload() {
+        use std::collections::HashSet;
+        use tantrix_game::{Game, Player};
+        use tantrix_proto::EndReason;
+        use tantrix_room::room_logic::RoomData;
+
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("rooms.sqlite3");
+        let store = RoomStore::open(&path).unwrap();
+        let manager = RoomManager::new(store.clone());
+        let id = "01234567-89ab-4def-8123-456789abcdef";
+        let reference = manager.create(id, now_ms()).await.unwrap();
+        let red = SessionToken::new("red-token-123456789");
+        let blue = SessionToken::new("blue-token-123456789");
+        let mut room = RoomData::default();
+        for (token, color) in [(&red, Color::Red), (&blue, Color::Blue)] {
+            room.hello(
+                token.clone(),
+                color.to_string(),
+                tantrix_proto::PeerId::new(color.to_string()),
+            )
+            .unwrap();
+            room.seats[color] = Some(token.clone());
+        }
+        let mut game = Game::new_seeded(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            42,
+        )
+        .unwrap();
+        game.play_move(game.legal_moves()[0].placement()).unwrap();
+        room.game = Some(game.to_data());
+        room.ended = true;
+        room.end_reason = Some(EndReason::EndedEarly {
+            by: Color::Red,
+            winners: game.winners(),
+        });
+        let finished = serde_json::to_value(room.completed_match().unwrap()).unwrap();
+        let mut record = store.load(id).await.unwrap().unwrap();
+        record.room = Some(room);
+        store.save_record(&record).await.unwrap();
+
+        let OpenRoom::Ready(handle) = manager.open(id).await.unwrap() else {
+            panic!("room exists")
+        };
+        let mut receivers = Vec::new();
+        for (conn, token) in [(ConnId(1), red), (ConnId(2), blue)] {
+            let (socket, mut messages) = test_socket();
+            assert!(
+                handle
+                    .send(RoomCommand::Open {
+                        conn,
+                        token,
+                        socket
+                    })
+                    .await
+            );
+            assert!(
+                handle
+                    .send(RoomCommand::Text {
+                        conn,
+                        text: text(&PeerMessage::Hello {
+                            nickname: "Player".into()
+                        })
+                    })
+                    .await
+            );
+            loop {
+                let Some(Message::Text(message)) = messages.recv().await else {
+                    panic!("expected results")
+                };
+                if matches!(
+                    serde_json::from_str::<HostMessage>(&message).unwrap(),
+                    HostMessage::GameEnded { .. }
+                ) {
+                    break;
+                }
+            }
+            receivers.push(messages);
+        }
+        // Each transition goes through the actor and its real persistence host.
+        for match_id in 0..2 {
+            if match_id == 1 {
+                assert!(
+                    handle
+                        .send(RoomCommand::Text {
+                            conn: ConnId(2),
+                            text: text(&PeerMessage::EndGame { match_id })
+                        })
+                        .await
+                );
+            }
+            assert!(
+                handle
+                    .send(RoomCommand::Text {
+                        conn: ConnId(1),
+                        text: text(&PeerMessage::Rematch { match_id })
+                    })
+                    .await
+            );
+            for messages in &mut receivers {
+                loop {
+                    let Some(Message::Text(message)) = messages.recv().await else {
+                        panic!("expected lobby")
+                    };
+                    if let HostMessage::LobbyUpdate { lobby } =
+                        serde_json::from_str(&message).unwrap()
+                    {
+                        assert_eq!(lobby.match_id, match_id + 1);
+                        assert!(lobby.seats[Color::Red].is_some());
+                        assert!(lobby.seats[Color::Blue].is_some());
+                        break;
+                    }
+                }
+            }
+            assert!(
+                handle
+                    .send(RoomCommand::Text {
+                        conn: ConnId(1),
+                        text: text(&PeerMessage::StartGame {
+                            match_id: match_id + 1
+                        })
+                    })
+                    .await
+            );
+            for messages in &mut receivers {
+                loop {
+                    let Some(Message::Text(message)) = messages.recv().await else {
+                        panic!("expected game")
+                    };
+                    if let HostMessage::GameStarted { snapshot } =
+                        serde_json::from_str(&message).unwrap()
+                    {
+                        assert_eq!(snapshot.match_id, match_id + 1);
+                        assert!(snapshot.board.is_empty());
+                        break;
+                    }
+                }
+            }
+        }
+        let reloaded = RoomStore::open(&path).unwrap();
+        let archived = reloaded.load_match(id, 0).await.unwrap().unwrap();
+        assert_eq!(serde_json::to_value(&archived).unwrap(), finished);
+        assert_eq!(Game::from_data(archived.game).history().len(), 1);
+        assert!(reloaded.load_match(id, 1).await.unwrap().is_some());
+        let saved = reloaded.load(id).await.unwrap().unwrap();
+        assert_eq!(saved.reference().unwrap(), reference);
+        let active = saved.room.unwrap();
+        assert_eq!(active.match_id, 2);
+        assert!(active.snapshot(&HashSet::new()).unwrap().board.is_empty());
+        for conn in [ConnId(1), ConnId(2)] {
+            let (done, acknowledged) = oneshot::channel();
+            handle.send(RoomCommand::Close { conn, done }).await;
+            acknowledged.await.unwrap();
+        }
     }
 
     #[tokio::test]

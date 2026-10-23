@@ -21,7 +21,7 @@ pub use room_code::{is_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_
 
 /// Online compatibility, independent of app releases. Bump this for breaking
 /// wire-format changes or changes to shared game rules (legal moves/scoring).
-pub const ONLINE_VERSION: u32 = 2;
+pub const ONLINE_VERSION: u32 = 3;
 pub const ONLINE_VERSION_PATH: &str = "/api/online-version";
 
 /// Keep this endpoint's shape stable so incompatible clients can read it.
@@ -96,6 +96,7 @@ pub struct Participant {
 /// entry means the color is available.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LobbyState {
+    pub match_id: u32,
     pub seats: EnumMap<Color, Option<Seat>>,
     /// Players connected but not yet seated.
     pub unseated: Vec<Seat>,
@@ -111,6 +112,7 @@ pub struct LobbyState {
 /// so a malicious client can't peek at future draws.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameSnapshot {
+    pub match_id: u32,
     pub board: Board,
     pub hands: EnumMap<Color, Hand>,
     pub bag_count: usize,
@@ -168,12 +170,14 @@ pub enum PeerMessage {
     /// turn. The replaced player stays in the room without a seat.
     ReplaceSeat { color: Color },
     /// A seated player's request to transition lobby → game.
-    StartGame,
+    StartGame { match_id: u32 },
     /// Place a tile for the current turn. The server checks it against the
     /// legal moves; whether it fills a forced space is the board's call.
-    PlayMove { placement: Placement },
+    PlayMove { match_id: u32, placement: Placement },
     /// Finish the running game and score the board as it stands.
-    EndGame,
+    EndGame { match_id: u32 },
+    /// Archive the finished match and return everyone to this room’s lobby.
+    Rematch { match_id: u32 },
     /// Pull the latest snapshot (e.g. after reconnect).
     RequestSnapshot,
     /// Change my display name and publish the updated roster.
@@ -241,11 +245,14 @@ mod tests {
             position: Position::CENTER.neighbor(Direction::Left),
             rotation: Rotation::R60,
         };
-        let json = r#"{"PlayMove":{"placement":{"tile":"RYYBRB","position":{"x":-1,"y":0},"rotation":"R60"}}}"#;
+        let json = r#"{"PlayMove":{"match_id":0,"placement":{"tile":"RYYBRB","position":{"x":-1,"y":0},"rotation":"R60"}}}"#;
 
-        let encoded = encode(&PeerMessage::PlayMove { placement });
+        let encoded = encode(&PeerMessage::PlayMove {
+            match_id: 0,
+            placement,
+        });
         assert_eq!(String::from_utf8(encoded).unwrap(), json);
         let decoded: PeerMessage = decode(json.as_bytes()).unwrap();
-        assert!(matches!(decoded, PeerMessage::PlayMove { placement: p } if p == placement));
+        assert!(matches!(decoded, PeerMessage::PlayMove { placement: p, .. } if p == placement));
     }
 }

@@ -35,7 +35,14 @@ pub fn use_online_game_ctx(
     let my_color = use_memo(move || queries::my_color_of(state));
     let names = use_memo(move || player_names_of(state));
     let connected = use_memo(move || state.connection().read().is_connected());
-    let driver = GameDriver::Online(RoomLink::new(sender, my_color, names, connected.into()));
+    let match_id = use_memo(move || queries::match_id_of(state));
+    let driver = GameDriver::Online(RoomLink::new(
+        sender,
+        my_color.into(),
+        names.into(),
+        connected.into(),
+        match_id.into(),
+    ));
     // The first snapshot is read once, without subscribing: the effect below
     // brings in every later one.
     let ctx = use_game_ctx(driver, move || {
@@ -229,6 +236,7 @@ mod tests {
                 state.connection = ConnectionStatus::Connected;
                 state.phase = OnlinePhase::Playing {
                     snapshot: GameSnapshot {
+                        match_id: 0,
                         board: game.board().clone(),
                         hands: EnumMap::from_fn(|color| game.hand(color).clone()),
                         bag_count: game.bag_count(),

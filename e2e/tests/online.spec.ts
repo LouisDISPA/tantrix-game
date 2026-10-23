@@ -100,7 +100,7 @@ test('game rejections replace the HUD hint until the next room update', async ({
   }
 });
 
-test('two players join, synchronize moves, resume after reload and see results', async ({ page, browser }, testInfo) => {
+test('two players play, reload, see results and play again in the same room', async ({ page, browser }, testInfo) => {
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   const hostDiag = await instrument(page, 'host');
@@ -110,6 +110,7 @@ test('two players join, synchronize moves, resume after reload and see results',
     await page.getByRole('button', { name: 'Create a room' }).click();
     await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible();
     const code = (await page.locator('.lobby-room-code').textContent())!.trim();
+    const roomUrl = page.url();
     expect(new URL(page.url()).pathname).toMatch(/^\/online\/game\/[a-f0-9-]{36}$/);
     expect(code).toMatch(/^[A-Z]{6}$/);
     await openApp(guest, '/online');
@@ -144,6 +145,25 @@ test('two players join, synchronize moves, resume after reload and see results',
     await guest.getByRole('dialog').getByRole('button', { name: 'Yes, end it' }).click();
     await expect(page.locator('.results-row')).toHaveCount(2);
     await expect(guest.locator('.results-row')).toHaveText(await page.locator('.results-row').allTextContents());
+    await guest.getByRole('button', { name: 'Play again', exact: true }).click();
+    for (const player of [page, guest]) {
+      await expect(player.getByRole('heading', { name: 'LOBBY' })).toBeVisible();
+      expect(player.url()).toBe(roomUrl);
+      await expect(player.locator('.lobby-room-code')).toHaveText(code);
+      await expect(player.getByRole('button', { name: 'Release my seat' })).toBeVisible();
+    }
+    await page.getByRole('button', { name: 'Start game' }).click();
+    for (const player of [page, guest]) {
+      await expect(player.locator('.hud-chip-name')).toBeVisible();
+      await expect(placedTiles(player)).toHaveCount(0);
+    }
+    const nextFirst = (await page.locator('.hud-chip-name').textContent())?.trim() === 'Red' ? page : guest;
+    await playMove(nextFirst);
+    await expect(placedTiles(page)).toHaveCount(1);
+    await expect(placedTiles(guest)).toHaveCount(1);
+    await guest.getByRole('button', { name: 'End Game', exact: true }).click();
+    await guest.getByRole('dialog').getByRole('button', { name: 'Yes, end it' }).click();
+    await expect(guest.locator('.results-row')).toHaveCount(2);
     await guest.getByRole('button', { name: 'Online Menu' }).click();
     await expect(guest.getByRole('button', { name: 'Create a room' })).toBeVisible();
   } catch (error) {

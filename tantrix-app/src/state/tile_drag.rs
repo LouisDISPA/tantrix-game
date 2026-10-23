@@ -375,7 +375,9 @@ mod tests {
         let pointer = at(&page, only.position);
         page.act(|ctx| drop_tile(ctx, pointer));
         page.act(|ctx| drop_tile(ctx, pointer));
-        assert!(matches!(commands.try_recv(), Ok(SessionCommand::PlayMove(p)) if p == only));
+        assert!(
+            matches!(commands.try_recv(), Ok(SessionCommand::PlayMove { placement: p, .. }) if p == only)
+        );
         assert!(commands.try_recv().is_err());
         assert_eq!(page.game(|g| g.board().len()), before);
     }

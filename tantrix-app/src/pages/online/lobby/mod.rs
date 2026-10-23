@@ -114,7 +114,7 @@ pub fn OnlineLobbyView(
                         on_click: move |_| {
                             if can_start() {
                                 if let Some(s) = sender.read().as_ref() {
-                                    s.send(SessionCommand::StartGame);
+                                    s.send(SessionCommand::StartGame { match_id: queries::match_id_of(state) });
                                 }
                             }
                         },

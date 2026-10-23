@@ -57,15 +57,29 @@ first loss. Brief connections keep consuming that allowance; 30 seconds of stabl
 connection renews it. **Retry** starts a new bounded cycle after exhaustion.
 Leaving the page cancels both the active socket and scheduled retries.
 
-Welcome and lobby information only update identity during recovery. A fresh
+Welcome's same-match lobby only updates identity during recovery. A fresh
 `GameStarted` or `GameEnded` snapshot restores play or results, recalculating seat
-ownership. A displaced player resumes as a spectator with an explanation. Results
+ownership. A newer match's lobby returns the page to the lobby. A displaced player resumes as a spectator with an explanation. Results
 remain available after later socket closure.
 
 Both transports send keepalive pings every 30 seconds and allow 15 seconds for a
 pong. A missed response enters the same recovery flow; suspended timers never
 accumulate ping or retry bursts. The exact shared `OPENED_ELSEWHERE` close reason
 becomes a typed transport event and stops recovery until **Resume here** is chosen.
+
+## Playing again
+
+A seated player chooses **Play again** on the results screen. Everyone returns
+to the same lobby, keeping the URL, join code and connections. Connected players
+keep their colors; offline seats are released. Spectators can pick a free color.
+The existing **Start game** button deals a fresh game with at least two players.
+
+The finished match's full `GameData`, seats and result are archived atomically
+with the new lobby. Native SQLite uses `online_matches(room_id, match_id)`;
+Worker storage uses `match:{match_id}` keys in the same Room object. Old histories
+remain stored separately from the active room. There is no history browser yet.
+Match IDs on Start, Play, End and Rematch reject commands from an earlier match;
+repeated rematch clicks do not restart the next game. Online API version: **3**.
 
 ## Running locally
 
@@ -116,8 +130,8 @@ use `RoomExpired` (HTTP APIs return 410).
 
 `tantrix_room::lifecycle` owns the shared policy and recoverable allocation steps.
 After 24 hours with no joined connection, an unstarted lobby drops its contents
-and retains an expired tombstone; started/finished games preserve their state,
-bag and history, and release only their short code. A later visit to a saved
+and retains an expired tombstone; rooms that have started a match preserve their
+state and archives, including between matches, and release only their short code. A later visit to a saved
 game allocates a fresh code when needed. Allocation failure does not prevent
 resuming a started game by its permanent link. Disconnected seats do not keep
 invitations alive; joined spectators do. Native restarts begin an inactivity

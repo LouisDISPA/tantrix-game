@@ -3,6 +3,7 @@ use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
 use tantrix_proto::RoomApiError;
 use tantrix_room::lifecycle::{Catalog, Invitation, RoomRecord};
+use tantrix_room::room_logic::CompletedMatch;
 use worker::{
     durable_object, DurableObject, Env, Method, Request, Response, Result, State, Storage,
 };
@@ -68,6 +69,14 @@ pub fn unavailable(error: worker::Error) -> RoomApiError {
 }
 
 pub async fn persist(storage: &Storage, record: &RoomRecord) -> Result<()> {
+    persist_with_archive(storage, record, None).await
+}
+
+pub async fn persist_with_archive(
+    storage: &Storage,
+    record: &RoomRecord,
+    archive: Option<CompletedMatch>,
+) -> Result<()> {
     // Schedule before writing: a failed write must not strand an idle record
     // without an alarm. An obsolete alarm simply rechecks current presence.
     let deadline = if record.retired.is_empty() {
@@ -82,7 +91,19 @@ pub async fn persist(storage: &Storage, record: &RoomRecord) -> Result<()> {
             ))
             .await?;
     }
-    storage.put("record", record).await
+    if let Some(archive) = archive {
+        let record = record.clone();
+        storage
+            .transaction(move |transaction| async move {
+                transaction
+                    .put(&format!("match:{}", archive.id), archive)
+                    .await?;
+                transaction.put("record", record).await
+            })
+            .await
+    } else {
+        storage.put("record", record).await
+    }
 }
 
 impl WorkerCatalog {

@@ -43,6 +43,7 @@ fn participants(seated: &[Sitter], unseated: &[&str]) -> Vec<Participant> {
 /// A lobby with `seated` at their colors and `unseated` waiting.
 pub fn lobby(seated: &[Sitter], unseated: &[&str]) -> LobbyState {
     LobbyState {
+        match_id: 0,
         seats: seats(seated),
         unseated: unseated.iter().map(|name| seat(name)).collect(),
         participants: participants(seated, unseated),
@@ -53,6 +54,7 @@ pub fn lobby(seated: &[Sitter], unseated: &[&str]) -> LobbyState {
 /// in the room too.
 pub fn snapshot(seated: &[Sitter], watching: &[&str]) -> GameSnapshot {
     GameSnapshot {
+        match_id: 0,
         board: Board::default(),
         hands: EnumMap::default(),
         bag_count: 44,

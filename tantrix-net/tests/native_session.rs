@@ -54,6 +54,7 @@ async fn native_handshake_sends_cookie_and_commands_and_closes_on_leave() {
         let welcome = HostMessage::Welcome {
             your_peer_id: PeerId::new("desktop"),
             lobby: LobbyState {
+                match_id: 0,
                 seats: Default::default(),
                 unseated: vec![],
                 participants: vec![],
@@ -194,7 +195,7 @@ async fn two_native_players_play_reconnect_and_end_a_game() {
         }
     }
     host.commands
-        .unbounded_send(SessionCommand::StartGame)
+        .unbounded_send(SessionCommand::StartGame { match_id: 0 })
         .unwrap();
     let snapshot = loop {
         match next_event(&mut host).await {
@@ -216,7 +217,10 @@ async fn two_native_players_play_reconnect_and_end_a_game() {
     };
     player
         .commands
-        .unbounded_send(SessionCommand::PlayMove(placement))
+        .unbounded_send(SessionCommand::PlayMove {
+            match_id: 0,
+            placement,
+        })
         .unwrap();
     for session in [&mut host, &mut guest] {
         loop {
@@ -246,7 +250,7 @@ async fn two_native_players_play_reconnect_and_end_a_game() {
         }
     }
     host.commands
-        .unbounded_send(SessionCommand::EndGame)
+        .unbounded_send(SessionCommand::EndGame { match_id: 0 })
         .unwrap();
     for session in [&mut host, &mut guest] {
         loop {
@@ -256,6 +260,28 @@ async fn two_native_players_play_reconnect_and_end_a_game() {
                 event => panic!("unexpected event: {event:?}"),
             }
         }
+    }
+    guest
+        .commands
+        .unbounded_send(SessionCommand::Rematch { match_id: 0 })
+        .unwrap();
+    for session in [&mut host, &mut guest] {
+        let SessionEvent::Lobby(lobby) = next_event(session).await else {
+            panic!("expected rematch lobby")
+        };
+        assert_eq!(lobby.match_id, 1);
+        assert_eq!(lobby.seats[Red].as_ref().unwrap().peer_id, host_id);
+        assert!(lobby.seats[Blue].is_some());
+    }
+    host.commands
+        .unbounded_send(SessionCommand::StartGame { match_id: 1 })
+        .unwrap();
+    for session in [&mut host, &mut guest] {
+        let SessionEvent::GameStarted { snapshot } = next_event(session).await else {
+            panic!("expected fresh game")
+        };
+        assert_eq!(snapshot.match_id, 1);
+        assert!(snapshot.board.is_empty());
         session
             .commands
             .unbounded_send(SessionCommand::Leave)
@@ -285,6 +311,7 @@ async fn a_missed_native_pong_times_out_once_after_suspension() {
     let welcome = HostMessage::Welcome {
         your_peer_id: PeerId::new("desktop"),
         lobby: LobbyState {
+            match_id: 0,
             seats: Default::default(),
             unseated: vec![],
             participants: vec![],

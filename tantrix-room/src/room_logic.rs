@@ -27,6 +27,8 @@ pub struct PlayerRecord {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RoomData {
+    #[serde(default)]
+    pub match_id: u32,
     pub players: Vec<PlayerRecord>,
     pub seats: EnumMap<Color, Option<SessionToken>>,
     pub game: Option<GameData>,
@@ -36,12 +38,44 @@ pub struct RoomData {
     pub end_reason: Option<EndReason>,
 }
 
+/// Immutable server-side archive; draw order/history never enter client messages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletedMatch {
+    pub id: u32,
+    pub game: GameData,
+    pub seats: EnumMap<Color, Option<Seat>>,
+    pub reason: EndReason,
+}
+
 pub struct Change {
     pub message: HostMessage,
     pub persist: bool,
 }
 
 impl RoomData {
+    pub fn has_started(&self) -> bool {
+        self.game.is_some() || self.match_id > 0
+    }
+
+    pub fn completed_match(&self) -> Option<CompletedMatch> {
+        if !self.ended {
+            return None;
+        }
+        let game = self.game.clone()?;
+        let reason = self
+            .end_reason
+            .clone()
+            .unwrap_or_else(|| EndReason::Completed {
+                winners: Game::from_data(game.clone()).winners(),
+            });
+        Some(CompletedMatch {
+            id: self.match_id,
+            game,
+            seats: self.wire_seats(),
+            reason,
+        })
+    }
+
     pub fn player(&self, token: &SessionToken) -> Option<&PlayerRecord> {
         self.players.iter().find(|p| &p.token == token)
     }
@@ -91,6 +125,7 @@ impl RoomData {
             })
             .collect();
         LobbyState {
+            match_id: self.match_id,
             seats: self.wire_seats(),
             unseated,
             participants,
@@ -105,6 +140,7 @@ impl RoomData {
             hands[color] = game.hand(color).clone();
         }
         Some(GameSnapshot {
+            match_id: self.match_id,
             board: game.board().clone(),
             hands,
             bag_count: game.bag_count(),
@@ -164,6 +200,29 @@ impl RoomData {
     ) -> Result<Change, (RejectCode, String)> {
         if self.player(token).is_none() {
             return Err((RejectCode::InvalidMove, "join the room first".into()));
+        }
+        // One match number scopes play and restart commands, including clicks
+        // still in flight when another player opens the next lobby.
+        let match_id = match &intent {
+            PeerMessage::StartGame { match_id }
+            | PeerMessage::PlayMove { match_id, .. }
+            | PeerMessage::EndGame { match_id }
+            | PeerMessage::Rematch { match_id } => Some(*match_id),
+            _ => None,
+        };
+        if let Some(match_id) = match_id {
+            if match_id != self.match_id {
+                if matches!(intent, PeerMessage::Rematch { .. }) && match_id < self.match_id {
+                    return Ok(Change {
+                        message: self.current_message(connected),
+                        persist: false,
+                    });
+                }
+                return Err((
+                    RejectCode::InvalidMove,
+                    "that match is no longer active".into(),
+                ));
+            }
         }
         match intent {
             PeerMessage::Hello { .. } => Err((RejectCode::InvalidMove, "already joined".into())),
@@ -225,7 +284,7 @@ impl RoomData {
                     persist: true,
                 })
             }
-            PeerMessage::StartGame => {
+            PeerMessage::StartGame { .. } => {
                 if self.game.is_some() {
                     return Err((RejectCode::GameInProgress, "game already started".into()));
                 }
@@ -260,7 +319,7 @@ impl RoomData {
                     persist: true,
                 })
             }
-            PeerMessage::PlayMove { placement } => {
+            PeerMessage::PlayMove { placement, .. } => {
                 let mut game = self.turn_game(token)?;
                 let played = game
                     .play_move(placement)
@@ -268,7 +327,7 @@ impl RoomData {
                 let stalled = game.skip_stuck_players();
                 self.finish_turn(game, played.m, stalled, connected)
             }
-            PeerMessage::EndGame => {
+            PeerMessage::EndGame { .. } => {
                 let Some(data) = &self.game else {
                     return Err((RejectCode::InvalidMove, "game has not started".into()));
                 };
@@ -291,6 +350,34 @@ impl RoomData {
                         snapshot: self
                             .snapshot(connected)
                             .expect("running game has a snapshot"),
+                    },
+                    persist: true,
+                })
+            }
+            PeerMessage::Rematch { .. } => {
+                if !self.ended || self.color_of(token).is_none() {
+                    return Err((
+                        RejectCode::InvalidMove,
+                        "only a seated player can restart a finished match".into(),
+                    ));
+                }
+                self.match_id += 1;
+                self.game = None;
+                self.ended = false;
+                self.end_reason = None;
+                for seat in self.seats.values_mut() {
+                    if seat
+                        .as_ref()
+                        .is_some_and(|owner| !connected.contains(owner))
+                    {
+                        *seat = None;
+                    }
+                }
+                self.players
+                    .retain(|player| connected.contains(&player.token));
+                Ok(Change {
+                    message: HostMessage::LobbyUpdate {
+                        lobby: self.lobby(connected),
                     },
                     persist: true,
                 })

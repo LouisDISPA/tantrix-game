@@ -4,13 +4,15 @@
 
 use dioxus::prelude::*;
 
+use crate::components::alert_banner::AlertBanner;
 use crate::hooks::use_online_game_ctx;
 use crate::pages::game::{GameOver, GamePlay};
 use crate::pages::online::hud_badge::{ConnectionNotice, OnlineHudBadge};
 use crate::pages::online::seat_takeover::OnlineSeatTakeover;
 use crate::route::Route;
-use crate::state::online_state::{reject_message, CommandSender, OnlineState};
+use crate::state::online_state::{queries, reject_message, CommandSender, OnlineState};
 use crate::state::online_state::{OnlinePhase, OnlineStateStoreExt};
+use tantrix_net::SessionCommand;
 
 #[component]
 pub fn OnlineGameView(
@@ -27,15 +29,27 @@ pub fn OnlineGameView(
     let ended = use_memo(move || matches!(&*state.phase().read(), OnlinePhase::Ended { .. }));
     let waiting = use_memo(move || !state.connection().read().is_connected());
     let error = use_memo(move || state.last_error().read().as_ref().map(reject_message));
+    let can_rematch = use_memo(move || {
+        state.connection().read().is_connected() && queries::my_color_of(state).is_some()
+    });
     use_online_game_ctx(state, sender);
 
     if ended() {
         let nav = navigator();
         return rsx! {
             GameOver {
-                again_label: "Online Menu",
+                again_label: "Play again",
+                again_disabled: !can_rematch(),
                 on_again: move |_| {
-                    let _ = nav.push(Route::OnlineEntry {});
+                    if let Some(sender) = sender.read().as_ref() {
+                        sender.send(SessionCommand::Rematch { match_id: queries::match_id_of(state) });
+                    }
+                },
+                leave_label: "Online Menu",
+                on_leave: move |_| { let _ = nav.push(Route::OnlineEntry {}); },
+                banners: rsx! {
+                    AlertBanner { message: error }
+                    ConnectionNotice { state, on_retry }
                 },
                 OnlineHudBadge { state }
             }
@@ -73,6 +87,7 @@ mod tests {
     /// What a room would send for `game` (watched: no seats).
     fn snapshot_of(game: &GameState) -> GameSnapshot {
         GameSnapshot {
+            match_id: 0,
             board: game.board().clone(),
             hands: EnumMap::from_fn(|color| game.hand(color).clone()),
             bag_count: game.bag_count(),

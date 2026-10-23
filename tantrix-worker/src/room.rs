@@ -112,8 +112,8 @@ impl RoomHost for Host<'_> {
     type Error = worker::Error;
 
     fn save(&mut self, room: &RoomData) -> impl Future<Output = Result<()>> {
-        self.record.room = Some(room.clone());
-        catalog::persist(&self.storage, self.record)
+        let archive = self.record.replace_room(room);
+        catalog::persist_with_archive(&self.storage, self.record, archive)
     }
 
     fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
