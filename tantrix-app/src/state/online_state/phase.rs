@@ -61,6 +61,9 @@ pub fn reject_message(code: &RejectCode) -> &'static str {
         RejectCode::NotYourTurn => "It's not your turn.",
         RejectCode::InvalidMove => "The game server rejected that action.",
         RejectCode::GameInProgress => "This game has already started.",
+        RejectCode::RoomExpired => {
+            "This lobby expired because the game never started. Create a new room."
+        }
         RejectCode::RoomNotFound => "Room not found. Create a new room or check the code.",
         RejectCode::RoomFull => "This room is full.",
     }
@@ -72,12 +75,13 @@ mod tests {
 
     use super::{reject_message, FailureReason};
 
-    const CODES: [RejectCode; 6] = [
+    const CODES: [RejectCode; 7] = [
         RejectCode::ColorTaken,
         RejectCode::NotYourTurn,
         RejectCode::InvalidMove,
         RejectCode::GameInProgress,
         RejectCode::RoomNotFound,
+        RejectCode::RoomExpired,
         RejectCode::RoomFull,
     ];
 

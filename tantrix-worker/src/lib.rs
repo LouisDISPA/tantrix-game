@@ -20,7 +20,9 @@ use dioxus_server::{DioxusRouterExt, IndexHtml, ServeConfig};
 use tower_service::Service;
 use worker::{event, Context, Env, HttpRequest};
 
+mod catalog;
 mod room;
+mod rooms_api;
 const INDEX_HTML: &str = include_str!(concat!(env!("OUT_DIR"), "/index.html"));
 
 /// Built once per isolate: parsing `index.html` and the renderer pool are
@@ -50,7 +52,20 @@ fn start() {
 }
 
 #[event(fetch)]
-async fn fetch(request: HttpRequest, _env: Env, _ctx: Context) -> worker::Result<Response<Body>> {
+async fn fetch(request: HttpRequest, env: Env, _ctx: Context) -> worker::Result<Response<Body>> {
+    if request.uri().path().starts_with("/api/rooms") || request.uri().path().starts_with("/room/")
+    {
+        let response = match rooms_api::handle(worker::Request::try_from(request)?, &env).await {
+            Ok(response) => response,
+            Err(error) => {
+                worker::console_error!("room endpoint failed: {error}");
+                rooms_api::error(tantrix_proto::RoomApiError::StorageUnavailable)?
+            }
+        };
+        let response: worker::HttpResponse = response.try_into()?;
+        let (parts, body) = response.into_parts();
+        return Ok(Response::from_parts(parts, Body::new(body)));
+    }
     // Every visit starts on a server-rendered page, so this is where a new
     // browser gets its identity cookie, before it opens any room socket.
     let cookie = request

@@ -9,12 +9,16 @@ The Worker serves Dioxus SSR and static assets; one Durable Object per room owns
 | Existing assets | Workers Static Assets, before Worker execution |
 | `GET /health` | Health response |
 | `GET /robots.txt`, `GET /sitemap.xml` | Search discovery |
-| `WS /room/{CODE}?create=1` | Create and connect |
-| `WS /room/{CODE}` | Join; unknown rooms rejected |
+| `POST /api/rooms` | Idempotent server allocation |
+| `GET /api/rooms/code/{CODE}` | Resolve a short invitation code |
+| `GET /api/rooms/{ID}` | Current game reference |
+| `WS /room/{ID}` | Join/reconnect by permanent game ID |
 | Missing file-like path | Static Assets 404 |
 | App routes | Rust SSR + browser hydration |
 
 Canonical `Link` headers cover `/`, `/learn`, `/about` and `/online`; other rendered pages receive `X-Robots-Tag: noindex`. Keep `SITE_ORIGIN` in `src/index.js` aligned with the custom domain in `wrangler.toml`.
+
+Each game has a permanent-ID Room object; each short code has a RoomCodes object owning its reservation. Room alarms release invitations after 24 hours without joined sockets. Unstarted lobbies expire; started games and results remain available by permanent link.
 
 Room sockets hibernate; 30-second client pings receive automatic pongs without waking the object. State changes and reconnects send full snapshots; clients never poll. Storage succeeds before state is committed and broadcast. A failed save closes every socket and forces a reload from storage on the next event.
 

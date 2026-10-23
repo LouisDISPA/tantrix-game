@@ -11,7 +11,7 @@ use dioxus::prelude::*;
 use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
-use crate::state::online_state::{OnlineState, OnlineStateStoreExt};
+use crate::state::online_state::OnlineState;
 use crate::util::sleep;
 
 /// How long to show the plain splash before offering "Retry".
@@ -31,7 +31,7 @@ pub fn ConnectingView(state: Store<OnlineState>, on_retry: EventHandler<()>) -> 
         MenuScreen {
             MenuCard {
                 title: "Joining room…",
-                subtitle: format!("Room {}", state.room_code()),
+                subtitle: "Connecting to room",
                 if slow() {
                     p { class: "lobby-waiting",
                         "Still connecting… this is taking longer than usual."

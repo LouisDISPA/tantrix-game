@@ -27,6 +27,7 @@ impl ConnectionStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Store)]
 pub struct OnlineState {
+    pub game_id: String,
     pub room_code: String,
     pub my_peer_id: Option<PeerId>,
     pub phase: OnlinePhase,
@@ -37,9 +38,10 @@ pub struct OnlineState {
 }
 
 impl OnlineState {
-    pub fn new(room_code: String) -> Self {
+    pub fn new(game_id: String) -> Self {
         Self {
-            room_code,
+            game_id,
+            room_code: String::new(),
             my_peer_id: None,
             phase: OnlinePhase::Connecting,
             connection: ConnectionStatus::Connecting,

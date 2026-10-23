@@ -108,7 +108,7 @@ mod tests {
         let https = session_key("https://example.com").unwrap();
         assert_eq!(
             https,
-            session_key("wss://example.com/room/ABCDEF?create=1").unwrap()
+            session_key("wss://example.com/room/01234567-89ab-4def-8123-456789abcdef").unwrap()
         );
         assert_ne!(https, session_key("https://other.example.com").unwrap());
         assert_ne!(https, session_key("https://example.com:8443").unwrap());

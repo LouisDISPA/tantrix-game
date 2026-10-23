@@ -8,7 +8,7 @@ Chromium tests run against native Axum (CI, in-memory SQLite) or the Worker.
 | `forced-after-free-move` | Four seeded placements: forced fill keeps the turn |
 | `tile-drag` | Commit on release under production script policy; reject invalid drop |
 | `mobile-play` | Tap selection, End Game confirmation, touch drag, pan, pinch |
-| `online` | Two sessions synchronize, reload/resume and finish; rejected-action feedback; missing-room error |
+| `online` | Two sessions synchronize, reload/resume and finish; rejected-action feedback; missing-room error; server-assigned code and permanent game URL |
 | `online-recovery` | Socket interruption, snapshot synchronization, bounded retries, seat loss, results, second-tab takeover, silent transport and background suspension; phone/desktop and both themes |
 | `startup` | Direct visits to home, online and download hydrate, dismiss the loader and enable content without browser errors |
 

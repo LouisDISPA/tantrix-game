@@ -21,7 +21,6 @@ pub fn spawn_session(
     mut sender: Signal<Option<CommandSender>>,
     generation: Signal<u32>,
     url: String,
-    create: bool,
     nickname: String,
 ) -> Task {
     spawn(async move {
@@ -62,11 +61,7 @@ pub fn spawn_session(
             } else {
                 now() + 20_000
             };
-            let attempt_url = if create && !recovering {
-                format!("{url}?create=1")
-            } else {
-                url.clone()
-            };
+            let attempt_url = url.clone();
             if let Some(since) = run_attempt(
                 store,
                 sender,
@@ -217,6 +212,12 @@ fn events_closed(store: Store<OnlineState>) {
 /// subscribers it actually changes. Unrelated UI stays asleep.
 fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
     match event {
+        SessionEvent::RoomInfo(room) => {
+            store.game_id().set(room.id);
+            store
+                .room_code()
+                .set(room.code.unwrap_or_else(|| "No join code".into()));
+        }
         SessionEvent::Connected { my_peer_id } => {
             store.my_peer_id().set(Some(my_peer_id));
         }
@@ -304,7 +305,11 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
             // error must not be mistaken for why the socket closed.
             let last_error = store.last_error().read().clone();
             let failure = match last_error {
-                Some(code @ (RejectCode::RoomNotFound | RejectCode::RoomFull)) => {
+                Some(
+                    code @ (RejectCode::RoomNotFound
+                    | RejectCode::RoomExpired
+                    | RejectCode::RoomFull),
+                ) => {
                     store.last_error().set(None);
                     FailureReason::Rejected(code)
                 }
@@ -457,7 +462,8 @@ mod tests {
         assert_eq!(
             state,
             OnlineState {
-                room_code: "ABCDEF".to_string(),
+                game_id: "ABCDEF".to_string(),
+                room_code: String::new(),
                 my_peer_id: Some(me()),
                 phase: OnlinePhase::Lobby {
                     lobby: lobby(&["Ann"])
@@ -703,5 +709,19 @@ mod tests {
             after_closing([SessionEvent::ConnectTimeout]),
             failed(FailureReason::Timeout)
         );
+    }
+    #[test]
+    fn invitation_updates_keep_the_permanent_game_and_current_phase() {
+        let state = after([
+            SessionEvent::RoomInfo(tantrix_proto::RoomReference {
+                id: "ABCDEF".into(),
+                code: Some("BCDEFG".into()),
+            }),
+            welcome(),
+            SessionEvent::Lobby(lobby(&["Ann"])),
+        ]);
+        assert_eq!(state.game_id, "ABCDEF");
+        assert_eq!(state.room_code, "BCDEFG");
+        assert!(matches!(state.phase, OnlinePhase::Lobby { .. }));
     }
 }

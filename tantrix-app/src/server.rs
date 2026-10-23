@@ -7,14 +7,17 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{ws::WebSocketUpgrade, Extension, Path, RawQuery, State};
-use axum::http::{header, HeaderMap, HeaderValue, Request, StatusCode};
+use axum::extract::{ws::WebSocketUpgrade, Extension, Path, State};
+use axum::http::{header, HeaderValue, Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{Html, IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
+use axum::Json;
 use axum::Router;
 use dioxus::server::{DioxusRouterExt, FullstackState, ServeConfig};
+use tantrix_proto::{is_game_id, CreateRoom, RoomApiError};
 use tantrix_room::handshake::{self, Refusal};
+use tantrix_room::lifecycle;
 use tantrix_room::session_cookie::{self, SessionToken};
 #[cfg(not(debug_assertions))]
 use tower_http::compression::CompressionLayer;
@@ -78,8 +81,21 @@ pub fn run() {
                 .ok()
                 .map(|origin| origin.trim_end_matches('/').to_owned()),
         });
+        let cleanup_state = state.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                if let Err(error) = cleanup_state.rooms.cleanup(room::now_ms()).await {
+                    log::error!("room cleanup failed: {error}");
+                }
+            }
+        });
         let router = Router::new()
-            .route("/room/{code}", get(room_socket))
+            .route("/room/{id}", get(room_socket))
+            .route("/api/rooms", post(create_room))
+            .route("/api/rooms/code/{code}", get(resolve_room))
+            .route("/api/rooms/{id}", get(room_reference))
             .route("/health", get(|| async { "OK" }))
             .route(
                 tantrix_proto::ONLINE_VERSION_PATH,
@@ -147,38 +163,70 @@ async fn session_cookie_layer(
     response
 }
 
+fn api_error(error: RoomApiError) -> Response {
+    (
+        StatusCode::from_u16(error.status()).unwrap(),
+        [("cache-control", "no-store")],
+        Json(error),
+    )
+        .into_response()
+}
+
+fn api_result(result: Result<tantrix_proto::RoomReference, RoomApiError>) -> Response {
+    match result {
+        Ok(reference) => ([("cache-control", "no-store")], Json(reference)).into_response(),
+        Err(error) => api_error(error),
+    }
+}
+
+async fn create_room(
+    State(state): State<Arc<ServerState>>,
+    Extension(token): Extension<SessionToken>,
+    Json(request): Json<CreateRoom>,
+) -> Response {
+    if !is_game_id(&request.request_id) {
+        return api_error(RoomApiError::InvalidRequest);
+    }
+    let id = lifecycle::game_id(&token, &request.request_id);
+    api_result(state.rooms.create(&id, room::now_ms()).await)
+}
+
+async fn resolve_room(State(state): State<Arc<ServerState>>, Path(code): Path<String>) -> Response {
+    if !tantrix_proto::is_room_code(&code) {
+        return api_error(RoomApiError::InvalidRequest);
+    }
+    api_result(state.rooms.resolve(&code, room::now_ms()).await)
+}
+
+async fn room_reference(State(state): State<Arc<ServerState>>, Path(id): Path<String>) -> Response {
+    if !is_game_id(&id) {
+        return api_error(RoomApiError::InvalidRequest);
+    }
+    api_result(state.rooms.reference(&id, room::now_ms(), true).await)
+}
+
 async fn room_socket(
     State(state): State<Arc<ServerState>>,
     Path(code): Path<String>,
-    RawQuery(query): RawQuery,
     Extension(token): Extension<SessionToken>,
-    headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    let expected_origin = state.public_origin.clone().or_else(|| {
-        headers
-            .get(header::HOST)
-            .and_then(|value| value.to_str().ok())
-            .map(|host| format!("http://{host}"))
-    });
-    // An Origin that isn't text matches no site.
-    let origin = headers
-        .get(header::ORIGIN)
-        .map(|origin| origin.to_str().unwrap_or_default());
-    if let Err(refusal) = handshake::check(&code, origin, expected_origin.as_deref()) {
+    if let Err(refusal) = handshake::check(&code) {
         return refuse(refusal);
     }
 
-    match state
-        .rooms
-        .open(&code, handshake::wants_create(query.as_deref()))
-        .await
-    {
-        Ok(room::OpenRoom::Ready(handle)) => {
-            upgrade.on_upgrade(move |socket| room::socket_session(socket, handle, token))
-        }
+    match state.rooms.open(&code).await {
+        Ok(room::OpenRoom::Ready(handle)) => match handle.inspect(room::now_ms(), true).await {
+            Ok(_) => upgrade.on_upgrade(move |socket| room::socket_session(socket, handle, token)),
+            Err(RoomApiError::Expired) => upgrade.on_upgrade(|socket| {
+                room::rejected_room(socket, tantrix_proto::RejectCode::RoomExpired)
+            }),
+            Err(error) => api_error(error),
+        },
         Ok(room::OpenRoom::Missing) => upgrade.on_upgrade(room::missing_room),
-        Ok(room::OpenRoom::Collision) => refuse(Refusal::CodeTaken),
+        Ok(room::OpenRoom::Expired) => upgrade.on_upgrade(|socket| {
+            room::rejected_room(socket, tantrix_proto::RejectCode::RoomExpired)
+        }),
         Err(error) => {
             log::error!("failed to open room {code}: {error}");
             refuse(Refusal::StorageUnavailable)
@@ -230,7 +278,12 @@ mod tests {
             assert_eq!(&body[..], include_bytes!("../public/404.html"));
         }
 
-        for path in ["/", "/game?seed=123", "/online/ABCDEF", "/join/ABCDEF"] {
+        for path in [
+            "/",
+            "/game?seed=123",
+            "/online/game/01234567-89ab-4def-8123-456789abcdef",
+            "/join/ABCDEF",
+        ] {
             let response = render_page(
                 State(state.clone()),
                 Request::builder().uri(path).body(Body::empty()).unwrap(),
@@ -242,5 +295,88 @@ mod tests {
                 .unwrap()
                 .contains("SSR route reached"));
         }
+    }
+    async fn read_room(response: Response) -> tantrix_proto::RoomReference {
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn http_creation_retries_are_scoped_to_the_player_and_resolve_to_one_game() {
+        let state = Arc::new(ServerState {
+            rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
+            public_origin: Some("https://example.com".into()),
+        });
+        let request = CreateRoom {
+            request_id: "01234567-89ab-4def-8123-456789abcdef".into(),
+        };
+        let token = SessionToken::new("player-one-123456");
+        let (a, b) = tokio::join!(
+            create_room(
+                State(state.clone()),
+                Extension(token.clone()),
+                Json(request.clone())
+            ),
+            create_room(
+                State(state.clone()),
+                Extension(token),
+                Json(request.clone())
+            ),
+        );
+        let a = read_room(a).await;
+        assert_eq!(a, read_room(b).await);
+        let code = a.code.clone().unwrap();
+        assert_eq!(
+            read_room(resolve_room(State(state.clone()), Path(code)).await).await,
+            a
+        );
+        let other = read_room(
+            create_room(
+                State(state.clone()),
+                Extension(SessionToken::new("player-two-123456")),
+                Json(request),
+            )
+            .await,
+        )
+        .await;
+        assert_ne!(a.id, other.id);
+        assert_ne!(a.code, other.code);
+        let reference =
+            read_room(room_reference(State(state.clone()), Path(a.id.clone())).await).await;
+        assert_eq!(reference, a);
+        let missing = room_reference(
+            State(state),
+            Path("00000000-0000-4000-8000-000000000000".into()),
+        )
+        .await;
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn invalid_creation_requests_cannot_allocate_rooms() {
+        let state = Arc::new(ServerState {
+            rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
+            public_origin: Some("https://example.com".into()),
+        });
+        let token = SessionToken::new("player-one-123456");
+        assert_eq!(
+            create_room(
+                State(state.clone()),
+                Extension(token),
+                Json(CreateRoom {
+                    request_id: "ABCDEF".into()
+                })
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            resolve_room(State(state), Path("bad".into()))
+                .await
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
     }
 }

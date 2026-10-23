@@ -52,7 +52,7 @@ pub fn OnlineLobbyView(
         let last = last.read();
         last.as_ref().map(reject_message)
     });
-    let share_url = use_memo(move || share_link(&state.room_code().read()));
+    let share_url = use_memo(move || share_link(&state.game_id().read()));
     let waiting = use_memo(move || {
         let phase = state.phase();
         let phase = phase.read();

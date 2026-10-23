@@ -1,7 +1,7 @@
 // The Rust module provides both server rendering and the authoritative room.
-import SsrEntrypoint, { Room } from "../build/ssr/index.js";
+import SsrEntrypoint, { Room, RoomCodes } from "../build/ssr/index.js";
 
-export { Room };
+export { Room, RoomCodes };
 
 const SITE_ORIGIN = "https://tantrix.louis-dispa.fr";
 const PUBLIC_PAGES = ["/", "/learn", "/about", "/online"];
@@ -55,18 +55,6 @@ export default {
       return withSecurityHeaders(new Response("OK"), url);
     }
 
-    if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
-      // The alphabet of `tantrix_proto::ROOM_CODE_ALPHABET`. Only valid codes
-      // get an object; the Room object checks again with the same Rust
-      // function as the native server (`tantrix_room::handshake::check`).
-      const match = url.pathname.match(/^\/room\/([ABCDEFGHJKLMNPRSTUVWXYZ]{6})$/);
-      if (!match) {
-        return withSecurityHeaders(new Response("invalid room code", { status: 400 }), url);
-      }
-      const response = await env.ROOM.getByName(match[1]).fetch(request);
-      return response.status === 101 ? response : withSecurityHeaders(response, url);
-    }
-
     if (url.pathname === "/robots.txt") {
       return withSecurityHeaders(
         new Response(`User-agent: *\nAllow: /\nSitemap: ${SITE_ORIGIN}/sitemap.xml\n`, {
@@ -94,7 +82,8 @@ export default {
     }
 
     try {
-      return withSecurityHeaders(await new SsrEntrypoint(ctx, env).fetch(request), url);
+      const response = await new SsrEntrypoint(ctx, env).fetch(request);
+      return response.status === 101 ? response : withSecurityHeaders(response, url);
     } catch (error) {
       console.error(JSON.stringify({ message: "SSR failed", path: url.pathname, error: String(error) }));
       return withSecurityHeaders(new Response("Internal Server Error", { status: 500 }), url);

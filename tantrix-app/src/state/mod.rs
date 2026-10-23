@@ -15,6 +15,7 @@ pub mod online_compatibility;
 pub mod online_state;
 #[cfg(any(feature = "android", not(any(feature = "desktop", feature = "native"))))]
 pub mod releases;
+pub mod room_api;
 pub mod room_connection;
 pub mod server_endpoints;
 #[cfg(any(feature = "desktop", feature = "android"))]

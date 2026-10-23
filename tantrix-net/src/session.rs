@@ -47,12 +47,17 @@ impl SessionCommand {
 /// Events the session emits for the UI to render.
 #[derive(Debug, Clone)]
 pub enum SessionEvent {
+    RoomInfo(tantrix_proto::RoomReference),
     /// The server accepted our Hello and assigned a public participant id.
-    Connected { my_peer_id: PeerId },
+    Connected {
+        my_peer_id: PeerId,
+    },
     /// Lobby state changed.
     Lobby(LobbyState),
     /// Lobby → game transition.
-    GameStarted { snapshot: GameSnapshot },
+    GameStarted {
+        snapshot: GameSnapshot,
+    },
     /// New authoritative state after a move was applied.
     StateUpdate {
         snapshot: GameSnapshot,
@@ -71,7 +76,9 @@ pub enum SessionEvent {
     /// Connecting did not finish in time. The UI should offer a retry.
     ConnectTimeout,
     /// Fatal transport error. The session task has exited.
-    Disconnected { reason: String },
+    Disconnected {
+        reason: String,
+    },
     /// Another tab deliberately replaced this socket. Never retry automatically.
     OpenedElsewhere,
 }
@@ -91,6 +98,7 @@ impl SessionEvent {
 #[cfg(any(target_arch = "wasm32", feature = "native", test))]
 pub(crate) fn incoming_events(message: HostMessage) -> Vec<SessionEvent> {
     match message {
+        HostMessage::RoomInfo { room } => vec![SessionEvent::RoomInfo(room)],
         HostMessage::Welcome {
             rejected: Some(code),
             ..

@@ -57,7 +57,7 @@ Paths below are relative to `tantrix-app/src/`.
 | Path | Responsibility |
 | --- | --- |
 | `lib.rs`, `main.rs` | App root/styles/router; platform entry |
-| `route.rs` | `/`, `/learn`, `/about`, `/game?seed=N`, `/online`, `/online/:code`, `/join/:code`, fallback; `/download` except desktop/native |
+| `route.rs` | `/`, `/learn`, `/about`, `/game?seed=N`, `/online`, `/online/game/:id`, `/join/:code`, fallback; `/download` except desktop/native |
 | `state/` | Data/actions, no RSX: game/UI state, driver, AI, gestures/drag, online sessions, downloads, desktop settings/updates |
 | `hooks/` | Context providers, camera, derived game/phase/scoring values, online snapshots, downloads/updates |
 | `pages/game/` | Shared local/online HUD, hands, drag overlay, results; render-count tests |

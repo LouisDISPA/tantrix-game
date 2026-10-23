@@ -109,7 +109,8 @@ test('two players join, synchronize moves, resume after reload and see results',
     await openApp(page, '/online');
     await page.getByRole('button', { name: 'Create a room' }).click();
     await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible();
-    const code = new URL(page.url()).pathname.split('/').at(-1)!;
+    const code = (await page.locator('.lobby-room-code').textContent())!.trim();
+    expect(new URL(page.url()).pathname).toMatch(/^\/online\/game\/[a-f0-9-]{36}$/);
     expect(code).toMatch(/^[A-Z]{6}$/);
     await openApp(guest, '/online');
     await guest.getByLabel('Join code').fill(code);
@@ -156,8 +157,27 @@ test('two players join, synchronize moves, resume after reload and see results',
 test('joining a missing room shows an error and returns to the online menu', async ({ page }) => {
   const alphabet = 'ABCDEFGHJKLMNPRSTUVWXYZ';
   const code = Array.from({ length: 6 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
-  await openApp(page, `/online/${code}`);
+  await openApp(page, `/join/${code}`);
   await expect(page.getByText(/Room not found/i)).toBeVisible();
   await page.getByRole('button', { name: 'Back to online menu' }).click();
   await expect(page.getByRole('button', { name: 'Create a room' })).toBeVisible();
+});
+
+
+test('a lost creation response can be retried after reload without creating another room', async ({ page }) => {
+  const createdIds: string[] = [];
+  await page.route('**/api/rooms', async route => {
+    const response = await route.fetch();
+    createdIds.push((await response.json()).id);
+    if (createdIds.length === 1) await route.abort();
+    else await route.fulfill({ response });
+  });
+  await openApp(page, '/online');
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await expect(page.getByRole('alert')).toContainText("Couldn't reach the game server");
+  await page.reload();
+  await page.getByRole('button', { name: 'Create a room' }).click();
+  await expect(page.getByRole('heading', { name: 'LOBBY' })).toBeVisible();
+  expect(createdIds).toHaveLength(2);
+  expect(createdIds[1]).toBe(createdIds[0]);
 });

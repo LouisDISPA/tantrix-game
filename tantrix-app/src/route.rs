@@ -29,8 +29,8 @@ pub enum Route {
     LocalGame { seed: Option<u64> },
     #[route("/online")]
     OnlineEntry {},
-    #[route("/online/:code")]
-    OnlineRoom { code: String },
+    #[route("/online/game/:id")]
+    OnlineRoom { id: String },
     #[route("/join/:code")]
     JoinRoom { code: String },
     #[route("/:..path")]

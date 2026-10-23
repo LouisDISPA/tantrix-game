@@ -9,8 +9,11 @@ use std::sync::{Arc, Weak};
 
 use axum::extract::ws::{close_code, CloseFrame, Message, WebSocket};
 use futures::{SinkExt, StreamExt};
-use tantrix_proto::{RejectCode, KEEPALIVE_PING, KEEPALIVE_PONG};
+use tantrix_proto::{
+    HostMessage, RejectCode, RoomApiError, RoomReference, KEEPALIVE_PING, KEEPALIVE_PONG,
+};
 use tantrix_room::engine::{self, ConnId, Effect, RoomEngine, RoomHost};
+use tantrix_room::lifecycle::{self, RoomRecord};
 use tantrix_room::room_logic::RoomData;
 use tantrix_room::session_cookie::SessionToken;
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
@@ -31,7 +34,14 @@ pub struct RoomManager {
 pub enum OpenRoom {
     Ready(Arc<RoomHandle>),
     Missing,
-    Collision,
+    Expired,
+}
+
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 impl RoomManager {
@@ -42,46 +52,64 @@ impl RoomManager {
         }
     }
 
-    pub async fn open(&self, code: &str, create: bool) -> StoreResult<OpenRoom> {
-        let mut rooms = self.rooms.lock().await;
-        rooms.retain(|_, handle| handle.strong_count() > 0);
-        if let Some(handle) = rooms.get(code).and_then(Weak::upgrade) {
-            if !handle.tx.is_closed() {
-                return Ok(if create {
-                    OpenRoom::Collision
-                } else {
-                    OpenRoom::Ready(handle)
-                });
+    pub async fn create(&self, id: &str, now: u64) -> Result<RoomReference, RoomApiError> {
+        super::store::unavailable(self.store.insert(id, now).await)?;
+        self.reference(id, now, true).await
+    }
+
+    pub async fn reference(
+        &self,
+        id: &str,
+        now: u64,
+        allocate: bool,
+    ) -> Result<RoomReference, RoomApiError> {
+        match super::store::unavailable(self.open(id).await)? {
+            OpenRoom::Ready(handle) => handle.inspect(now, allocate).await,
+            OpenRoom::Missing => Err(RoomApiError::NotFound),
+            OpenRoom::Expired => Err(RoomApiError::Expired),
+        }
+    }
+
+    pub async fn resolve(&self, code: &str, now: u64) -> Result<RoomReference, RoomApiError> {
+        let id = super::store::unavailable(self.store.find_code(code).await)?
+            .ok_or(RoomApiError::NotFound)?;
+        let reference = self.reference(&id, now, false).await?;
+        if reference.code.as_deref() != Some(code) {
+            return Err(RoomApiError::NotFound);
+        }
+        Ok(reference)
+    }
+
+    pub async fn cleanup(&self, now: u64) -> StoreResult<()> {
+        for id in self.store.due(now).await? {
+            match self.reference(&id, now, false).await {
+                Ok(_) | Err(RoomApiError::Expired | RoomApiError::NotFound) => {}
+                Err(error) => return Err(error.into()),
             }
         }
+        Ok(())
+    }
 
-        let room = if create {
-            if !self.store.create(code).await? {
-                return Ok(OpenRoom::Collision);
+    pub async fn open(&self, id: &str) -> StoreResult<OpenRoom> {
+        let mut rooms = self.rooms.lock().await;
+        rooms.retain(|_, handle| handle.strong_count() > 0);
+        if let Some(handle) = rooms.get(id).and_then(Weak::upgrade) {
+            if !handle.tx.is_closed() {
+                return Ok(OpenRoom::Ready(handle));
             }
-            RoomData::default()
-        } else {
-            let Some(room) = self.store.load(code).await? else {
-                return Ok(OpenRoom::Missing);
-            };
-            room
+        }
+        let Some(mut record) = self.store.load(id).await? else {
+            return Ok(OpenRoom::Missing);
         };
-
-        // A process restart lost every socket: no actor holds this room.
-        let mut engine = RoomEngine::new(room, []);
-        let mut sockets = HashMap::new();
-        let mut host = Host {
-            code,
-            store: &self.store,
-            sockets: &mut sockets,
+        let Some(room) = record.room.clone() else {
+            lifecycle::cleanup(&mut record, &mut self.store.clone(), now_ms()).await?;
+            return Ok(OpenRoom::Expired);
         };
-        let loaded = engine.on_load();
-        engine.run(&mut host, loaded).await?;
-
+        let engine = RoomEngine::new(room, []);
         let (tx, rx) = mpsc::channel(COMMAND_CAPACITY);
         let handle = Arc::new(RoomHandle { tx });
-        rooms.insert(code.to_owned(), Arc::downgrade(&handle));
-        tokio::spawn(RoomActor::new(code.to_owned(), engine, self.store.clone()).run(rx));
+        rooms.insert(id.to_owned(), Arc::downgrade(&handle));
+        tokio::spawn(RoomActor::new(record, engine, self.store.clone()).run(rx));
         Ok(OpenRoom::Ready(handle))
     }
 }
@@ -91,6 +119,22 @@ pub struct RoomHandle {
 }
 
 impl RoomHandle {
+    pub async fn inspect(&self, now: u64, allocate: bool) -> Result<RoomReference, RoomApiError> {
+        let (reply, answer) = oneshot::channel();
+        if !self
+            .send(RoomCommand::Inspect {
+                now,
+                allocate,
+                reply,
+            })
+            .await
+        {
+            return Err(RoomApiError::StorageUnavailable);
+        }
+        answer
+            .await
+            .unwrap_or(Err(RoomApiError::StorageUnavailable))
+    }
     async fn send(&self, command: RoomCommand) -> bool {
         self.tx.send(command).await.is_ok()
     }
@@ -98,6 +142,11 @@ impl RoomHandle {
 
 /// One socket event, in the order its socket task saw it.
 enum RoomCommand {
+    Inspect {
+        now: u64,
+        allocate: bool,
+        reply: oneshot::Sender<Result<RoomReference, RoomApiError>>,
+    },
     Open {
         conn: ConnId,
         token: SessionToken,
@@ -125,24 +174,85 @@ struct Socket {
 }
 
 struct RoomActor {
-    code: String,
+    record: RoomRecord,
     engine: RoomEngine,
     sockets: HashMap<ConnId, Socket>,
     store: RoomStore,
 }
 
 impl RoomActor {
-    fn new(code: String, engine: RoomEngine, store: RoomStore) -> Self {
+    fn new(record: RoomRecord, engine: RoomEngine, store: RoomStore) -> Self {
         Self {
-            code,
+            record,
             engine,
             sockets: HashMap::new(),
             store,
         }
     }
 
+    fn host(&mut self) -> Host<'_> {
+        Host {
+            record: &mut self.record,
+            store: &self.store,
+            sockets: &mut self.sockets,
+        }
+    }
+
     async fn run(mut self, mut commands: mpsc::Receiver<RoomCommand>) {
+        // A native restart loses all sockets, but does not reset an existing
+        // inactivity deadline. A previously connected room gets a fresh deadline.
+        self.record.observe_connections(false, now_ms());
+        let loaded = self.engine.on_load();
+        let mut host = Host {
+            record: &mut self.record,
+            store: &self.store,
+            sockets: &mut self.sockets,
+        };
+        if self.engine.run(&mut host, loaded).await.is_err() {
+            return;
+        }
+        if self.store.save_record(&self.record).await.is_err() {
+            return;
+        }
         while let Some(command) = commands.recv().await {
+            if let RoomCommand::Inspect {
+                now,
+                allocate,
+                reply,
+            } = command
+            {
+                self.record
+                    .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now);
+                let result = async {
+                    lifecycle::cleanup(&mut self.record, &mut self.store, now).await?;
+                    self.record.reference()?;
+                    if allocate {
+                        if self.record.invitation.is_none() && self.record.vacant_since.is_some() {
+                            self.record.vacant_since = Some(now);
+                        }
+                        match lifecycle::allocate(
+                            &mut self.record,
+                            &mut self.store,
+                            lifecycle::new_invitation,
+                        )
+                        .await
+                        {
+                            Err(RoomApiError::AllocationBusy)
+                                if self.engine.room().game.is_some() => {}
+                            result => result?,
+                        }
+                    }
+                    self.record.reference()
+                }
+                .await;
+                let stop = matches!(result, Err(RoomApiError::StorageUnavailable))
+                    || self.record.room.is_none();
+                let _ = reply.send(result);
+                if stop {
+                    break;
+                }
+                continue;
+            }
             let mut done = None;
             let step = match command {
                 RoomCommand::Open {
@@ -150,6 +260,11 @@ impl RoomActor {
                     token,
                     socket,
                 } => {
+                    if let Ok(room) = self.record.reference() {
+                        let _ = socket
+                            .outgoing
+                            .try_send(wire_message(&HostMessage::RoomInfo { room }));
+                    }
                     self.sockets.insert(conn, socket);
                     self.engine.on_open(conn, token)
                 }
@@ -160,20 +275,24 @@ impl RoomActor {
                     done = Some(ack);
                     self.engine.on_close(conn)
                 }
+                RoomCommand::Inspect { .. } => unreachable!(),
             };
             let mut host = Host {
-                code: &self.code,
+                record: &mut self.record,
                 store: &self.store,
                 sockets: &mut self.sockets,
             };
             let result = self.engine.run(&mut host, step).await;
+            self.record
+                .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now_ms());
+            let saved = self.store.save_record(&self.record).await;
             if let Some(done) = done {
                 let _ = done.send(());
             }
-            if let Err(error) = result {
-                // The engine told every socket; the next visitor reloads
-                // the room from storage in a new actor.
-                log::error!("room {} stopped after storage error: {error}", self.code);
+            if let Err(error) = result.and(saved) {
+                log::error!("room stopped after storage error: {error}");
+                let conns: Vec<_> = self.sockets.keys().copied().collect();
+                self.host().deliver(engine::storage_unavailable(conns));
                 break;
             }
         }
@@ -182,7 +301,7 @@ impl RoomActor {
 
 /// The actor's I/O for the engine: SQLite and the socket tasks' queues.
 struct Host<'a> {
-    code: &'a str,
+    record: &'a mut RoomRecord,
     store: &'a RoomStore,
     sockets: &'a mut HashMap<ConnId, Socket>,
 }
@@ -191,7 +310,8 @@ impl RoomHost for Host<'_> {
     type Error = StoreError;
 
     fn save(&mut self, room: &RoomData) -> impl Future<Output = StoreResult<()>> {
-        self.store.save(self.code, room)
+        self.record.room = Some(room.clone());
+        self.store.save_record(self.record)
     }
 
     fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
@@ -252,8 +372,12 @@ fn close_frame(reason: &str) -> Message {
 }
 
 /// Answer a socket for a code with no room, then close it.
-pub async fn missing_room(mut socket: WebSocket) {
-    let message = engine::rejected_welcome(RejectCode::RoomNotFound);
+pub async fn missing_room(socket: WebSocket) {
+    rejected_room(socket, RejectCode::RoomNotFound).await;
+}
+
+pub async fn rejected_room(mut socket: WebSocket, code: RejectCode) {
+    let message = engine::rejected_welcome(code);
     let _ = socket.send(wire_message(&message)).await;
     let _ = socket.send(close_frame("")).await;
 }
@@ -335,7 +459,15 @@ mod tests {
     async fn a_room_reloads_its_seat_after_the_actor_stops() {
         let store = RoomStore::open(":memory:").unwrap();
         let manager = RoomManager::new(store.clone());
-        let OpenRoom::Ready(handle) = manager.open("ABCDEF", true).await.unwrap() else {
+        manager
+            .create("01234567-89ab-4def-8123-456789abcdef", now_ms())
+            .await
+            .unwrap();
+        let OpenRoom::Ready(handle) = manager
+            .open("01234567-89ab-4def-8123-456789abcdef")
+            .await
+            .unwrap()
+        else {
             panic!("room should be created");
         };
         let token = SessionToken::new("returning-player-123456");
@@ -367,7 +499,11 @@ mod tests {
         drop(manager);
 
         let restarted = RoomManager::new(store);
-        let OpenRoom::Ready(handle) = restarted.open("ABCDEF", false).await.unwrap() else {
+        let OpenRoom::Ready(handle) = restarted
+            .open("01234567-89ab-4def-8123-456789abcdef")
+            .await
+            .unwrap()
+        else {
             panic!("room should be restored");
         };
         let conn = ConnId(2);
@@ -385,6 +521,7 @@ mod tests {
             nickname: "Ignored on reconnect".into(),
         });
         assert!(handle.send(RoomCommand::Text { conn, text: hello }).await);
+        let _info = messages.recv().await;
         let Some(Message::Text(message)) = messages.recv().await else {
             panic!("expected welcome");
         };
@@ -392,5 +529,62 @@ mod tests {
             panic!("expected welcome");
         };
         assert_eq!(lobby.seats[Color::Red].as_ref().unwrap().nickname, "Player");
+    }
+    #[tokio::test]
+    async fn cleanup_preserves_saved_games_and_resume_renews_the_invitation_deadline() {
+        use tantrix_game::{Game, Player};
+        use tantrix_room::lifecycle::IDLE_TTL_MS;
+        let store = RoomStore::open(":memory:").unwrap();
+        let manager = RoomManager::new(store.clone());
+        let id = "01234567-89ab-4def-8123-456789abcdef";
+        let original = manager.create(id, 0).await.unwrap();
+        let mut record = store.load(id).await.unwrap().unwrap();
+        let game = Game::new_seeded(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            42,
+        )
+        .unwrap();
+        record.room.as_mut().unwrap().game = Some(game.to_data());
+        let before = serde_json::to_value(record.room.as_ref().unwrap()).unwrap();
+        store.save_record(&record).await.unwrap();
+        manager.cleanup(IDLE_TTL_MS).await.unwrap();
+        assert!(store
+            .find_code(original.code.as_deref().unwrap())
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            serde_json::to_value(store.load(id).await.unwrap().unwrap().room.unwrap()).unwrap(),
+            before
+        );
+        let resumed = manager.reference(id, IDLE_TTL_MS + 1, true).await.unwrap();
+        assert_eq!(resumed.id, original.id);
+        assert!(resumed.code.is_some());
+        let record = store.load(id).await.unwrap().unwrap();
+        assert_eq!(record.deadline(), Some(2 * IDLE_TTL_MS + 1));
+        assert_eq!(serde_json::to_value(record.room.unwrap()).unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn abandoned_creation_expires_and_an_old_retry_does_not_revive_it() {
+        use tantrix_room::lifecycle::IDLE_TTL_MS;
+        let store = RoomStore::open(":memory:").unwrap();
+        let manager = RoomManager::new(store);
+        let id = "01234567-89ab-4def-8123-456789abcdef";
+        let room = manager.create(id, 0).await.unwrap();
+        manager.cleanup(IDLE_TTL_MS).await.unwrap();
+        assert_eq!(
+            manager.create(id, IDLE_TTL_MS + 1).await,
+            Err(RoomApiError::Expired)
+        );
+        assert_eq!(
+            manager
+                .resolve(room.code.as_deref().unwrap(), IDLE_TTL_MS + 1)
+                .await,
+            Err(RoomApiError::NotFound)
+        );
     }
 }

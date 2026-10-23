@@ -5,5 +5,6 @@
 
 pub mod engine;
 pub mod handshake;
+pub mod lifecycle;
 pub mod room_logic;
 pub mod session_cookie;

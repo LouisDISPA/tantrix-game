@@ -35,33 +35,23 @@ pub fn server_origin() -> String {
 }
 
 /// `server` is the HTTP(S) origin used by the compatibility check and invites.
-pub fn room_url(server: &str, room_code: &str, create: bool) -> String {
-    let server = server.trim_end_matches('/');
-    let socket_origin = server.replacen("http", "ws", 1);
-    let query = if create { "?create=1" } else { "" };
-    format!("{socket_origin}/room/{room_code}{query}")
+pub fn room_url(server: &str, game_id: &str) -> String {
+    let socket_origin = server.trim_end_matches('/').replacen("http", "ws", 1);
+    format!("{socket_origin}/room/{game_id}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
-    fn room_endpoints_keep_the_origin_and_creation_intent() {
-        for (origin, socket_origin) in [
-            ("http://localhost:8080", "ws://localhost:8080"),
-            ("https://example.com/", "wss://example.com"),
-            ("https://example.com:8443", "wss://example.com:8443"),
-            ("http://[::1]:8787", "ws://[::1]:8787"),
-        ] {
-            assert_eq!(
-                room_url(origin, "BCDEFG", false),
-                format!("{socket_origin}/room/BCDEFG")
-            );
-            assert_eq!(
-                room_url(origin, "BCDEFG", true),
-                format!("{socket_origin}/room/BCDEFG?create=1")
-            );
-        }
+    fn room_endpoints_use_the_permanent_id() {
+        assert_eq!(
+            room_url("https://example.com/", "game-id"),
+            "wss://example.com/room/game-id"
+        );
+        assert_eq!(
+            room_url("http://[::1]:8080", "game-id"),
+            "ws://[::1]:8080/room/game-id"
+        );
     }
 }

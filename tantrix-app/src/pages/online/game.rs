@@ -86,6 +86,7 @@ mod tests {
 
     fn online_game(snapshot: GameSnapshot) -> Element {
         let state = use_store(move || OnlineState {
+            game_id: "game".to_string(),
             room_code: "ABCDEF".to_string(),
             my_peer_id: None,
             phase: OnlinePhase::Playing {

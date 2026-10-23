@@ -7,8 +7,9 @@ browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.
 
 ## Player flow
 
-1. **Create a room** opens a lobby with a six-letter code. Share the code or
-   `/join/{CODE}` invite link.
+1. **Create a room** asks the server to allocate a lobby and six-letter code.
+   Share the code or the permanent `/online/game/{ID}` link. A typed code is
+   resolved once; the page and every reconnect then use the permanent ID.
 2. Any number of people can be in the lobby; the four colors are seats.
    Take a free seat, or **Release my seat** to leave it for someone else. The
    lobby lists who is waiting for a seat. Clicking a seat someone else holds
@@ -50,7 +51,7 @@ themes and leaving still work. Selections, drags and room confirmation dialogs
 close. Commands are never replayed on a replacement socket.
 
 Recovery joins the captured server and room with the existing session identity,
-never `create=1`. It tries up to three times after 1, 2 and 4 seconds. Each attempt
+using its permanent game ID. It tries up to three times after 1, 2 and 4 seconds. Each attempt
 has 20 seconds to receive a fresh snapshot, bounded by 60 seconds total from the
 first loss. Brief connections keep consuming that allowance; 30 seconds of stable
 connection renews it. **Retry** starts a new bounded cycle after exhaustion.
@@ -80,8 +81,8 @@ The native server saves rooms in `tantrix-rooms.sqlite3` in its working
 directory. Set `TANTRIX_ROOM_DB` to choose another file. It runs as one process;
 multiple replicas need shared room routing or coordination. For HTTPS behind a
 reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
-example `https://tantrix.example.com`) so cookie security and WebSocket origin
-checks use that origin.
+example `https://tantrix.example.com`) so session cookies use the Secure flag.
+Room endpoints do not validate the browser's Origin header.
 
 Rooms deal with the OS-seeded thread RNG and retain no seed. Saves retain
 the bag and history; snapshots expose neither. See
@@ -98,11 +99,40 @@ adapters provide sockets, keepalives and storage:
 | Keepalive | The socket task answers `ping` | The runtime auto-response, without waking the object |
 | Storage | SQLite (`store.rs`) | Durable Object storage |
 
-Before upgrading, both check the handshake with
-`tantrix_room::handshake::check` (a valid room code, and an `Origin` of our
-own site, else 400 / 403) and get the browser's identity with
-`session_cookie::identify`. `create=1` for a code with a room gets 409; a
-code with no room gets a rejected `Welcome` (`RoomNotFound`) and a close.
+Creation uses `POST /api/rooms` with a random request UUID. The server derives
+one permanent ID from the private session identity and that request, making
+retries safe after lost responses. The client retains pending requests per
+server across reloads. Codes are generated on the server with rejection sampling;
+allocation stops after ten collisions and returns a retryable 503.
+
+`GET /api/rooms/code/{CODE}` resolves an invitation. `GET /api/rooms/{ID}`
+gets the current reference; `WS /room/{ID}` joins that exact game. Both servers
+validate permanent IDs before accepting sockets. The
+socket sends `RoomInfo` with the current code, then the normal Hello/Welcome
+exchange. Missing games reject Welcome with `RoomNotFound`; expired lobbies
+use `RoomExpired` (HTTP APIs return 410).
+
+## Inactivity and persistence
+
+`tantrix_room::lifecycle` owns the shared policy and recoverable allocation steps.
+After 24 hours with no joined connection, an unstarted lobby drops its contents
+and retains an expired tombstone; started/finished games preserve their state,
+bag and history, and release only their short code. A later visit to a saved
+game allocates a fresh code when needed. Allocation failure does not prevent
+resuming a started game by its permanent link. Disconnected seats do not keep
+invitations alive; joined spectators do. Native restarts begin an inactivity
+period for rooms previously marked connected, while retaining existing deadlines.
+
+Native SQLite stores records and uniquely claimed codes in `online_games` and
+`online_codes`; a one-minute sweep cleans due records. The Worker keeps one Room
+object per permanent ID and one RoomCodes object per invitation code, with room
+alarms for cleanup. Hibernating socket attachments preserve joined presence.
+Access also checks expiry, so delayed cleanup never makes an expired code valid.
+Code reservations are persisted before being published, and releases compare
+both game ID and a unique claim nonce. Pending reservations and releases survive
+storage failures and are safe to repeat.
+
+This is a breaking storage/protocol change: old code-only rooms are not migrated.
 
 Events (`on_open`, `on_text`, `on_binary`, `on_close`) produce a `Step`: an
 optional room to persist and send/broadcast/close effects. Both adapters use

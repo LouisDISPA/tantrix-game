@@ -7,10 +7,15 @@ use tantrix_game::Color::{Blue, Red};
 use tantrix_net::{open_native_session, SessionCommand, SessionEvent, SessionHandle};
 
 async fn next_event(session: &mut SessionHandle) -> SessionEvent {
-    tokio::time::timeout(Duration::from_secs(10), session.events.next())
-        .await
-        .expect("server did not respond")
-        .expect("session ended")
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(10), session.events.next())
+            .await
+            .expect("server did not respond")
+            .expect("session ended");
+        if !matches!(event, SessionEvent::RoomInfo(_)) {
+            return event;
+        }
+    }
 }
 
 #[tokio::test]
@@ -32,7 +37,7 @@ async fn native_handshake_sends_cookie_and_commands_and_closes_on_leave() {
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut socket = accept_hdr_async(stream, |request: &Request, response: Response| {
-            assert_eq!(request.uri(), "/room/ABCDEF?create=1");
+            assert_eq!(request.uri(), "/room/01234567-89ab-4def-8123-456789abcdef");
             assert_eq!(
                 request.headers()["Cookie"],
                 "tantrix_session=0123456789abcdef"
@@ -72,7 +77,7 @@ async fn native_handshake_sends_cookie_and_commands_and_closes_on_leave() {
         ));
     });
     let (mut session, run) = open_native_session(
-        format!("ws://{address}/room/ABCDEF?create=1"),
+        format!("ws://{address}/room/01234567-89ab-4def-8123-456789abcdef"),
         "Desktop".into(),
         "tantrix_session=0123456789abcdef".into(),
     );
@@ -105,7 +110,7 @@ async fn a_server_that_never_finishes_the_upgrade_times_out() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (mut session, run) = open_native_session(
-        format!("ws://{address}/room/ABCDEF"),
+        format!("ws://{address}/room/01234567-89ab-4def-8123-456789abcdef"),
         "Desktop".into(),
         "tantrix_session=0123456789abcdef".into(),
     );
@@ -126,18 +131,26 @@ async fn a_server_that_never_finishes_the_upgrade_times_out() {
 #[ignore = "requires a running Tantrix room server"]
 async fn two_native_players_play_reconnect_and_end_a_game() {
     let server = std::env::var("TANTRIX_TEST_SERVER").expect("set TANTRIX_TEST_SERVER");
-    let code = tantrix_net::generate_room_code();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let host_cookie = format!("tantrix_session=desktop-host-{request_id}");
+    let guest_cookie = format!("tantrix_session=desktop-guest-{request_id}");
+    let response = reqwest::Client::new()
+        .post(format!("{}/api/rooms", server.trim_end_matches('/')))
+        .header("Cookie", &host_cookie)
+        .header("Content-Type", "application/json")
+        .body(format!(r#"{{"request_id":"{request_id}"}}"#))
+        .send()
+        .await
+        .unwrap();
+    let room: tantrix_proto::RoomReference =
+        serde_json::from_str(&response.text().await.unwrap()).unwrap();
     let base = format!(
-        "{}/room/{code}",
-        server.trim_end_matches('/').replacen("http", "ws", 1)
+        "{}/room/{}",
+        server.trim_end_matches('/').replacen("http", "ws", 1),
+        room.id
     );
-    let host_cookie = format!("tantrix_session=desktop-host-{code}");
-    let guest_cookie = format!("tantrix_session=desktop-guest-{code}");
-    let (mut host, host_run) = open_native_session(
-        format!("{base}?create=1"),
-        "Desktop host".into(),
-        host_cookie.clone(),
-    );
+    let (mut host, host_run) =
+        open_native_session(base.clone(), "Desktop host".into(), host_cookie.clone());
     let host_task = tokio::spawn(host_run);
     let host_id = match next_event(&mut host).await {
         SessionEvent::Connected { my_peer_id } => my_peer_id,
@@ -261,7 +274,7 @@ async fn a_missed_native_pong_times_out_once_after_suspension() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (mut session, run) = open_native_session(
-        format!("ws://{address}/room/ABCDEF"),
+        format!("ws://{address}/room/01234567-89ab-4def-8123-456789abcdef"),
         "Desktop".into(),
         "tantrix_session=test".into(),
     );
@@ -325,7 +338,7 @@ async fn native_takeover_is_a_typed_deliberate_stop() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (mut session, run) = open_native_session(
-        format!("ws://{address}/room/ABCDEF"),
+        format!("ws://{address}/room/01234567-89ab-4def-8123-456789abcdef"),
         "Desktop".into(),
         "tantrix_session=test".into(),
     );

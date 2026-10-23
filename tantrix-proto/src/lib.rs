@@ -14,12 +14,14 @@ use serde::{Deserialize, Serialize};
 use tantrix_game::{Board, Color, Hand, Move, Placement, TurnStep};
 
 pub mod room_code;
+pub mod rooms;
+pub use rooms::{is_game_id, CreateRoom, RoomApiError, RoomReference};
 
 pub use room_code::{is_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
 
 /// Online compatibility, independent of app releases. Bump this for breaking
 /// wire-format changes or changes to shared game rules (legal moves/scoring).
-pub const ONLINE_VERSION: u32 = 1;
+pub const ONLINE_VERSION: u32 = 2;
 pub const ONLINE_VERSION_PATH: &str = "/api/online-version";
 
 /// Keep this endpoint's shape stable so incompatible clients can read it.
@@ -139,6 +141,7 @@ pub enum RejectCode {
     InvalidMove,
     GameInProgress,
     RoomNotFound,
+    RoomExpired,
     /// The room already holds its maximum number of members.
     RoomFull,
 }
@@ -180,6 +183,8 @@ pub enum PeerMessage {
 /// The server's response or broadcast to one or all peers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HostMessage {
+    /// Permanent identity and the currently active invitation shortcut.
+    RoomInfo { room: RoomReference },
     /// Server replies to `Hello`. If `rejected` is Some, the client should close.
     Welcome {
         your_peer_id: PeerId,

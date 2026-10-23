@@ -12,28 +12,25 @@ use crate::state::nickname;
 use crate::state::online_state::{
     ConnectionStatus, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
-use crate::state::{room_connection, server_endpoints};
+#[cfg(any(feature = "desktop", feature = "android"))]
+use crate::state::room_connection;
+use crate::state::server_endpoints;
 
 #[component]
-pub fn OnlineRoom(code: String) -> Element {
+pub fn OnlineRoom(id: String) -> Element {
     let server = use_hook(server_endpoints::server_origin);
-    let url = use_hook(|| server_endpoints::room_url(&server, &code, false));
+    let url = use_hook(|| server_endpoints::room_url(&server, &id));
     #[cfg(any(
         all(feature = "desktop", not(target_arch = "wasm32")),
         all(feature = "android", target_os = "android")
     ))]
     use_context_provider(|| room_connection::RoomServer(server.clone()));
     let mut attempt = use_signal(|| 0u32);
-    let create = use_hook({
-        let code = code.clone();
-        move || room_connection::take_create(&code)
-    });
-
-    let state = use_store(|| OnlineState::new(code.clone()));
+    let state = use_store(|| OnlineState::new(id.clone()));
     let mut sender = use_signal(|| None);
     let task = use_hook(|| Rc::new(Cell::new(None::<Task>)));
     use_effect(move || {
-        let generation = attempt();
+        let _generation = attempt();
         if let Some(previous) = task.take() {
             previous.cancel();
         }
@@ -42,7 +39,6 @@ pub fn OnlineRoom(code: String) -> Element {
             sender,
             attempt,
             url.clone(),
-            create && generation == 0,
             nickname::load_or_generate(),
         )));
     });

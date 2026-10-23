@@ -124,7 +124,7 @@ test('recovery keeps the board mounted and waits for a fresh snapshot', async ({
     await expect(board).toHaveAttribute('style', pose!);
     await expect(page.getByRole('button', { name: 'End Game', exact: true })).toHaveCount(0);
     await expect(page.locator('.hand-tile[data-draggable=true]')).toHaveCount(0);
-    expect(connection.sockets[1].client.url()).not.toContain('create=1');
+    expect(connection.sockets[1].client.url()).toBe(connection.sockets[0].client.url());
     const before = connection.commands.filter(command => /PlayMove|EndGame|ReplaceSeat/.test(command));
     await page.mouse.move(at.x, at.y);
     await page.mouse.down();

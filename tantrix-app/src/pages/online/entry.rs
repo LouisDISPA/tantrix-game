@@ -4,7 +4,7 @@
 //! `state::nickname`) and editable once the lobby has loaded.
 
 use dioxus::prelude::*;
-use tantrix_net::{generate_room_code, normalize_room_code, ROOM_CODE_LEN};
+use tantrix_net::{normalize_room_code, ROOM_CODE_LEN};
 
 use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
@@ -13,14 +13,21 @@ use crate::route::Route;
 #[cfg(not(any(feature = "desktop", feature = "android")))]
 use crate::state::online_compatibility::DOWNLOAD_URL;
 use crate::state::online_compatibility::{self, Compatibility};
-use crate::state::{room_connection, server_endpoints};
+use crate::state::{room_api, server_endpoints};
+
+#[derive(Clone, PartialEq)]
+enum EntryOperation {
+    Create,
+    Join(String),
+}
 
 /// `/online` landing page: create a fresh room or enter a code to join.
 #[component]
 pub fn OnlineEntry() -> Element {
     let nav = navigator();
     let code_input = use_signal(String::new);
-    let error = use_signal(|| Option::<String>::None);
+    let mut operation = use_signal(|| None::<EntryOperation>);
+    let mut error = use_signal(|| Option::<String>::None);
     let mut server_ready = use_signal(|| true);
     let mut server = use_signal(server_endpoints::server_origin);
     let mut mounted = use_signal(|| false);
@@ -32,8 +39,37 @@ pub fn OnlineEntry() -> Element {
         let result = online_compatibility::check(&server).await;
         Some((server, result))
     });
+    use_effect(move || {
+        let Some(op) = operation() else {
+            return;
+        };
+        let origin = server.peek().clone();
+        spawn(async move {
+            let result = match op {
+                EntryOperation::Create => room_api::create(&origin).await,
+                EntryOperation::Join(code) => room_api::resolve(&origin, &code).await,
+            };
+            if *server.peek() != origin {
+                error.set(Some(
+                    "The server changed. Try again on the selected server.".into(),
+                ));
+                operation.set(None);
+                return;
+            }
+            match result {
+                Ok(room) => {
+                    nav.push(Route::OnlineRoom { id: room.id });
+                }
+                Err(message) => {
+                    error.set(Some(message));
+                    operation.set(None);
+                }
+            }
+        });
+    });
     let can_join = use_memo(move || {
-        server_ready()
+        operation.read().is_none()
+            && server_ready()
             && (compatibility.state()() != UseResourceState::Ready
                 || !matches!(
                     &*compatibility.read(),
@@ -61,11 +97,10 @@ pub fn OnlineEntry() -> Element {
                                 if !can_join() {
                                     return;
                                 }
-                                let code = generate_room_code();
-                                room_connection::mark_create(&code);
-                                let _ = nav.push(Route::OnlineRoom { code });
+                                error.set(None);
+                                operation.set(Some(EntryOperation::Create));
                             },
-                            "Create a room"
+                            if matches!(&*operation.read(), Some(EntryOperation::Create)) { "Creating room…" } else { "Create a room" }
                         }
 
                         div { class: "surface surface-inset online-join stack",
@@ -83,7 +118,7 @@ pub fn OnlineEntry() -> Element {
                                     },
                                     onkeydown: move |e| {
                                         if e.key() == Key::Named(NamedKey::Enter) && can_join() {
-                                            try_join(code_input, error, nav);
+                                            try_join(code_input, error, operation);
                                         }
                                     },
                                 }
@@ -93,7 +128,7 @@ pub fn OnlineEntry() -> Element {
                                 disabled: !can_join(),
                                 on_click: move |_| {
                                     if can_join() {
-                                        try_join(code_input, error, nav);
+                                        try_join(code_input, error, operation);
                                     }
                                 },
                                 "Join room"
@@ -160,7 +195,7 @@ pub fn OnlineEntry() -> Element {
                     }
 
                     if let Some(err) = error.read().clone() {
-                        p { class: "surface surface-raised surface-blur banner alert-banner online-error", {err} }
+                        p { class: "surface surface-raised surface-blur banner alert-banner online-error", role: "alert", {err} }
                     }
                 }
             }
@@ -189,43 +224,36 @@ fn UpdateAction() -> Element {
 #[component]
 pub fn JoinRoom(code: String) -> Element {
     let nav = navigator();
-    let code_upper = code.trim().to_ascii_uppercase();
-    let normalized_code = normalize_room_code(&code_upper);
-    let code_is_valid = normalized_code.is_some();
-
-    // Auto-redirect into the room if the code looks sane. An effect runs
-    // after hydration (never during SSR): navigating mid-hydration would
-    // mount the room twice and drop its first WebSocket. `replace` keeps
-    // Back from bouncing through this redirect again.
-    use_effect({
-        let code = normalized_code.clone().unwrap_or_default();
-        let valid = code_is_valid;
-        move || {
-            if valid {
-                nav.replace(Route::OnlineRoom { code: code.clone() });
+    let mut mounted = use_signal(|| false);
+    let server = use_hook(server_endpoints::server_origin);
+    let result = use_resource(move || {
+        let server = server.clone();
+        let code = code.clone();
+        async move {
+            if !mounted() {
+                return None;
             }
+            Some(match normalize_room_code(&code) {
+                Some(code) => room_api::resolve(&server, &code).await,
+                None => Err("Room codes use 6 letters and exclude I, O, and Q.".into()),
+            })
         }
     });
-
+    use_effect(move || {
+        if let Some(Some(Ok(room))) = &*result.read() {
+            nav.replace(Route::OnlineRoom {
+                id: room.id.clone(),
+            });
+        }
+    });
     rsx! {
         MenuScreen {
-            MenuCard { title: "Join Room", subtitle: "Room code",
-                div { class: "online-entry stack",
-                    p { class: "online-room-code", {code_upper} }
-                    if code_is_valid {
-                        p { class: "lobby-waiting", "Connecting…" }
-                    } else {
-                        p { class: "surface surface-raised surface-blur banner alert-banner online-error",
-                            "This link doesn't look like a valid room code."
-                        }
-                        MenuButton {
-                            full_width: true,
-                            on_click: move |_| {
-                                let _ = nav.push(Route::OnlineEntry {});
-                            },
-                            "Back to online menu"
-                        }
-                    }
+            MenuCard { title: "Join Room", subtitle: "Room invitation",
+                div { class: "online-entry stack", onmounted: move |_| mounted.set(true),
+                    if let Some(Some(Err(message))) = &*result.read() {
+                        p { role: "alert", "{message}" }
+                        MenuButton { full_width: true, on_click: move |_| { nav.push(Route::OnlineEntry {}); }, "Back to online menu" }
+                    } else { p { role: "status", "Connecting…" } }
                 }
             }
         }
@@ -235,16 +263,19 @@ pub fn JoinRoom(code: String) -> Element {
 fn try_join(
     code_input: Signal<String>,
     mut error: Signal<Option<String>>,
-    nav: dioxus_router::Navigator,
+    mut operation: Signal<Option<EntryOperation>>,
 ) {
-    let raw = code_input.read().clone();
-    let Some(code) = normalize_room_code(&raw) else {
+    if operation.peek().is_some() {
+        return;
+    }
+    let Some(code) = normalize_room_code(&code_input.read()) else {
         error.set(Some(
             "Room codes use 6 letters and exclude I, O, and Q.".into(),
         ));
         return;
     };
-    let _ = nav.push(Route::OnlineRoom { code });
+    error.set(None);
+    operation.set(Some(EntryOperation::Join(code)));
 }
 
 /// Shared native settings; the browser continues to use its own origin.
