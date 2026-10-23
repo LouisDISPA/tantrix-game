@@ -64,7 +64,7 @@ fn bag_share(bag: usize, seats: usize) -> f64 {
 /// it re-renders when its text changes: not on a hover, a drag, or an AI
 /// selecting its tile. `children` is the page's own badge.
 #[component]
-pub fn GameHud(children: Element) -> Element {
+pub fn GameHud(error: ReadSignal<Option<&'static str>>, children: Element) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("GameHud", ());
     let ctx = use_context::<GameCtx>();
@@ -104,6 +104,7 @@ pub fn GameHud(children: Element) -> Element {
             div {
                 class: "surface hud-chip color-{color_slug(current_color())}",
                 class: if viewing().is_some() { "viewing" },
+                class: if error().is_some() { "has-error" },
                 // Left — player identity
                 div { class: "hud-chip-player",
                     div { class: "color-swatch hud-chip-dot" }
@@ -113,7 +114,11 @@ pub fn GameHud(children: Element) -> Element {
                 span { class: "hud-chip-sep", aria_hidden: "true", "·" }
 
                 // Center — phase instruction or alert
-                if message.read().is_empty() {
+                if let Some(text) = error() {
+                    span { class: "hud-chip-phase alert hud-chip-error", role: "status",
+                        "{text}"
+                    }
+                } else if message.read().is_empty() {
                     span { class: "hud-chip-phase", role: "status",
                         span { class: "hud-long", "{hints().0}" }
                         span { class: "hud-short", "{hints().1}" }

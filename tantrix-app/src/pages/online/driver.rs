@@ -116,9 +116,11 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
                 snapshot,
                 last_move,
             });
+            store.last_error().set(None);
         }
         SessionEvent::GameEnded { reason, snapshot } => {
             store.phase().set(OnlinePhase::Ended { reason, snapshot });
+            store.last_error().set(None);
         }
         SessionEvent::Error { code, message } => {
             if let Some(code) = code {
@@ -364,6 +366,64 @@ mod tests {
             snapshot: snapshot(40),
         }]));
         assert_eq!(started.last_error, None);
+    }
+
+    #[test]
+    fn game_rejections_preserve_the_position_and_replace_the_previous_error() {
+        let started = SessionEvent::GameStarted {
+            snapshot: snapshot(40),
+        };
+        let before = after([started.clone()]);
+        let refused = after([started.clone(), rejected(RejectCode::NotYourTurn)]);
+        assert_eq!(refused.phase, before.phase);
+        assert_eq!(refused.last_error, Some(RejectCode::NotYourTurn));
+
+        let replaced = after([
+            started,
+            rejected(RejectCode::NotYourTurn),
+            rejected(RejectCode::InvalidMove),
+        ]);
+        assert_eq!(replaced.phase, before.phase);
+        assert_eq!(replaced.last_error, Some(RejectCode::InvalidMove));
+    }
+
+    #[test]
+    fn moves_seat_updates_and_game_end_clear_rejections() {
+        let m = Move {
+            tile: Tile::BYYBRR,
+            position: Position::CENTER,
+            rotation: Rotation::R60,
+            forced: false,
+        };
+        let mut moved = snapshot(39);
+        moved.board.insert_move(m).unwrap();
+        let mut reseated = snapshot(40);
+        reseated.seats[Color::Red] = Some(Seat {
+            peer_id: me(),
+            nickname: "Ann".to_string(),
+        });
+        for update in [
+            SessionEvent::StateUpdate {
+                snapshot: moved,
+                last_move: Some(m),
+            },
+            SessionEvent::StateUpdate {
+                snapshot: reseated,
+                last_move: None,
+            },
+            ended(),
+        ] {
+            let expected = after([update.clone()]);
+            let state = after([
+                SessionEvent::GameStarted {
+                    snapshot: snapshot(40),
+                },
+                rejected(RejectCode::InvalidMove),
+                update,
+            ]);
+            assert_eq!(state.last_error, None);
+            assert_eq!(state.phase, expected.phase);
+        }
     }
 
     #[test]

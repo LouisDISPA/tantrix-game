@@ -22,7 +22,7 @@ use crate::state::ui_state::{set_if_changed, UiStateStoreExt, UiStateStoreImplEx
 ///
 /// `children` go in the HUD: the online room's badge.
 #[component]
-pub fn GamePlay(children: Element) -> Element {
+pub fn GamePlay(error: ReadSignal<Option<&'static str>>, children: Element) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("GamePlay", ());
     let ctx = use_context::<GameCtx>();
@@ -100,7 +100,7 @@ pub fn GamePlay(children: Element) -> Element {
                 }
             },
 
-            GameHud { {children} }
+            GameHud { error, {children} }
 
             div { class: "board-slot",
                 TurnBanner {}

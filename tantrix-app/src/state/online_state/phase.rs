@@ -59,7 +59,7 @@ pub fn reject_message(code: &RejectCode) -> &'static str {
     match code {
         RejectCode::ColorTaken => "That color is taken.",
         RejectCode::NotYourTurn => "It's not your turn.",
-        RejectCode::InvalidMove => "The game server rejected that move.",
+        RejectCode::InvalidMove => "The game server rejected that action.",
         RejectCode::GameInProgress => "This game has already started.",
         RejectCode::RoomNotFound => "Room not found. Create a new room or check the code.",
         RejectCode::RoomFull => "This room is full.",
@@ -88,6 +88,18 @@ mod tests {
         messages.sort_unstable();
         messages.dedup();
         assert_eq!(messages.len(), CODES.len());
+    }
+
+    #[test]
+    fn invalid_actions_cover_moves_and_seat_takeovers() {
+        assert_eq!(
+            reject_message(&RejectCode::InvalidMove),
+            "The game server rejected that action."
+        );
+        assert_eq!(
+            reject_message(&RejectCode::NotYourTurn),
+            "It's not your turn."
+        );
     }
 
     #[test]

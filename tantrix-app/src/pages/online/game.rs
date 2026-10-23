@@ -9,7 +9,7 @@ use crate::pages::game::{GameOver, GamePlay};
 use crate::pages::online::hud_badge::OnlineHudBadge;
 use crate::pages::online::seat_takeover::OnlineSeatTakeover;
 use crate::route::Route;
-use crate::state::online_state::{CommandSender, OnlineState};
+use crate::state::online_state::{reject_message, CommandSender, OnlineState};
 use crate::state::online_state::{OnlinePhase, OnlineStateStoreExt};
 
 #[component]
@@ -21,6 +21,7 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
     // view re-renders when the game ends, not on every snapshot (the game
     // context fans those out to the components that show them).
     let ended = use_memo(move || matches!(&*state.phase().read(), OnlinePhase::Ended { .. }));
+    let error = use_memo(move || state.last_error().read().as_ref().map(reject_message));
     use_online_game_ctx(state, sender);
 
     if ended() {
@@ -38,6 +39,7 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
 
     rsx! {
         GamePlay {
+            error,
             OnlineHudBadge { state }
         }
         OnlineSeatTakeover { state, sender }
@@ -48,7 +50,7 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
 mod tests {
     use dioxus::prelude::*;
     use tantrix_game::{Color, EnumMap};
-    use tantrix_proto::GameSnapshot;
+    use tantrix_proto::{GameSnapshot, RejectCode};
 
     use super::OnlineGameView;
     use crate::state::config::GameConfig;
@@ -71,6 +73,63 @@ mod tests {
         }
     }
 
+    fn online_game(snapshot: GameSnapshot) -> Element {
+        let state = use_store(move || OnlineState {
+            room_code: "ABCDEF".to_string(),
+            my_peer_id: None,
+            phase: OnlinePhase::Playing {
+                snapshot,
+                last_move: None,
+            },
+            last_error: None,
+        });
+        use_context_provider(|| state);
+        let sender = use_signal(|| None);
+        rsx! {
+            OnlineGameView { state, sender }
+        }
+    }
+
+    #[test]
+    fn changing_only_the_error_leaves_the_board_and_hands_as_they_were() {
+        let mut game = GameState::new(&GameConfig::new(Some(3)));
+        game.play_move(game.legal_moves()[0].placement()).unwrap();
+        let mut dom = VirtualDom::new_with_props(online_game, snapshot_of(&game));
+        dom.rebuild_in_place();
+        settle(&mut dom);
+
+        for error in [
+            Some(RejectCode::NotYourTurn),
+            Some(RejectCode::InvalidMove),
+            None,
+        ] {
+            render_count::reset();
+            dom.in_scope(ScopeId::APP, || {
+                consume_context::<Store<OnlineState>>()
+                    .last_error()
+                    .set(error);
+            });
+            settle(&mut dom);
+
+            assert_eq!(render_count::total("GameHud"), 1);
+            for component in [
+                "OnlineGameView",
+                "GamePlay",
+                "BoardViewport",
+                "BoardTilesLayer",
+                "BoardTile",
+                "BoardEmptyLayer",
+                "BoardPreview",
+                "OrientationPicker",
+                "ZoomControls",
+                "PlayerHand",
+                "HandTile",
+            ] {
+                assert_eq!(render_count::total(component), 0, "{component}");
+            }
+        }
+    }
+
     #[test]
     fn a_room_snapshot_re_renders_only_what_it_changes() {
         // A three-player room, one move apart.
@@ -86,25 +145,7 @@ mod tests {
         let after = snapshot_of(&game);
         let scores_after = game.scores();
 
-        let mut dom = VirtualDom::new_with_props(
-            |snapshot: GameSnapshot| {
-                let state = use_store(move || OnlineState {
-                    room_code: "ABCDEF".to_string(),
-                    my_peer_id: None,
-                    phase: OnlinePhase::Playing {
-                        snapshot,
-                        last_move: None,
-                    },
-                    last_error: None,
-                });
-                use_context_provider(|| state);
-                let sender = use_signal(|| None);
-                rsx! {
-                    OnlineGameView { state, sender }
-                }
-            },
-            before,
-        );
+        let mut dom = VirtualDom::new_with_props(online_game, before);
         dom.rebuild_in_place();
         settle(&mut dom);
 

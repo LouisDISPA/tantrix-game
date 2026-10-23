@@ -131,7 +131,8 @@
       color: var(--text-primary);
     }
 
-    .hud-chip-sep {
+    .hud-chip-sep,
+    .hud-chip.has-error .hud-viewing {
       display: none;
     }
 
@@ -213,6 +214,19 @@
       color: var(--color-red);
     }
 
+    .hud-chip.has-error {
+      display: flex;
+      height: var(--btn-h);
+      padding-block: 0;
+    }
+
+    .hud-chip-error {
+      width: calc(var(--rack-w) - 18 * var(--fs));
+      font-size: 1.25em;
+      white-space: normal;
+      line-height: 1.2;
+    }
+
     /* A few words are all the line has room for. */
     .hud-long {
       display: none;
@@ -221,7 +235,7 @@
       display: inline;
     }
 
-    .hud-chip.viewing .hud-chip-phase {
+    .hud-chip.viewing .hud-chip-phase:not(.hud-chip-error) {
       display: none;
     }
 
