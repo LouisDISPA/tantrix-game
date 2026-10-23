@@ -72,6 +72,18 @@ pub enum SessionEvent {
     ConnectTimeout,
     /// Fatal transport error. The session task has exited.
     Disconnected { reason: String },
+    /// Another tab deliberately replaced this socket. Never retry automatically.
+    OpenedElsewhere,
+}
+
+impl SessionEvent {
+    pub fn disconnected(reason: String) -> Self {
+        if reason == tantrix_proto::OPENED_ELSEWHERE {
+            Self::OpenedElsewhere
+        } else {
+            Self::Disconnected { reason }
+        }
+    }
 }
 
 /// A welcome emits identity before lobby state; rejection emits the error
@@ -134,6 +146,18 @@ pub struct SessionHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_exact_takeover_reason_is_a_deliberate_stop() {
+        assert!(matches!(
+            SessionEvent::disconnected(tantrix_proto::OPENED_ELSEWHERE.into()),
+            SessionEvent::OpenedElsewhere
+        ));
+        assert!(matches!(
+            SessionEvent::disconnected("Connection closed.".into()),
+            SessionEvent::Disconnected { .. }
+        ));
+    }
 
     #[test]
     fn welcome_emits_identity_before_lobby_and_rejection_never_connects() {

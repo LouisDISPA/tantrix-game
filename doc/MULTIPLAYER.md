@@ -27,9 +27,9 @@ browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.
   server sets on the first page visit. Scripts can't read it, and it is never
   in a WebSocket message: the room reads it from the socket handshake. Public
   player IDs sent to others are separate.
-- Same browser, same player: reloading, pressing **Retry** on the
-  disconnected screen, or coming back later resumes your seat. Opening the
-  room in a second tab takes over from the first tab.
+- Same browser, same player: reloading or coming back later resumes your
+  seat if nobody took it over. A second tab displaces the first, which keeps
+  its board and offers **Resume here** without automatically reconnecting.
 - A seated player who drops keeps the seat, shown as *Offline*, until they
   come back or someone takes it over. In the lobby **Start game** waits for
   them. People without a seat who leave are removed.
@@ -40,6 +40,31 @@ browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.
   background and blocks Create/Join after a mismatch or failed check. Reload
   a stale browser page; update an incompatible desktop app or server. This
   preflight is not a version negotiation in the WebSocket handshake.
+
+## In-game recovery
+
+The room page owns one connection task; replacing a socket leaves the game
+context, board, hands and camera mounted. After a transport failure, the last
+snapshot remains visible with play disabled. Panning, zooming, score inspection,
+themes and leaving still work. Selections, drags and room confirmation dialogs
+close. Commands are never replayed on a replacement socket.
+
+Recovery joins the captured server and room with the existing session identity,
+never `create=1`. It tries up to three times after 1, 2 and 4 seconds. Each attempt
+has 20 seconds to receive a fresh snapshot, bounded by 60 seconds total from the
+first loss. Brief connections keep consuming that allowance; 30 seconds of stable
+connection renews it. **Retry** starts a new bounded cycle after exhaustion.
+Leaving the page cancels both the active socket and scheduled retries.
+
+Welcome and lobby information only update identity during recovery. A fresh
+`GameStarted` or `GameEnded` snapshot restores play or results, recalculating seat
+ownership. A displaced player resumes as a spectator with an explanation. Results
+remain available after later socket closure.
+
+Both transports send keepalive pings every 30 seconds and allow 15 seconds for a
+pong. A missed response enters the same recovery flow; suspended timers never
+accumulate ping or retry bursts. The exact shared `OPENED_ELSEWHERE` close reason
+becomes a typed transport event and stops recovery until **Resume here** is chosen.
 
 ## Running locally
 

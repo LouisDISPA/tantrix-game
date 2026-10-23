@@ -15,9 +15,8 @@ impl CommandSender {
     }
 
     /// Dispatch a command to the session task. A send failure means the
-    /// driver has already exited — the next `SessionEvent::Disconnected`
-    /// will push us to `OnlinePhase::Failed` one tick later, so the user
-    /// still sees a terminal screen. We log here to surface the narrow
+    /// driver has already exited — its disconnect event disables play and
+    /// starts recovery (or shows the initial failure screen). Log the narrow
     /// race where a click lands between driver-exit and phase-update.
     pub fn send(&self, cmd: SessionCommand) {
         if let Err(err) = self.0.unbounded_send(cmd) {

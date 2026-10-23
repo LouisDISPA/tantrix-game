@@ -83,8 +83,7 @@
     }
 
     /* The handoff shares the rack's screen center, above the board. */
-    .turn-announcement {
-      position: fixed;
+    .game-announcements {
       top: calc(var(--top-h) + 12px);
     }
 
@@ -389,11 +388,6 @@
       position: static;
       height: auto;
       font-size: 1.25em;
-    }
-
-    /* Online, a member watching is offered the seats, under the top bar. */
-    .seat-takeover {
-      top: calc(3.7 * var(--fs) + 8px);
     }
 
     /* ===== Seats: one card each in the rail, the shown one a rack ===== */

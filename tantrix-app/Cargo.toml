@@ -30,6 +30,7 @@ futures-channel = "0.3.34"
 # The timer of builds without a platform feature (see `util::sleep`); the
 # browser transport (tantrix-net) depends on it anyway.
 futures-timer = "3.0.4"
+web-time = "1"
 log = "0.4.34"
 semver = "1"
 url = "2"

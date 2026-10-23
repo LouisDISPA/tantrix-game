@@ -33,13 +33,20 @@ pub fn OnlineSeatTakeover(
     // Local UI flag: which seat the confirmation dialog is about.
     let mut confirming = use_signal(|| Option::<PlayingSeat>::None);
 
-    if my_color().is_some() || seats.read().is_empty() {
+    use_effect(move || {
+        if !state.connection().read().is_connected() {
+            confirming.set(None);
+        }
+    });
+
+    if !state.connection().read().is_connected() || my_color().is_some() || seats.read().is_empty()
+    {
         return rsx! {};
     }
 
     rsx! {
         div {
-            class: "surface surface-raised surface-blur seat-takeover",
+            class: "surface surface-raised surface-blur banner seat-takeover",
             role: "group",
             "aria-label": "Take a seat",
             span { class: "seat-takeover-title", "You're watching · take a seat:" }
@@ -71,8 +78,10 @@ pub fn OnlineSeatTakeover(
                 confirm_label: "Take seat",
                 on_confirm: move |_| {
                     confirming.set(None);
-                    if let Some(s) = sender.read().as_ref() {
-                        s.send(SessionCommand::ReplaceSeat(seat.color));
+                    if state.connection().peek().is_connected() {
+                        if let Some(s) = sender.read().as_ref() {
+                            s.send(SessionCommand::ReplaceSeat(seat.color));
+                        }
                     }
                 },
                 on_cancel: move |_| confirming.set(None),

@@ -251,3 +251,99 @@ async fn two_native_players_play_reconnect_and_end_a_game() {
     host_task.await.unwrap();
     guest_task.await.unwrap();
 }
+
+#[tokio::test]
+async fn a_missed_native_pong_times_out_once_after_suspension() {
+    use futures::SinkExt;
+    use tantrix_proto::{encode, HostMessage, LobbyState, PeerId};
+    use tokio_tungstenite::{accept_async, tungstenite::Message};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (mut session, run) = open_native_session(
+        format!("ws://{address}/room/ABCDEF"),
+        "Desktop".into(),
+        "tantrix_session=test".into(),
+    );
+    let client = tokio::spawn(run);
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut socket = accept_async(stream).await.unwrap();
+    socket.next().await.unwrap().unwrap(); // Hello
+    let welcome = HostMessage::Welcome {
+        your_peer_id: PeerId::new("desktop"),
+        lobby: LobbyState {
+            seats: Default::default(),
+            unseated: vec![],
+            participants: vec![],
+        },
+        rejected: None,
+    };
+    socket
+        .send(Message::Text(
+            String::from_utf8(encode(&welcome)).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        next_event(&mut session).await,
+        SessionEvent::Connected { .. }
+    ));
+    assert!(matches!(
+        next_event(&mut session).await,
+        SessionEvent::Lobby(_)
+    ));
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(30)).await;
+    tokio::time::resume();
+    assert_eq!(
+        socket.next().await.unwrap().unwrap().into_text().unwrap(),
+        "ping"
+    );
+    // No pong. Resume well beyond its deadline, as after a sleeping laptop.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(120)).await;
+    assert!(matches!(
+        session.events.next().await,
+        Some(SessionEvent::Disconnected { .. })
+    ));
+    drop(socket);
+    client.await.unwrap();
+    assert!(session.events.next().await.is_none());
+}
+
+#[tokio::test]
+async fn native_takeover_is_a_typed_deliberate_stop() {
+    use futures::SinkExt;
+    use tokio_tungstenite::{
+        accept_async,
+        tungstenite::{
+            protocol::{frame::coding::CloseCode, CloseFrame},
+            Message,
+        },
+    };
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (mut session, run) = open_native_session(
+        format!("ws://{address}/room/ABCDEF"),
+        "Desktop".into(),
+        "tantrix_session=test".into(),
+    );
+    let client = tokio::spawn(run);
+    let (stream, _) = listener.accept().await.unwrap();
+    let mut socket = accept_async(stream).await.unwrap();
+    socket.next().await.unwrap().unwrap();
+    socket
+        .send(Message::Close(Some(CloseFrame {
+            code: CloseCode::Normal,
+            reason: tantrix_proto::OPENED_ELSEWHERE.into(),
+        })))
+        .await
+        .unwrap();
+    assert!(matches!(
+        next_event(&mut session).await,
+        SessionEvent::OpenedElsewhere
+    ));
+    drop(socket);
+    client.await.unwrap();
+}

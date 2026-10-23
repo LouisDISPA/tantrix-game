@@ -1,52 +1,124 @@
-//! Bridge between a `tantrix_net::SessionHandle` and the reactive
-//! `Store<OnlineState>` owned by `OnlineRoom`.
+//! Page-owned connection supervisor. One attempt is fully dropped before
+//! opening the next; the room store and displayed game outlive every socket.
 
+use dioxus::core::Task;
 use dioxus::prelude::*;
-use futures::StreamExt;
-#[cfg(not(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-)))]
-use tantrix_net::open_session;
-use tantrix_net::SessionEvent;
+use futures::{FutureExt, StreamExt};
+use std::time::Duration;
+use tantrix_net::{SessionEvent, SessionHandle};
 use tantrix_proto::RejectCode;
 
 use crate::state::online_state::{
-    CommandSender, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
+    queries, recovery::Recovery, CommandSender, ConnectionStatus, FailureReason, OnlinePhase,
+    OnlineState, OnlineStateStoreExt,
 };
+use crate::util::sleep;
 
-/// Open a session for the given room and pump events into
-/// the `OnlineState` store. The spawned tasks live as long as the component
-/// that owns the store is mounted.
+/// This task belongs to OnlineRoom, so navigation cancels the socket,
+/// pending backoff and deadlines together. A manual restart cancels it first.
 pub fn spawn_session(
     store: Store<OnlineState>,
     mut sender: Signal<Option<CommandSender>>,
+    generation: Signal<u32>,
+    url: String,
+    create: bool,
+    nickname: String,
+) -> Task {
+    spawn(async move {
+        #[cfg(not(target_arch = "wasm32"))]
+        if cfg!(feature = "server") {
+            return;
+        }
+        let current = *generation.peek();
+        // Wall time includes OS sleep where the browser's performance clock pauses.
+        let clock = web_time::SystemTime::now();
+        let now = || clock.elapsed().unwrap_or_default().as_millis() as u64;
+        let mut recovery = Recovery::default();
+        let mut recovering = matches!(&*store.phase().peek(), OnlinePhase::Playing { .. });
+        if !recovering {
+            store.phase().set(OnlinePhase::Connecting);
+            store.connection().set(ConnectionStatus::Connecting);
+        }
+        loop {
+            sender.set(None);
+            let deadline = if recovering {
+                let Some(retry) = recovery.disconnected(now()) else {
+                    store.connection().set(ConnectionStatus::Stopped);
+                    return;
+                };
+                store.connection().set(ConnectionStatus::Reconnecting {
+                    attempt: retry.number,
+                });
+                sleep(Duration::from_millis(retry.start.saturating_sub(now()))).await;
+                if *generation.peek() != current {
+                    return;
+                }
+                // After background suspension, never open an expired attempt.
+                if now() >= retry.deadline {
+                    store.connection().set(ConnectionStatus::Stopped);
+                    return;
+                }
+                retry.deadline
+            } else {
+                now() + 20_000
+            };
+            let attempt_url = if create && !recovering {
+                format!("{url}?create=1")
+            } else {
+                url.clone()
+            };
+            if let Some(since) = run_attempt(
+                store,
+                sender,
+                generation,
+                attempt_url,
+                nickname.clone(),
+                deadline,
+                clock,
+            )
+            .await
+            {
+                recovery.synchronized(since);
+            }
+            sender.set(None);
+            if *generation.peek() != current
+                || matches!(
+                    *store.connection().peek(),
+                    ConnectionStatus::OpenedElsewhere
+                )
+            {
+                return;
+            }
+            if !matches!(&*store.phase().peek(), OnlinePhase::Playing { .. }) {
+                return;
+            }
+            recovering = true;
+        }
+    })
+}
+
+async fn run_attempt(
+    store: Store<OnlineState>,
+    mut sender: Signal<Option<CommandSender>>,
+    generation: Signal<u32>,
     url: String,
     nickname: String,
-) {
-    // This hook also runs while Dioxus server-renders the room page. Only a
-    // hydrated browser owns a player connection; SSR must stay on Connecting.
-    #[cfg(target_arch = "wasm32")]
-    if web_sys::window().is_none() {
-        return;
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    if cfg!(feature = "server") {
-        return;
-    }
-
+    deadline: u64,
+    clock: web_time::SystemTime,
+) -> Option<u64> {
+    let current = *generation.peek();
+    let previous_seat = queries::my_color_of(store);
+    let recovering = matches!(&*store.phase().peek(), OnlinePhase::Playing { .. });
     #[cfg(any(
         all(feature = "desktop", not(target_arch = "wasm32")),
         all(feature = "android", target_os = "android")
     ))]
-    let (handle, run_fut) = {
+    let (handle, run) = {
         let cookie = match crate::state::server_settings::session_cookie(&url) {
             Ok(cookie) => cookie,
             Err(reason) => {
-                store.phase().set(OnlinePhase::Failed {
-                    reason: FailureReason::Transport(reason),
-                });
-                return;
+                apply_event(store, SessionEvent::Disconnected { reason });
+                return None;
             }
         };
         tantrix_net::open_native_session(url, nickname, cookie)
@@ -55,39 +127,90 @@ pub fn spawn_session(
         all(feature = "desktop", not(target_arch = "wasm32")),
         all(feature = "android", target_os = "android")
     )))]
-    let (handle, run_fut) = open_session(url, nickname);
-
-    // Publish the command sender so child components can dispatch actions.
-    sender.set(Some(CommandSender::new(handle.commands)));
-
-    // Drive the network task.
-    spawn(async move {
-        run_fut.await;
-    });
-
-    // Pipe events into state.
-    let mut events = handle.events;
-    spawn(async move {
-        while let Some(event) = events.next().await {
-            apply_event(store, event);
+    let (handle, run) = tantrix_net::open_session(url, nickname);
+    let SessionHandle {
+        commands,
+        mut events,
+    } = handle;
+    let run = run.fuse();
+    futures::pin_mut!(run);
+    let mut synchronized = None;
+    let mut pending_identity = None;
+    loop {
+        let now = clock.elapsed().unwrap_or_default().as_millis() as u64;
+        if *generation.peek() != current {
+            return synchronized;
         }
-        events_closed(store);
-    });
+        if synchronized.is_none() && now >= deadline {
+            apply_event(store, SessionEvent::ConnectTimeout);
+            return synchronized;
+        }
+        let timeout = async move {
+            if synchronized.is_some() {
+                futures::future::pending::<()>().await;
+            }
+            sleep(Duration::from_millis(deadline.saturating_sub(now))).await;
+        }
+        .fuse();
+        futures::pin_mut!(timeout);
+        futures::select_biased! {
+            _ = timeout => {
+                if *generation.peek() != current { return synchronized; }
+                apply_event(store, SessionEvent::ConnectTimeout);
+                return synchronized;
+            },
+            event = events.next().fuse() => {
+                if *generation.peek() != current { return synchronized; }
+                let Some(event) = event else { events_closed(store); return synchronized; };
+                // Keep the cached seat identity until its matching snapshot arrives.
+                // A welcomed attempt can still time out; it must not erase which
+                // seat we held before recovery on the next attempt.
+                if recovering && synchronized.is_none() {
+                    match &event {
+                        SessionEvent::Connected { my_peer_id } => {
+                            pending_identity = Some(my_peer_id.clone());
+                            continue;
+                        }
+                        SessionEvent::GameStarted { .. } | SessionEvent::StateUpdate { .. } | SessionEvent::GameEnded { .. } => {
+                            if let Some(peer_id) = pending_identity.take() {
+                                store.my_peer_id().set(Some(peer_id));
+                            }
+                        }
+                        _ => {},
+                    }
+                }
+                let terminal = matches!(event, SessionEvent::Disconnected { .. } | SessionEvent::OpenedElsewhere | SessionEvent::ConnectTimeout);
+                apply_event(store, event);
+                if terminal { return synchronized; }
+                if store.connection().peek().is_connected() && synchronized.is_none() {
+                    synchronized = Some(clock.elapsed().unwrap_or_default().as_millis() as u64);
+                    if recovering {
+                        store.seat_changed().set(previous_seat.is_some() && queries::my_color_of(store).is_none());
+                    }
+                    sender.set(Some(CommandSender::new(commands.clone())));
+                }
+            },
+            _ = run => {},
+        }
+    }
 }
 
 /// The event stream closed. Without a terminal `Disconnected` first, the
-/// network task exited early: park the UI on the Failed screen so the user
-/// isn't stuck on the connecting spinner (a finished game keeps its results).
+/// network task exited early. Recover a cached game or show the initial
+/// failure screen; a finished game keeps its results.
 fn events_closed(store: Store<OnlineState>) {
-    let ended = matches!(
-        &*store.phase().read(),
+    if matches!(
+        &*store.phase().peek(),
         OnlinePhase::Failed { .. } | OnlinePhase::Ended { .. }
-    );
-    if !ended {
-        store.phase().set(OnlinePhase::Failed {
-            reason: FailureReason::Transport("Connection closed unexpectedly.".into()),
-        });
+    ) {
+        return;
     }
+    apply_event(
+        store,
+        SessionEvent::Disconnected {
+            reason: "Connection closed unexpectedly.".into(),
+        },
+    );
 }
 
 /// Per-field writes: each event only wakes the specific Store-field
@@ -98,20 +221,30 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
             store.my_peer_id().set(Some(my_peer_id));
         }
         SessionEvent::Lobby(lobby) => {
-            store.phase().set(OnlinePhase::Lobby { lobby });
-            store.last_error().set(None);
+            // Welcome includes lobby information even for a running game.
+            // It is identity only until the fresh game snapshot arrives.
+            if !matches!(
+                &*store.phase().peek(),
+                OnlinePhase::Playing { .. } | OnlinePhase::Ended { .. }
+            ) {
+                store.phase().set(OnlinePhase::Lobby { lobby });
+                store.connection().set(ConnectionStatus::Connected);
+                store.last_error().set(None);
+            }
         }
         SessionEvent::GameStarted { snapshot } => {
             store.phase().set(OnlinePhase::Playing {
                 snapshot,
                 last_move: None,
             });
+            store.connection().set(ConnectionStatus::Connected);
             store.last_error().set(None);
         }
         SessionEvent::StateUpdate {
             snapshot,
             last_move,
         } => {
+            store.connection().set(ConnectionStatus::Connected);
             store.phase().set(OnlinePhase::Playing {
                 snapshot,
                 last_move,
@@ -119,6 +252,7 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
             store.last_error().set(None);
         }
         SessionEvent::GameEnded { reason, snapshot } => {
+            store.connection().set(ConnectionStatus::Connected);
             store.phase().set(OnlinePhase::Ended { reason, snapshot });
             store.last_error().set(None);
         }
@@ -130,17 +264,39 @@ fn apply_event(store: Store<OnlineState>, event: SessionEvent) {
             }
         }
         SessionEvent::ConnectTimeout => {
-            log::warn!("online: connecting timed out");
-            store.phase().set(OnlinePhase::Failed {
-                reason: FailureReason::Timeout,
-            });
+            store.connection().set(ConnectionStatus::Stopped);
+            if !matches!(
+                &*store.phase().peek(),
+                OnlinePhase::Playing { .. } | OnlinePhase::Ended { .. }
+            ) {
+                store.phase().set(OnlinePhase::Failed {
+                    reason: FailureReason::Timeout,
+                });
+            }
+        }
+        SessionEvent::OpenedElsewhere => {
+            store.connection().set(ConnectionStatus::OpenedElsewhere);
+            store.last_error().set(None);
+            if !matches!(
+                &*store.phase().peek(),
+                OnlinePhase::Playing { .. } | OnlinePhase::Ended { .. }
+            ) {
+                store.phase().set(OnlinePhase::Failed {
+                    reason: FailureReason::Transport(tantrix_proto::OPENED_ELSEWHERE.into()),
+                });
+            }
         }
         SessionEvent::Disconnected { reason } => {
+            store.connection().set(ConnectionStatus::Stopped);
             // The results screen is final: the server keeps the socket open after
             // the game ends, and its later teardown must not replace the
             // scores with a "Disconnected" screen.
             if matches!(&*store.phase().read(), OnlinePhase::Ended { .. }) {
                 log::info!("online: ignoring disconnect after the game ended ({reason})");
+                return;
+            }
+            if matches!(&*store.phase().peek(), OnlinePhase::Playing { .. }) {
+                store.last_error().set(None);
                 return;
             }
             // The server closes after refusing a join. Only those join codes
@@ -167,7 +323,7 @@ mod tests {
     use tantrix_proto::{EndReason, GameSnapshot, LobbyState, PeerId, RejectCode, Seat};
 
     use super::{apply_event, events_closed};
-    use crate::state::online_state::{FailureReason, OnlinePhase, OnlineState};
+    use crate::state::online_state::{ConnectionStatus, FailureReason, OnlinePhase, OnlineState};
 
     /// What the session closes a refused socket with (`tantrix-net`).
     const REJECTED: &str = "The room rejected this connection.";
@@ -251,9 +407,7 @@ mod tests {
     }
 
     fn closed(reason: &str) -> SessionEvent {
-        SessionEvent::Disconnected {
-            reason: reason.to_string(),
-        }
+        SessionEvent::disconnected(reason.to_string())
     }
 
     fn failed(reason: FailureReason) -> OnlinePhase {
@@ -267,6 +421,29 @@ mod tests {
             },
             snapshot: snapshot(0),
         }
+    }
+
+    #[test]
+    fn recovery_welcome_keeps_the_cached_game_until_a_fresh_snapshot() {
+        let initial = SessionEvent::GameStarted {
+            snapshot: snapshot(40),
+        };
+        let recovering = [
+            initial.clone(),
+            closed("lost"),
+            welcome(),
+            SessionEvent::Lobby(lobby(&[])),
+        ];
+        let cached = after(recovering.clone());
+        assert_eq!(cached.phase, after([initial]).phase);
+        assert_eq!(cached.connection, ConnectionStatus::Stopped);
+        let synchronized = after(recovering.into_iter().chain([SessionEvent::GameStarted {
+            snapshot: snapshot(38),
+        }]));
+        assert_eq!(synchronized.connection, ConnectionStatus::Connected);
+        assert!(
+            matches!(synchronized.phase, OnlinePhase::Playing { snapshot: game, .. } if game.bag_count == 38)
+        );
     }
 
     #[test]
@@ -286,6 +463,8 @@ mod tests {
                     lobby: lobby(&["Ann"])
                 },
                 last_error: None,
+                connection: ConnectionStatus::Connected,
+                seat_changed: false,
             }
         );
     }
@@ -315,11 +494,18 @@ mod tests {
             },
             closed(OPENED_ELSEWHERE),
         ]);
-        for state in [lobby_then_closed, in_game_then_closed] {
-            let reason = FailureReason::Transport(OPENED_ELSEWHERE.to_string());
-            assert_eq!(state.phase, failed(reason.clone()));
-            assert_eq!(reason.display(), OPENED_ELSEWHERE);
-        }
+        assert_eq!(
+            lobby_then_closed.connection,
+            ConnectionStatus::OpenedElsewhere
+        );
+        assert_eq!(
+            in_game_then_closed.connection,
+            ConnectionStatus::OpenedElsewhere
+        );
+        assert!(matches!(
+            in_game_then_closed.phase,
+            OnlinePhase::Playing { .. }
+        ));
     }
 
     #[test]

@@ -38,6 +38,8 @@ impl OnlineVersion {
 /// runtime's auto-response, without waking the Durable Object.
 pub const KEEPALIVE_PING: &str = "ping";
 pub const KEEPALIVE_PONG: &str = "pong";
+/// The older socket is deliberately displaced by another tab of this session.
+pub const OPENED_ELSEWHERE: &str = "This room was opened in another tab.";
 
 /// Public, server-generated participant identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

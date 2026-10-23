@@ -7,6 +7,7 @@
 
 mod phase;
 pub mod queries;
+pub mod recovery;
 mod sender;
 mod state;
 #[cfg(test)]
@@ -14,4 +15,4 @@ pub mod test_rooms;
 
 pub use phase::{reject_message, FailureReason, OnlinePhase};
 pub use sender::CommandSender;
-pub use state::{OnlineState, OnlineStateStoreExt};
+pub use state::{ConnectionStatus, OnlineState, OnlineStateStoreExt};

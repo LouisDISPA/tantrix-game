@@ -19,6 +19,7 @@
   /* ===== Shell ===== */
 
   .game-layout {
+    position: relative;
     --side-w: clamp(232px, 28vw, 360px);
     display: grid;
     box-sizing: border-box;
@@ -213,6 +214,7 @@
   }
 
   .hud-chip-conn-dot {
+    background: var(--text-muted);
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -569,40 +571,45 @@
     }
   }
 
-  /* Turn handoff floats above the board without taking space or intercepting play. */
-  .turn-announcement {
+  /* The shared stack has no stacking context: HUD menus stay above banners,
+     and confirmation dialogs can still cover the whole viewport. */
+  .game-announcements {
     position: absolute;
-    top: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 5;
-    max-width: calc(100% - 24px);
+    top: calc(env(safe-area-inset-top) + 70px);
+    left: 12px;
+    right: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
     pointer-events: none;
   }
-  .turn-banner {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
 
-    color: var(--text-primary);
+  .game-announcements > :not(.turn-announcement) {
+    pointer-events: auto;
+  }
 
+  .turn-announcement {
+    max-width: 100%;
+  }
+
+  .turn-announcement:empty,
+  .game-announcements:has(.connection-notice) .turn-announcement {
+    display: none;
+  }
+
+  .game-announcements .banner {
+    position: relative;
+    z-index: 5;
     animation: turn-arrive 180ms ease-out;
   }
-  .turn-banner-dot {
-    width: 22px;
-    height: 22px;
+
+  .connection-notice {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
   }
-  .turn-banner-title {
-    display: block;
-    font-size: 18px;
-    white-space: nowrap;
-  }
-  .turn-banner-detail {
-    display: block;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
+
   @keyframes turn-arrive {
     from {
       opacity: 0;
@@ -614,7 +621,7 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .turn-banner {
+    .game-announcements .banner {
       animation: none;
     }
   }
@@ -622,21 +629,9 @@
   /* ===== In-game seat takeover (members watching a game) ===== */
 
   .seat-takeover {
-    --surface-radius: var(--radius-panel);
-    position: fixed;
-    top: calc(env(safe-area-inset-top) + 58px);
-    left: 0;
-    right: 0;
-    margin: 0 auto;
-    width: fit-content;
-    z-index: 20;
-    display: flex;
     flex-wrap: wrap;
-    align-items: center;
     justify-content: center;
     gap: 6px;
-    max-width: calc(100vw - 32px);
-    padding: 6px 10px;
   }
 
   .seat-takeover-title {

@@ -57,8 +57,6 @@ async fn run_session(
     use futures::{future, FutureExt, StreamExt};
     use tantrix_proto::{decode, encode, HostMessage, PeerMessage, KEEPALIVE_PING, KEEPALIVE_PONG};
 
-    /// Keeps idle sockets from being dropped by proxies during long turns.
-    const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
     use wasm_bindgen::{closure::Closure, JsCast};
     use web_sys::{CloseEvent, Event, MessageEvent, WebSocket};
 
@@ -130,10 +128,39 @@ async fn run_session(
     ))
     .fuse();
     let mut welcomed = false;
-    let mut keepalive = futures_timer::Delay::new(KEEPALIVE_INTERVAL).fuse();
+    // Include background/OS suspension in outstanding response deadlines.
+    let clock = web_time::SystemTime::now();
+    let mut heartbeat = crate::heartbeat::Heartbeat::new(0);
 
     'session: loop {
-        futures::select! {
+        let now = clock.elapsed().unwrap_or_default().as_millis() as u64;
+        if heartbeat.expired(now) {
+            let _ = events.unbounded_send(SessionEvent::disconnected(
+                "The game server stopped responding.".into(),
+            ));
+            break;
+        }
+        let keepalive = futures_timer::Delay::new(Duration::from_millis(
+            heartbeat.deadline.saturating_sub(now),
+        ))
+        .fuse();
+        futures::pin_mut!(keepalive);
+        futures::select_biased! {
+            _ = keepalive => {
+                if heartbeat.expired(clock.elapsed().unwrap_or_default().as_millis() as u64) {
+                    let _ = events.unbounded_send(SessionEvent::disconnected("The game server stopped responding.".into()));
+                    break;
+                }
+                if welcomed {
+                    if socket.send_with_str(KEEPALIVE_PING).is_err() {
+                        let _ = events.unbounded_send(SessionEvent::disconnected("Connection lost.".into()));
+                        break;
+                    }
+                    heartbeat.ping(clock.elapsed().unwrap_or_default().as_millis() as u64);
+                } else {
+                    heartbeat = crate::heartbeat::Heartbeat::new(clock.elapsed().unwrap_or_default().as_millis() as u64);
+                }
+            },
             socket_event = socket_rx.next().fuse() => match socket_event {
                 Some(SocketEvent::Open) => {
                     let hello = PeerMessage::Hello {
@@ -146,7 +173,9 @@ async fn run_session(
                         break;
                     }
                 }
-                Some(SocketEvent::Message(text)) if text == KEEPALIVE_PONG => {}
+                Some(SocketEvent::Message(text)) if text == KEEPALIVE_PONG => {
+                    heartbeat.pong(clock.elapsed().unwrap_or_default().as_millis() as u64);
+                }
                 Some(SocketEvent::Message(text)) => {
                     let message: HostMessage = match decode(text.as_bytes()) {
                         Ok(message) => message,
@@ -168,7 +197,7 @@ async fn run_session(
                     }
                 }
                 Some(SocketEvent::Closed(reason)) => {
-                    let _ = events.unbounded_send(SessionEvent::Disconnected { reason });
+                    let _ = events.unbounded_send(SessionEvent::disconnected(reason));
                     break;
                 }
                 Some(SocketEvent::Error) => {
@@ -192,12 +221,6 @@ async fn run_session(
                     }
                 }
                 Some(_) => {}
-            },
-            _ = keepalive => {
-                if welcomed {
-                    let _ = socket.send_with_str(KEEPALIVE_PING);
-                }
-                keepalive = futures_timer::Delay::new(KEEPALIVE_INTERVAL).fuse();
             },
             _ = timeout => {
                 if !welcomed {

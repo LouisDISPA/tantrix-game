@@ -1,22 +1,17 @@
-//! `/online/:code` — root component that owns the session.
-//!
-//! Creates the `Store<OnlineState>` and the command-sender signal locally
-//! and passes them down as props to each child screen. Desktop rooms also
-//! provide the captured server origin to the invitation UI.
-//!
-//! The session itself lives in [`OnlineRoomSession`], keyed by a retry
-//! counter: bumping the counter unmounts the old session (dropping its
-//! WebSocket and cancelling its tasks) and mounts a fresh one, which is
-//! what the "Retry" buttons on the connecting and failed screens do.
+//! Room content and game context outlive the page-owned connection task.
 
+use dioxus::core::Task;
 use dioxus::prelude::*;
+use std::{cell::Cell, rc::Rc};
 
 use crate::pages::online::driver::spawn_session;
 use crate::pages::online::game::OnlineGameView;
 use crate::pages::online::lobby::OnlineLobbyView;
 use crate::pages::online::screens::{ConnectingView, FailedView};
 use crate::state::nickname;
-use crate::state::online_state::{FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt};
+use crate::state::online_state::{
+    ConnectionStatus, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
+};
 use crate::state::{room_connection, server_endpoints};
 
 #[component]
@@ -34,35 +29,29 @@ pub fn OnlineRoom(code: String) -> Element {
         move || room_connection::take_create(&code)
     });
 
-    // Keys only take effect between siblings: Dioxus never remounts a lone
-    // keyed child, so a bare `OnlineRoomSession { key: .. }` would be reused
-    // as-is when the counter changes. Rendering it as a one-item keyed list
-    // makes a new key drop the old session and mount a fresh one.
-    rsx! {
-        for attempt_no in [attempt()] {
-            OnlineRoomSession {
-                key: "{code}-{attempt_no}",
-                code: code.clone(),
-                url: if create && attempt_no == 0 { format!("{url}?create=1") } else { url.clone() },
-                on_retry: move |_| {
-                    log::info!("online: retrying (attempt {})", attempt() + 2);
-                    attempt += 1;
-                },
-            }
-        }
-    }
-}
-
-#[component]
-fn OnlineRoomSession(code: String, url: String, on_retry: EventHandler<()>) -> Element {
     let state = use_store(|| OnlineState::new(code.clone()));
-    let sender = use_signal(|| None);
-
-    // Once per session: the stored nickname (or a fresh one) is read when the
-    // session opens, not on every render.
-    use_hook(|| {
-        spawn_session(state, sender, url.clone(), nickname::load_or_generate());
+    let mut sender = use_signal(|| None);
+    let task = use_hook(|| Rc::new(Cell::new(None::<Task>)));
+    use_effect(move || {
+        let generation = attempt();
+        if let Some(previous) = task.take() {
+            previous.cancel();
+        }
+        task.set(Some(spawn_session(
+            state,
+            sender,
+            attempt,
+            url.clone(),
+            create && generation == 0,
+            nickname::load_or_generate(),
+        )));
     });
+    let on_retry = move |_| {
+        // Invalidate old events and commands before the replacement task polls.
+        sender.set(None);
+        state.connection().set(ConnectionStatus::Connecting);
+        attempt += 1;
+    };
 
     // The screen for the room's phase. A memo, so a lobby update or a game
     // snapshot (which keep the screen) does not re-render this component or
@@ -75,14 +64,11 @@ fn OnlineRoomSession(code: String, url: String, on_retry: EventHandler<()>) -> E
         RoomScreen::Lobby => rsx! {
             OnlineLobbyView { state, sender }
         },
-        RoomScreen::Playing => rsx! {
-            OnlineGameView { state, sender }
-        },
-        RoomScreen::Ended => rsx! {
-            OnlineGameView { state, sender }
+        RoomScreen::Game => rsx! {
+            OnlineGameView { state, sender, on_retry }
         },
         RoomScreen::Failed(reason) => rsx! {
-            FailedView { reason, on_retry, server: url }
+            FailedView { reason, on_retry, server }
         },
     }
 }
@@ -93,8 +79,7 @@ fn OnlineRoomSession(code: String, url: String, on_retry: EventHandler<()>) -> E
 enum RoomScreen {
     Connecting,
     Lobby,
-    Playing,
-    Ended,
+    Game,
     Failed(FailureReason),
 }
 
@@ -103,8 +88,8 @@ impl RoomScreen {
         match phase {
             OnlinePhase::Connecting => Self::Connecting,
             OnlinePhase::Lobby { .. } => Self::Lobby,
-            OnlinePhase::Playing { .. } => Self::Playing,
-            OnlinePhase::Ended { .. } => Self::Ended,
+            OnlinePhase::Playing { .. } => Self::Game,
+            OnlinePhase::Ended { .. } => Self::Game,
             OnlinePhase::Failed { reason } => Self::Failed(reason.clone()),
         }
     }
@@ -142,9 +127,9 @@ mod tests {
                     snapshot: game,
                     last_move: None,
                 },
-                RoomScreen::Playing,
+                RoomScreen::Game,
             ),
-            (ended, RoomScreen::Ended),
+            (ended, RoomScreen::Game),
             (failed, RoomScreen::Failed(FailureReason::Timeout)),
         ];
         for (phase, screen) in cases {

@@ -6,14 +6,18 @@ use dioxus::prelude::*;
 
 use crate::hooks::use_online_game_ctx;
 use crate::pages::game::{GameOver, GamePlay};
-use crate::pages::online::hud_badge::OnlineHudBadge;
+use crate::pages::online::hud_badge::{ConnectionNotice, OnlineHudBadge};
 use crate::pages::online::seat_takeover::OnlineSeatTakeover;
 use crate::route::Route;
 use crate::state::online_state::{reject_message, CommandSender, OnlineState};
 use crate::state::online_state::{OnlinePhase, OnlineStateStoreExt};
 
 #[component]
-pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSender>>) -> Element {
+pub fn OnlineGameView(
+    state: Store<OnlineState>,
+    sender: Signal<Option<CommandSender>>,
+    #[props(default)] on_retry: EventHandler<()>,
+) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("OnlineGameView", ());
     // The room mounts this view in the Playing and Ended phases, which both
@@ -21,6 +25,7 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
     // view re-renders when the game ends, not on every snapshot (the game
     // context fans those out to the components that show them).
     let ended = use_memo(move || matches!(&*state.phase().read(), OnlinePhase::Ended { .. }));
+    let waiting = use_memo(move || !state.connection().read().is_connected());
     let error = use_memo(move || state.last_error().read().as_ref().map(reject_message));
     use_online_game_ctx(state, sender);
 
@@ -40,9 +45,13 @@ pub fn OnlineGameView(state: Store<OnlineState>, sender: Signal<Option<CommandSe
     rsx! {
         GamePlay {
             error,
+            waiting,
+            banners: rsx! {
+                ConnectionNotice { state, on_retry }
+                OnlineSeatTakeover { state, sender }
+            },
             OnlineHudBadge { state }
         }
-        OnlineSeatTakeover { state, sender }
     }
 }
 
@@ -55,7 +64,9 @@ mod tests {
     use super::OnlineGameView;
     use crate::state::config::GameConfig;
     use crate::state::game_state::GameState;
-    use crate::state::online_state::{OnlinePhase, OnlineState, OnlineStateStoreExt};
+    use crate::state::online_state::{
+        ConnectionStatus, OnlinePhase, OnlineState, OnlineStateStoreExt,
+    };
     use crate::util::render_count;
     use crate::util::test_page::settle;
 
@@ -82,6 +93,8 @@ mod tests {
                 last_move: None,
             },
             last_error: None,
+            connection: ConnectionStatus::Connected,
+            seat_changed: false,
         });
         use_context_provider(|| state);
         let sender = use_signal(|| None);

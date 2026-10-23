@@ -1,6 +1,6 @@
 # Browser tests
 
-Eleven Chromium tests run against native Axum (CI, in-memory SQLite) or the Worker.
+Chromium tests run against native Axum (CI, in-memory SQLite) or the Worker.
 
 | Spec | Coverage |
 | --- | --- |
@@ -8,7 +8,8 @@ Eleven Chromium tests run against native Axum (CI, in-memory SQLite) or the Work
 | `forced-after-free-move` | Four seeded placements: forced fill keeps the turn |
 | `tile-drag` | Commit on release under production script policy; reject invalid drop |
 | `mobile-play` | Tap selection, End Game confirmation, touch drag, pan, pinch |
-| `online` | Two sessions synchronize, reload/resume and finish; missing-room error |
+| `online` | Two sessions synchronize, reload/resume and finish; rejected-action feedback; missing-room error |
+| `online-recovery` | Socket interruption, snapshot synchronization, bounded retries, seat loss, results, second-tab takeover, silent transport and background suspension; phone/desktop and both themes |
 | `startup` | Direct visits to home, online and download hydrate, dismiss the loader and enable content without browser errors |
 
 Optional `screens` cases capture phone/desktop boards. Core rules and scoring are tested in `tantrix-game`; room rules, sessions and persistence in `tantrix-room` and backend tests; gesture state in `tantrix-app`.
@@ -44,7 +45,7 @@ Native startup has ten minutes; Worker startup has one minute; the suite has fif
 
 ## Screenshots and diagnosis
 
-Optional screenshots go to git-ignored `e2e/screenshots/`:
+Optional screenshots, including the recovery notices from `online-recovery`, go to git-ignored `e2e/screenshots/`:
 
 ```sh
 cd e2e

@@ -149,7 +149,7 @@ pub fn OnlineEntry() -> Element {
                                 }
                             },
                             _ => rsx! {
-                                p { class: "alert-banner online-error", role: "alert", "Couldn’t check server compatibility." }
+                                p { class: "surface surface-raised surface-blur banner alert-banner online-error", role: "alert", "Couldn’t check server compatibility." }
                                 button {
                                     class: "button button-secondary",
                                     onclick: move |_| compatibility.restart(),
@@ -160,7 +160,7 @@ pub fn OnlineEntry() -> Element {
                     }
 
                     if let Some(err) = error.read().clone() {
-                        p { class: "alert-banner online-error", {err} }
+                        p { class: "surface surface-raised surface-blur banner alert-banner online-error", {err} }
                     }
                 }
             }
@@ -215,7 +215,7 @@ pub fn JoinRoom(code: String) -> Element {
                     if code_is_valid {
                         p { class: "lobby-waiting", "Connecting…" }
                     } else {
-                        p { class: "alert-banner online-error",
+                        p { class: "surface surface-raised surface-blur banner alert-banner online-error",
                             "This link doesn't look like a valid room code."
                         }
                         MenuButton {
@@ -349,7 +349,7 @@ fn ServerSettings(
                         }
                     }
                     if let Some(message) = error.read().as_ref() {
-                        p { class: "alert-banner online-error", {message.clone()} }
+                        p { class: "surface surface-raised surface-blur banner alert-banner online-error", {message.clone()} }
                     }
                 }
             }

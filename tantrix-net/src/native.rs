@@ -72,12 +72,21 @@ pub(crate) async fn run_native_session(
         return;
     }
     let mut welcomed = false;
-    let mut keepalive = tokio::time::interval_at(
-        tokio::time::Instant::now() + Duration::from_secs(30),
-        Duration::from_secs(30),
-    );
+    let clock = tokio::time::Instant::now();
+    let mut heartbeat = crate::heartbeat::Heartbeat::new(0);
     let reason = 'session: loop {
+        let now = clock.elapsed().as_millis() as u64;
+        if heartbeat.expired(now) {
+            break "The game server stopped responding.".into();
+        }
         tokio::select! {
+            biased;
+            _ = tokio::time::sleep(Duration::from_millis(heartbeat.deadline.saturating_sub(now))), if welcomed => {
+                if heartbeat.expired(clock.elapsed().as_millis() as u64) { break "The game server stopped responding.".into(); }
+                if socket.send(Message::Text(KEEPALIVE_PING.into())).await.is_err() { break "Connection lost.".into(); }
+                heartbeat.ping(clock.elapsed().as_millis() as u64);
+            }
+
             incoming = socket.next() => {
                 let text = match incoming {
                     Some(Ok(Message::Text(text))) => text,
@@ -86,7 +95,7 @@ pub(crate) async fn run_native_session(
                     Some(Err(error)) => break format!("Connection lost: {error}"),
                     None => break "Connection closed.".into(),
                 };
-                if text == KEEPALIVE_PONG { continue; }
+                if text == KEEPALIVE_PONG { heartbeat.pong(clock.elapsed().as_millis() as u64); continue; }
                 let message: HostMessage = match decode(text.as_bytes()) {
                     Ok(message) => message,
                     Err(_) => continue,
@@ -114,9 +123,6 @@ pub(crate) async fn run_native_session(
                 let text = String::from_utf8(encode(&message)).unwrap();
                 if socket.send(Message::Text(text.into())).await.is_err() { break "Could not send to the game server.".into(); }
             }
-            _ = keepalive.tick(), if welcomed => {
-                if socket.send(Message::Text(KEEPALIVE_PING.into())).await.is_err() { break "Connection lost.".into(); }
-            }
             _ = tokio::time::sleep_until(deadline), if !welcomed => {
                 let _ = events.unbounded_send(SessionEvent::ConnectTimeout);
                 break String::new();
@@ -124,7 +130,7 @@ pub(crate) async fn run_native_session(
         }
     };
     if !reason.is_empty() {
-        let _ = events.unbounded_send(SessionEvent::Disconnected { reason });
+        let _ = events.unbounded_send(SessionEvent::disconnected(reason));
     }
     // Dropping this future also drops the socket when its component unmounts.
     let _ = tokio::time::timeout(Duration::from_secs(1), socket.close(None)).await;

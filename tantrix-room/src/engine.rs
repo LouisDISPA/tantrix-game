@@ -40,7 +40,7 @@ use crate::session_cookie::SessionToken;
 pub const MAX_MESSAGE_BYTES: usize = 8 * 1024;
 
 /// Close reason for an older socket of a player who opened the room again.
-pub const OPENED_ELSEWHERE: &str = "This room was opened in another tab.";
+pub use tantrix_proto::OPENED_ELSEWHERE;
 /// Close reason for every socket when the room can't be saved or loaded.
 pub const STORAGE_UNAVAILABLE: &str = "Room storage is unavailable.";
 /// Close reason for a socket the server could not deliver a message to.

@@ -34,7 +34,8 @@ pub fn use_online_game_ctx(
 ) -> GameCtx {
     let my_color = use_memo(move || queries::my_color_of(state));
     let names = use_memo(move || player_names_of(state));
-    let driver = GameDriver::Online(RoomLink::new(sender, my_color, names));
+    let connected = use_memo(move || state.connection().read().is_connected());
+    let driver = GameDriver::Online(RoomLink::new(sender, my_color, names, connected.into()));
     // The first snapshot is read once, without subscribing: the effect below
     // brings in every later one.
     let ctx = use_game_ctx(driver, move || {
@@ -44,6 +45,12 @@ pub fn use_online_game_ctx(
         GameState::from_snapshot(snapshot)
     });
 
+    let mut ui = ctx.ui_state;
+    use_effect(move || {
+        if !state.connection().read().is_connected() {
+            ui.reset_selection();
+        }
+    });
     fan_out_snapshots(state, ctx.game_state, ctx.ui_state);
     ctx
 }
@@ -192,5 +199,120 @@ mod tests {
         // Nobody sits at the others; watchers have no color.
         assert_eq!(name(Red), None);
         assert_eq!(name(Green), None);
+    }
+
+    #[test]
+    fn losing_connection_cancels_selection_and_drag_and_blocks_dispatch_without_moving_camera() {
+        use crate::state::online_state::{
+            CommandSender, ConnectionStatus, OnlineState, OnlineStateStoreExt,
+        };
+        use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
+        use crate::state::{
+            actions,
+            game_state::GameCtx,
+            gesture::Pointer,
+            tile_drag::{move_tile, press_tile},
+        };
+        use crate::svg::geometry::Rect;
+        use crate::util::test_page::settle;
+        use dioxus::prelude::*;
+        use futures_channel::mpsc::unbounded;
+        use tantrix_game::{EnumMap, Position, Rotation};
+        use tantrix_proto::{GameSnapshot, PeerId, Seat};
+
+        let mut dom = VirtualDom::new(|| {
+            let game = seeded(3);
+            let current = game.current_player();
+            let state = use_store(|| {
+                let mut state = OnlineState::new("ABCDEF".into());
+                state.my_peer_id = Some(PeerId::new("me"));
+                state.connection = ConnectionStatus::Connected;
+                state.phase = OnlinePhase::Playing {
+                    snapshot: GameSnapshot {
+                        board: game.board().clone(),
+                        hands: EnumMap::from_fn(|color| game.hand(color).clone()),
+                        bag_count: game.bag_count(),
+                        current_player: current,
+                        turn_step: game.turn_step(),
+                        playing_colors: game.playing_colors().to_vec(),
+                        seats: EnumMap::from_fn(|color| {
+                            (color == current).then(|| Seat {
+                                peer_id: PeerId::new("me"),
+                                nickname: "Me".into(),
+                            })
+                        }),
+                        participants: vec![],
+                    },
+                    last_move: None,
+                };
+                state
+            });
+            use_context_provider(|| state);
+            let (tx, rx) = use_hook(|| {
+                let (tx, rx) = unbounded();
+                (tx, std::rc::Rc::new(std::cell::RefCell::new(rx)))
+            });
+            use_context_provider(|| rx);
+            let sender = use_signal(|| Some(CommandSender::new(tx)));
+            super::use_online_game_ctx(state, sender);
+            rsx! {}
+        });
+        dom.rebuild_in_place();
+        settle(&mut dom);
+        dom.in_scope(ScopeId::APP, || {
+            let ctx = consume_context::<GameCtx>();
+            let state = consume_context::<Store<OnlineState>>();
+            assert!(ctx.driver.controls(ctx.game_state.read().current_player()));
+            ctx.ui_state.zoom().set(1.5);
+            ctx.ui_state.pan_x().set(80.0);
+            ctx.ui_state.pan_y().set(-35.0);
+            let color = ctx.game_state.read().current_player();
+            press_tile(
+                ctx,
+                color,
+                0,
+                Pointer::new(1, 20.0, 20.0),
+                Rect::new(0.0, 0.0, 50.0, 60.0),
+                5.0,
+            );
+            move_tile(ctx, Pointer::new(1, 60.0, 60.0));
+            assert!(ctx
+                .ui_state
+                .tile_drag()
+                .peek()
+                .is_some_and(|drag| drag.is_dragging()));
+            ctx.ui_state.selected_tile().set(Some(0));
+            ctx.ui_state.selected_position().set(Some(Position::CENTER));
+            ctx.ui_state.phase().set(TurnPhase::SelectRotation);
+            state
+                .connection()
+                .set(ConnectionStatus::Reconnecting { attempt: 1 });
+        });
+        settle(&mut dom);
+        dom.in_scope(ScopeId::APP, || {
+            let ctx = consume_context::<GameCtx>();
+            let color = ctx.game_state.read().current_player();
+            assert!(!ctx.driver.controls(color));
+            assert!(!ctx.driver.can_end_game());
+            assert!(ctx.ui_state.tile_drag().peek().is_none());
+            assert!(ctx.ui_state.selected_tile().peek().is_none());
+            assert!(ctx.ui_state.selected_position().peek().is_none());
+            assert_eq!(*ctx.ui_state.phase().peek(), TurnPhase::SelectTile);
+            assert_eq!(*ctx.ui_state.zoom().peek(), 1.5);
+            assert_eq!(*ctx.ui_state.pan_x().peek(), 80.0);
+            assert_eq!(*ctx.ui_state.pan_y().peek(), -35.0);
+            actions::click_tile(ctx, color, 0);
+            actions::click_position(ctx, Position::CENTER);
+            actions::execute_move(ctx, 0, Position::CENTER, Rotation::None);
+            actions::end_game(ctx);
+            let commands = consume_context::<
+                std::rc::Rc<
+                    std::cell::RefCell<
+                        futures_channel::mpsc::UnboundedReceiver<tantrix_net::SessionCommand>,
+                    >,
+                >,
+            >();
+            assert!(commands.borrow_mut().try_recv().is_err());
+        });
     }
 }

@@ -38,7 +38,7 @@ impl GameDriver {
     pub fn controls(self, color: Color) -> bool {
         match self {
             Self::Local => true,
-            Self::Online(room) => room.my_color() == Some(color),
+            Self::Online(room) => room.is_connected() && room.my_color() == Some(color),
         }
     }
 
@@ -56,7 +56,7 @@ impl GameDriver {
     pub fn can_end_game(self) -> bool {
         match self {
             Self::Local => true,
-            Self::Online(room) => room.my_color().is_some(),
+            Self::Online(room) => room.is_connected() && room.my_color().is_some(),
         }
     }
 
@@ -76,6 +76,7 @@ pub struct RoomLink {
     sender: Signal<Option<CommandSender>>,
     my_color: Memo<Option<Color>>,
     names: Memo<EnumMap<Color, Option<String>>>,
+    connected: ReadSignal<bool>,
 }
 
 impl RoomLink {
@@ -83,12 +84,18 @@ impl RoomLink {
         sender: Signal<Option<CommandSender>>,
         my_color: Memo<Option<Color>>,
         names: Memo<EnumMap<Color, Option<String>>>,
+        connected: ReadSignal<bool>,
     ) -> Self {
         Self {
             sender,
             my_color,
             names,
+            connected,
         }
+    }
+
+    pub fn is_connected(self) -> bool {
+        (self.connected)()
     }
 
     fn my_color(self) -> Option<Color> {
@@ -110,8 +117,10 @@ impl RoomLink {
     }
 
     fn send(self, command: SessionCommand) {
-        if let Some(sender) = self.sender.read().as_ref() {
-            sender.send(command);
+        if self.is_connected() && self.my_color().is_some() {
+            if let Some(sender) = self.sender.read().as_ref() {
+                sender.send(command);
+            }
         }
     }
 }

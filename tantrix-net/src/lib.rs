@@ -1,6 +1,8 @@
 //! Browser and native WebSocket transports for server-authoritative Tantrix rooms.
 
 mod client;
+#[cfg(any(target_arch = "wasm32", feature = "native", test))]
+mod heartbeat;
 mod roomcode;
 mod session;
 

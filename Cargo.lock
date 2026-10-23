@@ -8177,6 +8177,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -8207,6 +8208,7 @@ dependencies = [
  "tokio-tungstenite 0.28.0",
  "wasm-bindgen",
  "web-sys",
+ "web-time",
  "webpki-roots 0.26.11",
 ]
 

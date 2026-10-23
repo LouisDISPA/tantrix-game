@@ -10,11 +10,28 @@ use tantrix_proto::{PeerId, RejectCode};
 
 use super::phase::OnlinePhase;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionStatus {
+    Connecting,
+    Connected,
+    Reconnecting { attempt: usize },
+    Stopped,
+    OpenedElsewhere,
+}
+
+impl ConnectionStatus {
+    pub fn is_connected(self) -> bool {
+        self == Self::Connected
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Store)]
 pub struct OnlineState {
     pub room_code: String,
     pub my_peer_id: Option<PeerId>,
     pub phase: OnlinePhase,
+    pub connection: ConnectionStatus,
+    pub seat_changed: bool,
     /// Last error shown to the user, cleared on next successful update.
     pub last_error: Option<RejectCode>,
 }
@@ -25,6 +42,8 @@ impl OnlineState {
             room_code,
             my_peer_id: None,
             phase: OnlinePhase::Connecting,
+            connection: ConnectionStatus::Connecting,
+            seat_changed: false,
             last_error: None,
         }
     }

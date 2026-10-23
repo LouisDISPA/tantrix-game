@@ -64,7 +64,11 @@ fn bag_share(bag: usize, seats: usize) -> f64 {
 /// it re-renders when its text changes: not on a hover, a drag, or an AI
 /// selecting its tile. `children` is the page's own badge.
 #[component]
-pub fn GameHud(error: ReadSignal<Option<&'static str>>, children: Element) -> Element {
+pub fn GameHud(
+    error: ReadSignal<Option<&'static str>>,
+    #[props(default)] waiting: ReadSignal<bool>,
+    children: Element,
+) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("GameHud", ());
     let ctx = use_context::<GameCtx>();
@@ -99,12 +103,18 @@ pub fn GameHud(error: ReadSignal<Option<&'static str>>, children: Element) -> El
     // Local UI flag: the End Game confirmation is open.
     let mut confirming_end = use_signal(|| false);
 
+    use_effect(move || {
+        if !ctx.driver.can_end_game() {
+            confirming_end.set(false);
+        }
+    });
+
     rsx! {
         header { class: "game-hud",
             div {
                 class: "surface hud-chip color-{color_slug(current_color())}",
                 class: if viewing().is_some() { "viewing" },
-                class: if error().is_some() { "has-error" },
+                class: if waiting() || error().is_some() { "has-error" },
                 // Left — player identity
                 div { class: "hud-chip-player",
                     div { class: "color-swatch hud-chip-dot" }
@@ -114,7 +124,9 @@ pub fn GameHud(error: ReadSignal<Option<&'static str>>, children: Element) -> El
                 span { class: "hud-chip-sep", aria_hidden: "true", "·" }
 
                 // Center — phase instruction or alert
-                if let Some(text) = error() {
+                if waiting() {
+                    span { class: "hud-chip-phase hud-chip-error", "Awaiting synchronization" }
+                } else if let Some(text) = error() {
                     span { class: "hud-chip-phase alert hud-chip-error", role: "status",
                         "{text}"
                     }
@@ -164,7 +176,7 @@ pub fn GameHud(error: ReadSignal<Option<&'static str>>, children: Element) -> El
                 ThemeToggle { class: "hud-menu-item game-theme-toggle", labelled: true }
             }
 
-            if confirming_end() {
+            if confirming_end() && ctx.driver.can_end_game() {
                 ConfirmDialog {
                     title: "End the game now?",
                     message: match ctx.driver {

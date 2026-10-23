@@ -20,9 +20,14 @@ use crate::state::ui_state::{set_if_changed, UiStateStoreExt, UiStateStoreImplEx
 /// rendering: a local game's first turn is handed on by the setup screen's
 /// Start Game (`actions::start_game`), an online one by the room.
 ///
-/// `children` go in the HUD: the online room's badge.
+/// `children` go in the HUD; `banners` join the centered turn announcements.
 #[component]
-pub fn GamePlay(error: ReadSignal<Option<&'static str>>, children: Element) -> Element {
+pub fn GamePlay(
+    error: ReadSignal<Option<&'static str>>,
+    #[props(default)] waiting: ReadSignal<bool>,
+    #[props(default = VNode::empty())] banners: Element,
+    children: Element,
+) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("GamePlay", ());
     let ctx = use_context::<GameCtx>();
@@ -100,10 +105,14 @@ pub fn GamePlay(error: ReadSignal<Option<&'static str>>, children: Element) -> E
                 }
             },
 
-            GameHud { error, {children} }
+            GameHud { error, waiting, {children} }
+
+            div { class: "game-announcements",
+                {banners}
+                TurnBanner {}
+            }
 
             div { class: "board-slot",
-                TurnBanner {}
                 Board {}
             }
 

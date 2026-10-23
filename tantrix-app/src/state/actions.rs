@@ -51,6 +51,9 @@ pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rota
         };
         (color, tile)
     };
+    if !ctx.driver.controls(player_color) {
+        return;
+    }
     let placement = Placement {
         tile,
         position: pos,
@@ -197,6 +200,9 @@ pub fn click_tile(ctx: GameCtx, color: Color, idx: usize) {
 /// otherwise advance to `SelectRotation` phase and let the card of options
 /// at the spot pick. While that card is open, another spot moves it there.
 pub fn click_position(ctx: GameCtx, pos: Position) {
+    if !ctx.driver.controls(ctx.game_state.read().current_player()) {
+        return;
+    }
     let ui_state = ctx.ui_state;
     let game_state = ctx.game_state;
 

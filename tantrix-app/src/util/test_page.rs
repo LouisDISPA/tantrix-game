@@ -48,8 +48,9 @@ fn page_root(props: Props) -> Element {
     let names = room.as_ref().map(|room| room.names.clone());
     let my_color = use_memo(move || seat);
     let names = use_memo(move || names.clone().unwrap_or_default());
+    let connected = use_memo(|| true);
     let driver = match room {
-        Some(_) => GameDriver::Online(RoomLink::new(sender, my_color, names)),
+        Some(_) => GameDriver::Online(RoomLink::new(sender, my_color, names, connected.into())),
         None => GameDriver::Local,
     };
     use_game_ctx(driver, move || game);
