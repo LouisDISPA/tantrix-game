@@ -11,7 +11,7 @@ use crate::tournament::{Standings, Tournament};
 /// Print progress at least this often, and at every tenth of the games.
 const PROGRESS_EVERY: Duration = Duration::from_secs(30);
 
-pub fn run(tournament: Tournament, threads: usize) {
+pub(crate) fn run(tournament: Tournament, threads: usize) {
     let names = tournament.names();
     let games = tournament.games();
     let summary = summary(&tournament);
@@ -41,7 +41,7 @@ pub fn run(tournament: Tournament, threads: usize) {
 }
 
 /// What the tournament plays, in a line.
-pub fn summary(tournament: &Tournament) -> String {
+pub(crate) fn summary(tournament: &Tournament) -> String {
     format!(
         "Tantrix AI tournament, seed {}: {} AIs, {} games per pairing{}",
         tournament.seed,
@@ -82,7 +82,7 @@ fn duration(secs: f64) -> String {
 }
 
 /// The standings as plain text: the leaderboard, then every head-to-head.
-pub fn report(summary: &str, standings: &Standings, elapsed: Duration) -> String {
+pub(crate) fn report(summary: &str, standings: &Standings, elapsed: Duration) -> String {
     let mut out = String::new();
     let secs = elapsed.as_secs_f64();
     let _ = writeln!(

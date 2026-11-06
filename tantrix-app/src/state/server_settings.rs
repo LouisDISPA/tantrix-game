@@ -1,9 +1,9 @@
 //! Shared online server address validation and defaults.
 
-pub const DEFAULT_SERVER: &str = "https://tantrix.louis-dispa.fr";
+pub(crate) const DEFAULT_SERVER: &str = "https://tantrix.louis-dispa.fr";
 
 /// Store an origin, so socket URLs and invitation links agree about the server.
-pub fn normalize_server(address: &str) -> Result<String, String> {
+pub(crate) fn normalize_server(address: &str) -> Result<String, String> {
     let address = address.trim();
     if address.is_empty() {
         return Err("Enter a server address.".into());
@@ -38,14 +38,14 @@ pub fn normalize_server(address: &str) -> Result<String, String> {
 use super::native_settings::{load, save};
 
 #[cfg(native_io)]
-pub fn server_address() -> String {
+pub(crate) fn server_address() -> String {
     load("server-address")
         .and_then(|address| normalize_server(&address).ok())
         .unwrap_or_else(|| DEFAULT_SERVER.into())
 }
 
 #[cfg(native_io)]
-pub fn save_server_address(address: &str) -> Result<String, String> {
+pub(crate) fn save_server_address(address: &str) -> Result<String, String> {
     let address = normalize_server(address)?;
     save("server-address", &address)?;
     Ok(address)
@@ -53,7 +53,7 @@ pub fn save_server_address(address: &str) -> Result<String, String> {
 
 /// Keep private reconnect identities separate for each server on native clients.
 #[cfg(native_io)]
-pub fn session_cookie(server: &str) -> Result<String, String> {
+pub(crate) fn session_cookie(server: &str) -> Result<String, String> {
     let filename = session_key(server)?;
     let token = match load(&filename) {
         Some(token) if token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit()) => {

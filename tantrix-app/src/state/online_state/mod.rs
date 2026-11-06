@@ -6,13 +6,13 @@
 //! signals — unrelated subscribers stay asleep.
 
 mod phase;
-pub mod queries;
-pub mod recovery;
+pub(crate) mod queries;
+pub(crate) mod recovery;
 mod sender;
 mod state;
 #[cfg(test)]
-pub mod test_rooms;
+pub(crate) mod test_rooms;
 
-pub use phase::{reject_message, FailureReason, OnlinePhase};
-pub use sender::CommandSender;
-pub use state::{ConnectionStatus, OnlineState, OnlineStateStoreExt};
+pub(crate) use phase::{reject_message, FailureReason, OnlinePhase};
+pub(crate) use sender::CommandSender;
+pub(crate) use state::{ConnectionStatus, OnlineState, OnlineStateStoreExt};

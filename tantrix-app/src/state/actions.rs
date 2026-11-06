@@ -32,7 +32,7 @@ const FORCED_MESSAGE: &str = "Forced move! You must fill a forced space.";
 /// Deal a new local game from `config`, with a fresh UI state, and hand the
 /// first turn on: to the AI loop when an AI seat starts. Called from the
 /// setup screen's Start Game, so no component writes state while rendering.
-pub fn start_game(ctx: GameCtx, config: &GameConfig) {
+pub(crate) fn start_game(ctx: GameCtx, config: &GameConfig) {
     let mut game_state = ctx.game_state;
     let mut ui_state = ctx.ui_state;
     game_state.set(GameState::new(config));
@@ -42,7 +42,7 @@ pub fn start_game(ctx: GameCtx, config: &GameConfig) {
 
 /// Play the current player's tile at `tile_idx` at `pos` in `rotation`.
 /// No-op if the tile index is out of range.
-pub fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rotation) {
+pub(crate) fn execute_move(ctx: GameCtx, tile_idx: usize, pos: Position, rotation: Rotation) {
     let (player_color, tile) = {
         let gs = ctx.game_state.read();
         let color = gs.current_player();
@@ -94,7 +94,7 @@ fn play_here(ctx: GameCtx, player: Color, placement: Placement) {
 
 /// Put the board back in the camera: in the middle, zoomed out if it has
 /// outgrown the stage. Nothing happens until the stage has been measured.
-pub fn frame_board(ctx: GameCtx) {
+pub(crate) fn frame_board(ctx: GameCtx) {
     let placed = placed_positions(ctx);
     BoardCamera::new(ctx.ui_state).frame_board(&placed);
 }
@@ -131,7 +131,7 @@ fn placed_positions(ctx: GameCtx) -> Vec<Position> {
 /// wheel: the only one that fits there, or — on the empty board, where the
 /// opening tile fits every way round — the first. `None` when the player
 /// picks one.
-pub fn auto_rotation(rotations: &[Rotation], board_empty: bool) -> Option<Rotation> {
+pub(crate) fn auto_rotation(rotations: &[Rotation], board_empty: bool) -> Option<Rotation> {
     match rotations {
         [only] => Some(*only),
         [first, ..] if board_empty => Some(*first),
@@ -142,7 +142,7 @@ pub fn auto_rotation(rotations: &[Rotation], board_empty: bool) -> Option<Rotati
 /// The move a hand tile is played in without the player choosing anything:
 /// the tile fits at a single position, in its [`auto_rotation`] there.
 /// `None` when the tile has no move, or the player has a choice to make.
-pub fn auto_move(info: &TileMoveInfo, board_empty: bool) -> Option<(Position, Rotation)> {
+pub(crate) fn auto_move(info: &TileMoveInfo, board_empty: bool) -> Option<(Position, Rotation)> {
     let mut positions = info.positions.iter();
     let (&position, rotations) = positions.next()?;
     if positions.next().is_some() {
@@ -159,7 +159,7 @@ pub fn auto_move(info: &TileMoveInfo, board_empty: bool) -> Option<(Position, Ro
 /// ([`auto_move`]) is played at once; any other tile is selected, for the
 /// player to choose a position. Outside the human turn phases it does
 /// nothing.
-pub fn click_tile(ctx: GameCtx, color: Color, idx: usize) {
+pub(crate) fn click_tile(ctx: GameCtx, color: Color, idx: usize) {
     let mut ui_state = ctx.ui_state;
 
     let on_turn = ctx.game_state.read().current_player() == color;
@@ -199,7 +199,7 @@ pub fn click_tile(ctx: GameCtx, color: Color, idx: usize) {
 /// rotation at this position ([`auto_rotation`]), commit immediately;
 /// otherwise advance to `SelectRotation` phase and let the card of options
 /// at the spot pick. While that card is open, another spot moves it there.
-pub fn click_position(ctx: GameCtx, pos: Position) {
+pub(crate) fn click_position(ctx: GameCtx, pos: Position) {
     if !ctx.driver.controls(ctx.game_state.read().current_player()) {
         return;
     }
@@ -236,7 +236,7 @@ pub fn click_position(ctx: GameCtx, pos: Position) {
 }
 
 /// Commit the move after the user picks a rotation from the card of options.
-pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
+pub(crate) fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
     let ui_state = ctx.ui_state;
     let tile_idx = *ui_state.selected_tile().read();
     let pos = *ui_state.selected_position().read();
@@ -247,7 +247,7 @@ pub fn pick_rotation(ctx: GameCtx, rotation: Rotation) {
 
 /// End the game early: on this device for a local game, or for everyone in
 /// an online room (the room's `GameEnded` then shows the results).
-pub fn end_game(ctx: GameCtx) {
+pub(crate) fn end_game(ctx: GameCtx) {
     match ctx.driver {
         GameDriver::Local => {
             let ui_state = ctx.ui_state;
@@ -262,7 +262,7 @@ pub fn end_game(ctx: GameCtx) {
 /// move, then hand the turn to the AI loop if an AI seat has a move to play,
 /// or else to a human (or end the game). Online rooms are
 /// server-authoritative: the room does all of this, and nothing happens here.
-pub fn advance_turn(ctx: GameCtx) {
+pub(crate) fn advance_turn(ctx: GameCtx) {
     let ui_state = ctx.ui_state;
     if !ctx.driver.runs_turns() || *ui_state.phase().read() == TurnPhase::GameOver {
         return;

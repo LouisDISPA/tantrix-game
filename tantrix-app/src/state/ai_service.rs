@@ -18,7 +18,7 @@ use crate::util::sleep;
 ///
 /// Designed to be `spawn`ed — scalar signal reads happen before any `.await`
 /// to avoid holding guards across suspend points.
-pub async fn run_ai_loop(ctx: GameCtx) {
+pub(crate) async fn run_ai_loop(ctx: GameCtx) {
     let game_state = ctx.game_state;
     let ui_state = ctx.ui_state;
 

@@ -8,12 +8,12 @@ use worker::{
     durable_object, DurableObject, Env, Method, Request, Response, Result, State, Storage,
 };
 
-pub fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     worker::Date::now().as_millis()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Owner {
+pub(crate) struct Owner {
     pub id: String,
     pub claim: String,
 }
@@ -58,21 +58,21 @@ impl DurableObject for RoomCodes {
     }
 }
 
-pub struct WorkerCatalog {
+pub(crate) struct WorkerCatalog {
     pub storage: Storage,
     pub env: Env,
 }
 
-pub fn unavailable(error: worker::Error) -> RoomApiError {
+pub(crate) fn unavailable(error: worker::Error) -> RoomApiError {
     worker::console_error!("room storage error: {error}");
     RoomApiError::StorageUnavailable
 }
 
-pub async fn persist(storage: &Storage, record: &RoomRecord) -> Result<()> {
+pub(crate) async fn persist(storage: &Storage, record: &RoomRecord) -> Result<()> {
     persist_with_archive(storage, record, None).await
 }
 
-pub async fn persist_with_archive(
+pub(crate) async fn persist_with_archive(
     storage: &Storage,
     record: &RoomRecord,
     archive: Option<CompletedMatch>,

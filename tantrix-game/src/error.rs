@@ -6,8 +6,11 @@ use std::fmt;
 /// [`Hand::play_tile`](crate::Hand::play_tile)). The game is left as it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MoveError {
+    /// The current player has no legal move.
     NoLegalMoves,
+    /// The tile is not in the hand.
     TileNotInHand,
+    /// The placement is not one of the legal moves.
     InvalidMove,
     /// The board refused the tile.
     Board(BoardError),
@@ -62,10 +65,14 @@ impl fmt::Display for RetireError {
     }
 }
 
+/// Why a game or a turn order could not be set up.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetupError {
+    /// Fewer than two colors are played.
     NotEnoughPlayers,
+    /// The turn order has no colors.
     EmptyTurnCycle,
+    /// The current player is not in the turn order.
     CurrentPlayerNotInCycle,
 }
 
@@ -112,7 +119,12 @@ pub enum ReplayError {
     /// The players cannot start a game.
     Setup(SetupError),
     /// The event at `index` could not be played again.
-    Event { index: usize, error: EventError },
+    Event {
+        /// Where the event is in the history, from 0.
+        index: usize,
+        /// Why it could not be played again.
+        error: EventError,
+    },
 }
 
 impl fmt::Display for ReplayError {

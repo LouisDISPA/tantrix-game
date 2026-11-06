@@ -10,7 +10,7 @@ pub(crate) struct Heartbeat {
 }
 
 impl Heartbeat {
-    pub fn new(now: u64) -> Self {
+    pub(crate) fn new(now: u64) -> Self {
         Self {
             deadline: now + PING_INTERVAL,
             awaiting_pong: false,
@@ -18,17 +18,17 @@ impl Heartbeat {
         }
     }
 
-    pub fn expired(&self, now: u64) -> bool {
+    pub(crate) fn expired(&self, now: u64) -> bool {
         self.awaiting_pong && now >= self.deadline
     }
 
-    pub fn ping(&mut self, now: u64) {
+    pub(crate) fn ping(&mut self, now: u64) {
         self.awaiting_pong = true;
         self.next_ping = now + PING_INTERVAL;
         self.deadline = now + PONG_TIMEOUT;
     }
 
-    pub fn pong(&mut self, now: u64) {
+    pub(crate) fn pong(&mut self, now: u64) {
         if self.awaiting_pong {
             self.awaiting_pong = false;
             self.deadline = self.next_ping.max(now);

@@ -10,7 +10,10 @@ pub(crate) const NUMBER_OF_COLOR: usize = enum_iterator::cardinality::<Color>();
 /// How many different tiles there are: what the bag holds before the deal.
 pub const NUMBER_OF_TILE: usize = enum_iterator::cardinality::<Tile>();
 
+/// One of the four line colors. Each tile shows three of them, on two
+/// edges each.
 #[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[expect(missing_docs, reason = "the variants name the colors")]
 pub enum Color {
     Red,
     Blue,
@@ -24,7 +27,11 @@ impl fmt::Display for Color {
     }
 }
 
+/// One of the 56 tiles. A variant spells the tile's edge colors (Red, Yellow,
+/// Blue, Green) clockwise from [`Direction::Left`]; its comment gives the
+/// tile's number.
 #[derive(Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[expect(missing_docs, reason = "a variant's name spells its edge colors")]
 pub enum Tile {
     // RYB tiles (1-14)
     RYYBRB, // 1: YYBRBR
@@ -91,6 +98,7 @@ pub enum Tile {
 }
 
 impl Tile {
+    /// The unturned tile's edge colors, clockwise from [`Direction::Left`].
     pub fn colors(self) -> &'static [Color; 6] {
         use Color::{Blue as B, Green as G, Red as R, Yellow as Y};
 
@@ -160,6 +168,7 @@ impl Tile {
         }
     }
 
+    /// The unturned tile's color on the edge facing `dir`.
     pub fn color(self, dir: Direction) -> Color {
         let array = self.colors();
         array[dir.index()]

@@ -60,7 +60,7 @@ static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
 
 /// The span of a room's work: its actor, and each request that opens it.
 /// Error level, so failures keep their room when `RUST_LOG` hides info.
-pub fn room_span(id: &str) -> Span {
+pub(super) fn room_span(id: &str) -> Span {
     tracing::error_span!(parent: None, "room", room = %id)
 }
 
@@ -76,18 +76,18 @@ pub(super) fn socket_span(room: &str, conn: ConnId) -> Span {
     )
 }
 
-pub struct RoomManager {
+pub(super) struct RoomManager {
     rooms: Mutex<HashMap<String, Weak<RoomHandle>>>,
     store: RoomStore,
 }
 
-pub enum OpenRoom {
+pub(super) enum OpenRoom {
     Ready(Arc<RoomHandle>),
     Missing,
     Expired,
 }
 
-pub fn now_ms() -> u64 {
+pub(super) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -95,14 +95,14 @@ pub fn now_ms() -> u64 {
 }
 
 impl RoomManager {
-    pub fn new(store: RoomStore) -> Self {
+    pub(super) fn new(store: RoomStore) -> Self {
         Self {
             rooms: Mutex::new(HashMap::new()),
             store,
         }
     }
 
-    pub async fn create(&self, id: &str, now: u64) -> Result<RoomReference, RoomApiError> {
+    pub(super) async fn create(&self, id: &str, now: u64) -> Result<RoomReference, RoomApiError> {
         async {
             if super::store::unavailable(self.store.insert(id, now).await)? {
                 tracing::info!("room created");
@@ -113,7 +113,7 @@ impl RoomManager {
         .await
     }
 
-    pub async fn reference(
+    pub(super) async fn reference(
         &self,
         id: &str,
         now: u64,
@@ -138,7 +138,11 @@ impl RoomManager {
         }
     }
 
-    pub async fn resolve(&self, code: &str, now: u64) -> Result<RoomReference, RoomApiError> {
+    pub(super) async fn resolve(
+        &self,
+        code: &str,
+        now: u64,
+    ) -> Result<RoomReference, RoomApiError> {
         let id = super::store::unavailable(self.store.find_code(code).await)?
             .ok_or(RoomApiError::NotFound)?;
         let reference = self.reference(&id, now, false).await?;
@@ -148,7 +152,7 @@ impl RoomManager {
         Ok(reference)
     }
 
-    pub async fn cleanup(&self, now: u64) -> StoreResult<()> {
+    pub(super) async fn cleanup(&self, now: u64) -> StoreResult<()> {
         let due = self.store.due(now).await?;
         if !due.is_empty() {
             tracing::debug!(rooms = due.len(), "cleanup sweep");
@@ -162,7 +166,7 @@ impl RoomManager {
         Ok(())
     }
 
-    pub async fn open(&self, id: &str, now: u64) -> StoreResult<OpenRoom> {
+    pub(super) async fn open(&self, id: &str, now: u64) -> StoreResult<OpenRoom> {
         let mut rooms = self.rooms.lock().await;
         rooms.retain(|_, handle| handle.strong_count() > 0);
         if let Some(handle) = rooms.get(id).and_then(Weak::upgrade) {
@@ -223,14 +227,18 @@ async fn clean(
     result
 }
 
-pub struct RoomHandle {
+pub(super) struct RoomHandle {
     /// The room's permanent ID.
     id: String,
     tx: mpsc::Sender<RoomCommand>,
 }
 
 impl RoomHandle {
-    pub async fn inspect(&self, now: u64, allocate: bool) -> Result<RoomReference, RoomApiError> {
+    pub(super) async fn inspect(
+        &self,
+        now: u64,
+        allocate: bool,
+    ) -> Result<RoomReference, RoomApiError> {
         let (reply, answer) = oneshot::channel();
         if !self
             .send(RoomCommand::Inspect {
@@ -562,12 +570,12 @@ fn close_frame(reason: &str) -> Message {
 }
 
 /// Close a socket the handshake refused, with a reason the player reads.
-pub async fn refused(mut socket: WebSocket, reason: &'static str) {
+pub(super) async fn refused(mut socket: WebSocket, reason: &'static str) {
     write(&mut socket, close_frame(reason)).await;
 }
 
 /// Answer a socket for a missing or expired room, then close it.
-pub async fn rejected_room(mut socket: WebSocket, code: RejectCode) {
+pub(super) async fn rejected_room(mut socket: WebSocket, code: RejectCode) {
     let message = engine::rejected_welcome(code);
     if write(&mut socket, wire_message(&message)).await {
         write(&mut socket, close_frame("")).await;
@@ -609,7 +617,11 @@ impl Liveness {
     }
 }
 
-pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: SessionToken) {
+pub(super) async fn socket_session(
+    socket: WebSocket,
+    handle: Arc<RoomHandle>,
+    token: SessionToken,
+) {
     let conn = ConnId(NEXT_CONN.fetch_add(1, Ordering::Relaxed));
     let span = socket_span(&handle.id, conn);
     serve_socket(socket, handle, token, conn, span.clone())

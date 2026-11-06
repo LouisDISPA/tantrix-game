@@ -6146,7 +6146,6 @@ dependencies = [
  "dirs",
  "futures",
  "futures-channel",
- "futures-timer",
  "getrandom 0.4.3",
  "gloo-timers",
  "http",

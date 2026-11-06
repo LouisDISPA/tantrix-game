@@ -6,10 +6,10 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use futures_channel::mpsc::UnboundedSender;
 use velopack::{sources::GithubSource, UpdateCheck, UpdateManager, VelopackAsset};
 
-pub use super::online_compatibility::DOWNLOAD_URL;
+pub(crate) use super::online_compatibility::DOWNLOAD_URL;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum UpdateStatus {
+pub(crate) enum UpdateStatus {
     Checking,
     Current,
     Downloading { version: String, percent: i16 },
@@ -20,7 +20,7 @@ pub enum UpdateStatus {
 }
 
 impl UpdateStatus {
-    pub fn is_outdated(&self) -> bool {
+    pub(crate) fn is_outdated(&self) -> bool {
         matches!(
             self,
             Self::Downloading { .. }
@@ -31,7 +31,7 @@ impl UpdateStatus {
     }
 }
 
-pub fn run(commands: Receiver<()>, events: UnboundedSender<UpdateStatus>) {
+pub(crate) fn run(commands: Receiver<()>, events: UnboundedSender<UpdateStatus>) {
     let source = GithubSource::new(
         "https://github.com/LouisDISPA/tantrix-game",
         None,

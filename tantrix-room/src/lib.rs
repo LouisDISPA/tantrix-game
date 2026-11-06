@@ -4,6 +4,8 @@
 //! [`handshake`] and [`session_cookie`] check the socket upgrade, and
 //! [`rate_limit`] throttles the room HTTP endpoints per client.
 
+#![warn(missing_docs)]
+
 pub mod engine;
 pub mod handshake;
 pub mod lifecycle;

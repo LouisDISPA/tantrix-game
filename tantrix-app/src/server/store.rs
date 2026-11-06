@@ -11,8 +11,8 @@ use tantrix_proto::RoomApiError;
 use tantrix_room::lifecycle::{Catalog, Invitation, RoomRecord};
 use tantrix_room::room_logic::CompletedMatch;
 
-pub type StoreError = Box<dyn Error + Send + Sync>;
-pub type StoreResult<T> = Result<T, StoreError>;
+pub(super) type StoreError = Box<dyn Error + Send + Sync>;
+pub(super) type StoreResult<T> = Result<T, StoreError>;
 
 /// A record as its `online_games` row stores it.
 struct Row {
@@ -45,12 +45,12 @@ impl Row {
 }
 
 #[derive(Clone)]
-pub struct RoomStore {
+pub(super) struct RoomStore {
     connection: Arc<Mutex<Connection>>,
 }
 
 impl RoomStore {
-    pub fn open(path: impl Into<PathBuf>) -> StoreResult<Self> {
+    pub(super) fn open(path: impl Into<PathBuf>) -> StoreResult<Self> {
         let path = path.into();
         let conn = if path == Path::new(":memory:") {
             Connection::open_in_memory()?
@@ -85,7 +85,7 @@ impl RoomStore {
     }
 
     /// Store a new room; false if one with this ID exists (or existed).
-    pub async fn insert(&self, id: &str, now: u64) -> StoreResult<bool> {
+    pub(super) async fn insert(&self, id: &str, now: u64) -> StoreResult<bool> {
         let row = Row::new(&RoomRecord::new(id.into(), now))?;
         self.with(move |conn| {
             let inserted = conn.execute("INSERT OR IGNORE INTO online_games (id, record_json, deadline) VALUES (?1, ?2, ?3)", (&row.id, &row.json, row.deadline))?;
@@ -93,7 +93,7 @@ impl RoomStore {
         }).await
     }
 
-    pub async fn load(&self, id: &str) -> StoreResult<Option<RoomRecord>> {
+    pub(super) async fn load(&self, id: &str) -> StoreResult<Option<RoomRecord>> {
         let id = id.to_owned();
         self.with(move |conn| {
             let json: Option<String> = conn
@@ -109,11 +109,11 @@ impl RoomStore {
         .await
     }
 
-    pub async fn save_record(&self, record: &RoomRecord) -> StoreResult<()> {
+    pub(super) async fn save_record(&self, record: &RoomRecord) -> StoreResult<()> {
         self.save_with_archive(record, None).await
     }
 
-    pub async fn save_with_archive(
+    pub(super) async fn save_with_archive(
         &self,
         record: &RoomRecord,
         archive: Option<CompletedMatch>,
@@ -134,7 +134,7 @@ impl RoomStore {
     }
 
     #[cfg(test)]
-    pub async fn load_match(
+    pub(super) async fn load_match(
         &self,
         room_id: &str,
         match_id: u32,
@@ -154,7 +154,7 @@ impl RoomStore {
         .await
     }
 
-    pub async fn find_code(&self, code: &str) -> StoreResult<Option<String>> {
+    pub(super) async fn find_code(&self, code: &str) -> StoreResult<Option<String>> {
         let code = code.to_owned();
         self.with(move |conn| {
             Ok(conn
@@ -170,7 +170,7 @@ impl RoomStore {
 
     /// No socket survives a restart: rooms saved as connected (the rows
     /// without a deadline) become vacant from `now`, which schedules cleanup.
-    pub async fn mark_vacant(&self, now: u64) -> StoreResult<()> {
+    pub(super) async fn mark_vacant(&self, now: u64) -> StoreResult<()> {
         self.with(move |conn| {
             let transaction = conn.unchecked_transaction()?;
             let records: Vec<String> = transaction
@@ -188,7 +188,7 @@ impl RoomStore {
         .await
     }
 
-    pub async fn due(&self, now: u64) -> StoreResult<Vec<String>> {
+    pub(super) async fn due(&self, now: u64) -> StoreResult<Vec<String>> {
         self.with(move |conn| {
             let mut query = conn.prepare("SELECT id FROM online_games WHERE deadline <= ?1")?;
             let ids = query
@@ -200,7 +200,7 @@ impl RoomStore {
     }
 }
 
-pub fn unavailable<T>(result: StoreResult<T>) -> Result<T, RoomApiError> {
+pub(super) fn unavailable<T>(result: StoreResult<T>) -> Result<T, RoomApiError> {
     result.map_err(|error| {
         tracing::error!(%error, "room storage error");
         RoomApiError::StorageUnavailable
@@ -287,7 +287,7 @@ pub(super) mod tests {
     }
 
     /// A stored room between matches, with match 0 archived.
-    pub async fn finished_room(store: &RoomStore, id: &str, now: u64) -> RoomRecord {
+    pub(crate) async fn finished_room(store: &RoomStore, id: &str, now: u64) -> RoomRecord {
         store.insert(id, now).await.unwrap();
         let mut record = store.load(id).await.unwrap().unwrap();
         record.room.as_mut().unwrap().match_id = 1;

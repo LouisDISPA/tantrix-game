@@ -21,6 +21,7 @@ pub const TOMBSTONE_TTL_MS: u64 = DAY_MS;
 /// A room whose game started is deleted, with its match history, after
 /// nobody has been connected for this long.
 pub const RETENTION_MS: u64 = 3 * DAY_MS;
+/// Codes [`allocate`] tries to claim before it answers `AllocationBusy`.
 pub const ALLOCATION_ATTEMPTS: usize = 10;
 
 // A lobby's inactivity starts no earlier than the request that created it,
@@ -38,12 +39,19 @@ pub fn game_id(token: &SessionToken, request_id: &str) -> String {
     .to_string()
 }
 
+/// A short invitation code, and the nonce that reserves it for one room.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Invitation {
+    /// What players type or share: [`ROOM_CODE_LEN`] letters of
+    /// [`ROOM_CODE_ALPHABET`].
     pub code: String,
+    /// Random nonce of this reservation, so a stale release can't free the
+    /// code once it is claimed again.
     pub claim: String,
 }
 
+/// A random code with a fresh claim, not reserved yet. Fails with
+/// `StorageUnavailable` if the platform RNG does.
 pub fn new_invitation() -> Result<Invitation, RoomApiError> {
     let mut code = String::with_capacity(ROOM_CODE_LEN);
     while code.len() < ROOM_CODE_LEN {
@@ -62,16 +70,22 @@ pub fn new_invitation() -> Result<Invitation, RoomApiError> {
     })
 }
 
+/// What storage keeps for one room: its state, its invitation codes and
+/// how long it has been vacant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomRecord {
+    /// The room's permanent game ID.
     pub id: String,
     /// None is an expired-lobby tombstone. Creation retries must not revive it.
     pub room: Option<RoomData>,
+    /// The code reserved for this room, if any.
     pub invitation: Option<Invitation>,
     /// Persisted before reserving a code, so a crash can resume the same claim.
     pub pending: Option<Invitation>,
     /// Persisted before release, so a failed cleanup can be retried safely.
     pub retired: Vec<Invitation>,
+    /// Since when nobody has been connected, in milliseconds since the Unix
+    /// epoch; `None` while someone is. Expiry and retention count from it.
     pub vacant_since: Option<u64>,
 }
 
@@ -88,6 +102,7 @@ impl RoomRecord {
         archive
     }
 
+    /// A new empty lobby without a code, vacant since `now`.
     pub fn new(id: String, now: u64) -> Self {
         Self {
             id,
@@ -99,6 +114,7 @@ impl RoomRecord {
         }
     }
 
+    /// The room's ID and code for clients; `Expired` for a tombstone.
     pub fn reference(&self) -> Result<RoomReference, RoomApiError> {
         self.room.as_ref().ok_or(RoomApiError::Expired)?;
         Ok(RoomReference {
@@ -153,6 +169,9 @@ impl RoomRecord {
         self.deletion().is_some_and(|deletion| now >= deletion)
     }
 
+    /// Once the record has been vacant for [`IDLE_TTL_MS`] at `now`, retire
+    /// its codes and turn an unstarted lobby into a tombstone; `true` if it
+    /// did.
     pub fn expire(&mut self, now: u64) -> bool {
         if !self.expiry().is_some_and(|expiry| now >= expiry) {
             return false;
@@ -169,12 +188,17 @@ impl RoomRecord {
 /// Each code has one strongly consistent owner. Release checks the claim nonce
 /// as well as the game ID, so stale cleanup cannot remove a newer invitation.
 pub trait Catalog {
+    /// Durably store the record.
     fn save(&mut self, room: &RoomRecord) -> impl Future<Output = Result<(), RoomApiError>>;
+    /// Reserve `invitation`'s code for room `id`: `true` if this room and
+    /// claim now own the code, `false` if another claim does.
     fn claim(
         &mut self,
         id: &str,
         invitation: &Invitation,
     ) -> impl Future<Output = Result<bool, RoomApiError>>;
+    /// Free `invitation`'s code if room `id` still holds it with this claim;
+    /// otherwise leave it.
     fn release(
         &mut self,
         id: &str,
@@ -206,6 +230,10 @@ pub async fn cleanup(
     Ok(())
 }
 
+/// Give the record an invitation code unless it has one. Each candidate is
+/// saved as `pending` before it is claimed, so a stored pending claim is
+/// resumed first. Fails with `Expired` for a tombstone, and with
+/// `AllocationBusy` after [`ALLOCATION_ATTEMPTS`] taken codes.
 pub async fn allocate(
     record: &mut RoomRecord,
     catalog: &mut impl Catalog,

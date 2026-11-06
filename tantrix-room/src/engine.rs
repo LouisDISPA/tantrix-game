@@ -89,15 +89,28 @@ pub struct Connection {
 #[derive(Debug, Clone)]
 pub enum Effect {
     /// Send `message` to one socket.
-    Send { to: ConnId, message: HostMessage },
+    Send {
+        /// The receiving socket.
+        to: ConnId,
+        /// Sent as one text frame.
+        message: HostMessage,
+    },
     /// Send the same `message` to each of `to` (serialize it once).
     Broadcast {
+        /// The receiving sockets, in order.
         to: Vec<ConnId>,
+        /// Sent as one text frame to each.
         message: HostMessage,
     },
     /// Close the socket normally (code 1000) with `reason`, after what was
     /// already sent to it. The engine has forgotten it.
-    Close { conn: ConnId, reason: &'static str },
+    Close {
+        /// The socket to close.
+        conn: ConnId,
+        /// Text the client may show: one of this module's close reasons, or
+        /// empty after a rejected `Welcome`.
+        reason: &'static str,
+    },
 }
 
 type Connections = BTreeMap<ConnId, Connection>;
@@ -157,6 +170,8 @@ impl Step {
         self.room.as_ref()
     }
 
+    /// The sends, broadcasts and closes to carry out, in order, once the
+    /// step is committed.
     pub fn effects(&self) -> &[Effect] {
         &self.effects
     }
@@ -181,6 +196,7 @@ impl Step {
 
 /// The I/O a server does for [`RoomEngine::run`].
 pub trait RoomHost {
+    /// Why a save failed.
     type Error;
 
     /// Durably store the room.
@@ -215,14 +231,18 @@ impl RoomEngine {
         }
     }
 
+    /// The room as last committed.
     pub fn room(&self) -> &RoomData {
         &self.room
     }
 
+    /// What the engine knows about socket `conn`; `None` for a closed or
+    /// unknown socket.
     pub fn connection(&self, conn: ConnId) -> Option<&Connection> {
         self.connections.get(&conn)
     }
 
+    /// The open sockets the engine knows, in [`ConnId`] order.
     pub fn connections(&self) -> impl Iterator<Item = (ConnId, &Connection)> {
         self.connections.iter().map(|(conn, c)| (*conn, c))
     }

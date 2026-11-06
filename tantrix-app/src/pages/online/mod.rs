@@ -9,5 +9,5 @@ mod room;
 mod screens;
 mod seat_takeover;
 
-pub use entry::{JoinRoom, OnlineEntry};
-pub use room::OnlineRoom;
+pub(crate) use entry::{JoinRoom, OnlineEntry};
+pub(crate) use room::OnlineRoom;

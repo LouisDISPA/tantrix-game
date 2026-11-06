@@ -63,6 +63,7 @@ impl Game {
         })
     }
 
+    /// End the current player's turn without playing, and record it.
     pub fn skip_turn(&mut self) {
         self.history.push(TurnEvent::Skipped {
             player: self.current_player(),

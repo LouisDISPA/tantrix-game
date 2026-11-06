@@ -69,20 +69,30 @@ fn is_modifier(c: char) -> bool {
     )
 }
 
+/// A room member, seated or not.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerRecord {
+    /// Public ID that other members see.
     pub id: PeerId,
+    /// Private identity of the member's browser.
     pub token: SessionToken,
+    /// Display name, as [`clean_nickname`] leaves it.
     pub nickname: String,
 }
 
+/// A room's saved state: its members, seats and current match.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RoomData {
+    /// The current match, from 0; each rematch adds one.
     #[serde(default)]
     pub match_id: u32,
+    /// Members in the order they joined.
     pub players: Vec<PlayerRecord>,
+    /// The member holding each color, by session.
     pub seats: EnumMap<Color, Option<SessionToken>>,
+    /// The current match's game; `None` in the lobby.
     pub game: Option<GameData>,
+    /// The current game is over: finished, stalled or ended early.
     pub ended: bool,
     /// Retains an early end across reloads; older saved rooms had only `ended`.
     #[serde(default)]
@@ -92,22 +102,32 @@ pub struct RoomData {
 /// Immutable server-side archive; draw order/history never enter client messages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletedMatch {
+    /// The match's [`RoomData::match_id`].
     pub id: u32,
+    /// The whole game, bag and history included.
     pub game: GameData,
+    /// Who held each color when the match ended.
     pub seats: EnumMap<Color, Option<Seat>>,
+    /// How the match ended.
     pub reason: EndReason,
 }
 
+/// What an accepted intent leads to.
 pub struct Change {
+    /// The update for everyone, or the answer for the sender alone.
     pub message: HostMessage,
+    /// The room changed: save it and broadcast `message`. Otherwise only
+    /// the sender hears it.
     pub persist: bool,
 }
 
 impl RoomData {
+    /// Whether a game was ever dealt here, in this match or an earlier one.
     pub fn has_started(&self) -> bool {
         self.game.is_some() || self.match_id > 0
     }
 
+    /// The current match's archive once its game ended; `None` before.
     pub fn completed_match(&self) -> Option<CompletedMatch> {
         if !self.ended {
             return None;
@@ -127,10 +147,12 @@ impl RoomData {
         })
     }
 
+    /// The member behind `token`, if any.
     pub fn player(&self, token: &SessionToken) -> Option<&PlayerRecord> {
         self.players.iter().find(|p| &p.token == token)
     }
 
+    /// The color `token` sits at, if any.
     pub fn color_of(&self, token: &SessionToken) -> Option<Color> {
         self.seats
             .iter()
@@ -165,6 +187,8 @@ impl RoomData {
             .collect()
     }
 
+    /// The lobby as clients see it; `connected` holds the sessions with a
+    /// joined socket.
     pub fn lobby(&self, connected: &HashSet<SessionToken>) -> LobbyState {
         let participants = self.participants(connected);
         let unseated = participants
@@ -183,6 +207,8 @@ impl RoomData {
         }
     }
 
+    /// The current game as clients see it, without its bag order or
+    /// history; `None` in the lobby.
     pub fn snapshot(&self, connected: &HashSet<SessionToken>) -> Option<GameSnapshot> {
         let game = Game::from_data(self.game.clone()?);
         let playing_colors = game.playing_colors().to_vec();
@@ -241,6 +267,9 @@ impl RoomData {
         self.players.len() != before
     }
 
+    /// Apply an intent from the member behind `token`, or reject it with a
+    /// code and a message for the sender. Intents for another match are
+    /// rejected, except a late `Rematch`, which gets the current state back.
     pub fn apply(
         &mut self,
         token: &SessionToken,
@@ -517,6 +546,8 @@ impl RoomData {
         })
     }
 
+    /// The message that brings a client up to date: the lobby, the running
+    /// game or the ended one.
     pub fn current_message(&self, connected: &HashSet<SessionToken>) -> HostMessage {
         match self.snapshot(connected) {
             Some(snapshot) if self.ended => {

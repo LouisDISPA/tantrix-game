@@ -1,11 +1,15 @@
 [package]
-license = "MIT"
 name = "tantrix-ai"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
-tantrix-game = { path = "../tantrix-game" }
-enum-map = "3.1.0"
-enum-iterator = "2.3.0"
-rand = "0.10.3"
+tantrix-game.workspace = true
+enum-map.workspace = true
+enum-iterator.workspace = true
+rand.workspace = true

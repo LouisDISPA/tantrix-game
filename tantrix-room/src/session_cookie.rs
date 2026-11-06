@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Name of the cookie that carries the [`SessionToken`].
 pub const COOKIE_NAME: &str = "tantrix_session";
 
 /// One year: long enough to come back to a game after closing the browser.
@@ -17,10 +18,12 @@ const MAX_AGE_SECS: u32 = 365 * 24 * 60 * 60;
 pub struct SessionToken(pub String);
 
 impl SessionToken {
+    /// A token from its text, unchecked; [`read`] checks a cookie's value.
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
 
+    /// The token as its cookie value spells it.
     pub fn as_str(&self) -> &str {
         &self.0
     }

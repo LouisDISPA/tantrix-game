@@ -2,13 +2,13 @@
 
 #![cfg_attr(not(web_client), allow(dead_code))]
 
-pub const RELEASE_API: &str =
+pub(crate) const RELEASE_API: &str =
     "https://api.github.com/repos/LouisDISPA/tantrix-game/releases/latest";
-pub const RELEASES_URL: &str = "https://github.com/LouisDISPA/tantrix-game/releases/latest";
+pub(crate) const RELEASES_URL: &str = "https://github.com/LouisDISPA/tantrix-game/releases/latest";
 const ASSET_URL_PREFIX: &str = "https://github.com/LouisDISPA/tantrix-game/releases/download/";
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
-pub enum Platform {
+pub(crate) enum Platform {
     Mac,
     Windows,
     Linux,
@@ -19,13 +19,13 @@ pub enum Platform {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Architecture {
+pub(crate) enum Architecture {
     Arm64,
     X64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Package {
+pub(crate) enum Package {
     Dmg,
     AppImage,
     Deb,
@@ -35,7 +35,7 @@ pub enum Package {
 }
 
 #[derive(Clone, PartialEq)]
-pub struct DownloadAsset {
+pub(crate) struct DownloadAsset {
     pub name: String,
     pub url: String,
     pub size: u64,
@@ -45,7 +45,7 @@ pub struct DownloadAsset {
 }
 
 impl DownloadAsset {
-    pub fn parse(name: String, url: String, size: u64, version: &str) -> Option<Self> {
+    pub(crate) fn parse(name: String, url: String, size: u64, version: &str) -> Option<Self> {
         if url != format!("{ASSET_URL_PREFIX}tantrix-app-v{version}/{name}") {
             return None;
         }
@@ -82,7 +82,7 @@ impl DownloadAsset {
         })
     }
 
-    pub fn label(&self) -> String {
+    pub(crate) fn label(&self) -> String {
         let system = match self.platform {
             Platform::Mac => "macOS",
             Platform::Windows => "Windows",
@@ -106,13 +106,13 @@ impl DownloadAsset {
         format!("{system} · {chip} · {package}")
     }
 
-    pub fn size_mb(&self) -> String {
+    pub(crate) fn size_mb(&self) -> String {
         format!("{:.1}", self.size as f64 / 1024.0 / 1024.0)
     }
 }
 
 #[derive(Clone, PartialEq)]
-pub struct Release {
+pub(crate) struct Release {
     pub version: semver::Version,
     pub assets: Vec<DownloadAsset>,
 }
@@ -120,7 +120,7 @@ pub struct Release {
 impl Release {
     /// Ignore non-app and unstable releases. Malformed metadata is an error;
     /// unsupported or malformed individual assets are skipped.
-    pub fn parse(body: &str) -> Result<Option<Self>, String> {
+    pub(crate) fn parse(body: &str) -> Result<Option<Self>, String> {
         let release: serde_json::Value =
             serde_json::from_str(body).map_err(|error| error.to_string())?;
         if release["draft"].as_bool() != Some(false)

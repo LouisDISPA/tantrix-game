@@ -3,17 +3,17 @@
 use tantrix_proto::{OnlineVersion, ONLINE_VERSION, ONLINE_VERSION_PATH};
 
 #[cfg(not(feature = "android"))]
-pub const DOWNLOAD_URL: &str = "https://tantrix.louis-dispa.fr/download";
+pub(crate) const DOWNLOAD_URL: &str = "https://tantrix.louis-dispa.fr/download";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Compatibility {
+pub(crate) enum Compatibility {
     Compatible,
     AppOutdated,
     ServerOutdated,
 }
 
 impl Compatibility {
-    pub fn of(version: OnlineVersion) -> Self {
+    pub(crate) fn of(version: OnlineVersion) -> Self {
         match version.online_version.cmp(&ONLINE_VERSION) {
             std::cmp::Ordering::Equal => Self::Compatible,
             std::cmp::Ordering::Greater => Self::AppOutdated,
@@ -22,7 +22,7 @@ impl Compatibility {
     }
 }
 
-pub async fn check(server: &str) -> Result<Compatibility, ()> {
+pub(crate) async fn check(server: &str) -> Result<Compatibility, ()> {
     let url = format!("{}{ONLINE_VERSION_PATH}", server.trim_end_matches('/'));
     let body = fetch(&url).await?;
     let version = tantrix_proto::decode::<OnlineVersion>(body.as_bytes()).map_err(|_| ())?;

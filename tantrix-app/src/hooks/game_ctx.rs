@@ -17,7 +17,7 @@ use crate::state::ui_state::{set_if_changed, TurnPhase, UiState, UiStateStoreExt
 /// needs to play, and an effect reacts to that transition by spawning the AI
 /// loop in the calling page's scope, where the context's signals are owned.
 /// The task is cancelled if the user navigates off the page.
-pub fn use_game_ctx(driver: GameDriver, game: impl FnOnce() -> GameState) -> GameCtx {
+pub(crate) fn use_game_ctx(driver: GameDriver, game: impl FnOnce() -> GameState) -> GameCtx {
     let game_state = use_signal(game);
     let ui_state = use_store(UiState::default);
     let ctx = use_context_provider(move || GameCtx {

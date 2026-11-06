@@ -27,14 +27,14 @@ extern "C" {
     fn user_choice(this: &InstallPrompt) -> Promise;
 }
 
-pub struct InstallListeners {
+pub(crate) struct InstallListeners {
     window: Window,
     before: Closure<dyn FnMut(Event)>,
     installed: Closure<dyn FnMut(Event)>,
 }
 
 impl InstallListeners {
-    pub fn new(mut ctx: DownloadContext) -> Option<Self> {
+    pub(crate) fn new(mut ctx: DownloadContext) -> Option<Self> {
         let window = web_sys::window()?;
         let before = Closure::<dyn FnMut(Event)>::new(move |event: Event| {
             event.prevent_default();
@@ -83,7 +83,7 @@ impl Drop for InstallListeners {
     }
 }
 
-pub fn detect_device(mut ctx: DownloadContext) {
+pub(crate) fn detect_device(mut ctx: DownloadContext) {
     let Some(window) = web_sys::window() else {
         return;
     };
@@ -132,7 +132,7 @@ async fn architecture(navigator: &web_sys::Navigator) -> Result<Option<Architect
     })
 }
 
-pub fn install(mut ctx: DownloadContext) {
+pub(crate) fn install(mut ctx: DownloadContext) {
     let Some(prompt) = ctx.prompt.take() else {
         return;
     };
@@ -158,7 +158,7 @@ thread_local! {
     static RELEASE_CACHE: RefCell<Option<Release>> = const { RefCell::new(None) };
 }
 
-pub async fn fetch_release() -> Result<Release, ()> {
+pub(crate) async fn fetch_release() -> Result<Release, ()> {
     if let Some(release) = RELEASE_CACHE.with(|cache| cache.borrow().clone()) {
         return Ok(release);
     }

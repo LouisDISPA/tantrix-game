@@ -11,6 +11,7 @@ use crate::grid::{Cell, Grid};
 use crate::{Board, Color, Direction, Edges, Hand, Move, Position, Rotation, Tile, TurnStep};
 
 impl Board {
+    /// Whether `pos` touches three or more tiles: a forced space.
     #[must_use]
     pub fn position_is_forced(&self, pos: &Position) -> bool {
         self.neighbor_count(pos) >= 3
@@ -190,6 +191,8 @@ impl Board {
         edges
     }
 
+    /// The ways `tile` fits at `position` by the golden rule alone, one per
+    /// rotation. The restriction rules are not checked.
     pub fn get_possible_move(
         &self,
         tile: Tile,

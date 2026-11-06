@@ -10,7 +10,9 @@ use std::net::IpAddr;
 /// spent at once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limit {
+    /// Requests a full allowance holds.
     pub requests: u64,
+    /// Milliseconds an empty allowance takes to refill.
     pub period_ms: u64,
 }
 
@@ -53,6 +55,8 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
+    /// A limiter that has counted nothing yet. Panics if `limit` allows no
+    /// request, or more than one per millisecond.
     pub fn new(limit: Limit) -> Self {
         assert!(limit.requests > 0 && limit.period_ms >= limit.requests);
         Self {
@@ -84,6 +88,7 @@ impl RateLimiter {
         self.full_at.len()
     }
 
+    /// Whether no key is remembered.
     pub fn is_empty(&self) -> bool {
         self.full_at.is_empty()
     }

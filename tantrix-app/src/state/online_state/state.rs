@@ -11,7 +11,7 @@ use tantrix_proto::{PeerId, RejectCode};
 use super::phase::OnlinePhase;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionStatus {
+pub(crate) enum ConnectionStatus {
     Connecting,
     Connected,
     Reconnecting { attempt: usize },
@@ -20,13 +20,13 @@ pub enum ConnectionStatus {
 }
 
 impl ConnectionStatus {
-    pub fn is_connected(self) -> bool {
+    pub(crate) fn is_connected(self) -> bool {
         self == Self::Connected
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Store)]
-pub struct OnlineState {
+pub(crate) struct OnlineState {
     pub game_id: String,
     pub room_code: String,
     pub my_peer_id: Option<PeerId>,
@@ -38,7 +38,7 @@ pub struct OnlineState {
 }
 
 impl OnlineState {
-    pub fn new(game_id: String) -> Self {
+    pub(crate) fn new(game_id: String) -> Self {
         Self {
             game_id,
             room_code: String::new(),

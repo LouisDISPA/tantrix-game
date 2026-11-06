@@ -12,8 +12,11 @@ use crate::{Color, Direction, Edges, Position, Rotation, Tile};
 /// one of the legal moves, and places that [`Move`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Placement {
+    /// The tile to place.
     pub tile: Tile,
+    /// Where it goes.
     pub position: Position,
+    /// How far it is turned.
     pub rotation: Rotation,
 }
 
@@ -23,13 +26,18 @@ pub struct Placement {
 /// ever send a [`Placement`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Move {
+    /// The tile.
     pub tile: Tile,
+    /// Where it is placed.
     pub position: Position,
+    /// How far it is turned.
     pub rotation: Rotation,
+    /// Whether it fills a forced space (three or more neighbors).
     pub forced: bool,
 }
 
 impl Move {
+    /// The color of the placed tile's edge facing `dir`.
     pub fn color(&self, dir: Direction) -> Color {
         self.tile.color(dir - self.rotation)
     }
@@ -60,7 +68,9 @@ impl From<Move> for Placement {
 /// was in the hand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayedMove {
+    /// The board's copy of the move.
     pub m: Move,
+    /// Where the tile was in the hand; the drawn tiles went in there.
     pub hand_index: usize,
 }
 
@@ -87,6 +97,7 @@ impl TileMoveInfo {
         info
     }
 
+    /// Whether the tile fits anywhere.
     pub fn has_moves(&self) -> bool {
         !self.positions.is_empty()
     }

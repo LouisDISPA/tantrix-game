@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::tiles::NUMBER_OF_TILE;
 use crate::{BoardError, Move, Position};
 
+/// The tiles placed so far, as [`Move`]s sorted by position.
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Board {
     moves: ArrayVec<Move, NUMBER_OF_TILE>,
@@ -27,6 +28,7 @@ impl Deref for Board {
 }
 
 impl Board {
+    /// Whether no tile is at `pos` yet.
     #[must_use]
     pub fn is_available(&self, pos: &Position) -> bool {
         self.moves
@@ -65,6 +67,8 @@ impl Board {
         self.moves.binary_search_by(|m| m.position.cmp(pos)).ok()
     }
 
+    /// The empty positions next to a tile, where the next tile can go;
+    /// [`Position::CENTER`] on an empty board.
     #[must_use]
     pub fn contour_positions(&self) -> BTreeSet<Position> {
         if self.is_empty() {

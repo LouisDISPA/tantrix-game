@@ -1,13 +1,13 @@
-pub mod about;
+pub(crate) mod about;
 #[cfg(feature = "android")]
-pub mod android_update;
+pub(crate) mod android_update;
 #[cfg(feature = "desktop")]
-pub mod desktop_update;
+pub(crate) mod desktop_update;
 #[cfg(not(native_client))]
-pub mod download;
-pub mod game;
-pub mod learn;
-pub mod local_game;
-pub mod main_menu;
-pub mod not_found;
-pub mod online;
+pub(crate) mod download;
+pub(crate) mod game;
+pub(crate) mod learn;
+pub(crate) mod local_game;
+pub(crate) mod main_menu;
+pub(crate) mod not_found;
+pub(crate) mod online;

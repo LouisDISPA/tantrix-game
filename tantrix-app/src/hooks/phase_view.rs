@@ -17,7 +17,7 @@ use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
 /// An empty hex shown on the board as a click target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ValidPosition {
+pub(crate) struct ValidPosition {
     pub pos: Position,
     pub forced: bool,
     /// True when the user is only *peeking* (hovered, not selected) — styled faintly.
@@ -30,7 +30,7 @@ pub struct ValidPosition {
 /// What the orientation card offers: the selected tile and the rotations
 /// that fit at the selected position.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Orientations {
+pub(crate) struct Orientations {
     pub tile: Tile,
     pub rotations: Vec<Rotation>,
 }
@@ -39,7 +39,7 @@ pub struct Orientations {
 /// (faintly) while a tile is being chosen, then the selected tile's, the
 /// one being decided marked. Empty while the AI plays and once the game is
 /// over.
-pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
+pub(crate) fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 
@@ -79,7 +79,7 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
 /// only move, the selected tile at the hovered (or selected) position, or at
 /// the selected position in the rotation being hovered or pressed, defaulting
 /// to the first valid rotation while the player chooses an option.
-pub fn use_preview_placement() -> Memo<Option<Placement>> {
+pub(crate) fn use_preview_placement() -> Memo<Option<Placement>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
     let dragging = use_memo(move || ui_state.tile_drag()().is_some_and(|drag| drag.is_dragging()));
@@ -147,7 +147,7 @@ pub fn use_preview_placement() -> Memo<Option<Placement>> {
 /// The orientation card's tile and the rotations that fit at the selected
 /// position — only during SelectRotation. Does not depend on what is
 /// hovered: hovering a rotation changes the preview, not the card.
-pub fn use_orientations() -> Memo<Option<Orientations>> {
+pub(crate) fn use_orientations() -> Memo<Option<Orientations>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
 

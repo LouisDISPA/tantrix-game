@@ -9,26 +9,32 @@ use crate::{
 };
 
 impl Game {
+    /// The tiles placed so far.
     pub fn board(&self) -> &Board {
         &self.board
     }
 
+    /// The tiles `color` holds.
     pub fn hand(&self, color: Color) -> &Hand {
         &self.hands[color]
     }
 
+    /// Every color's hand.
     pub fn hands(&self) -> &EnumMap<Color, Hand> {
         &self.hands
     }
 
+    /// Who plays `color`.
     pub fn player(&self, color: Color) -> &Player {
         &self.players[color]
     }
 
+    /// Whose turn it is.
     pub fn current_player(&self) -> Color {
         self.turn_tracker.current()
     }
 
+    /// Where the current player is within their turn.
     pub fn turn_step(&self) -> TurnStep {
         self.turn_tracker.step()
     }
@@ -38,6 +44,7 @@ impl Game {
         self.turn_tracker.playing_colors()
     }
 
+    /// How many tiles are left in the bag.
     pub fn bag_count(&self) -> usize {
         self.bag.count()
     }
@@ -132,11 +139,13 @@ impl Game {
             .collect()
     }
 
+    /// Each color's score on the board as it stands.
     #[must_use]
     pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
         self.board.scores()
     }
 
+    /// Each color's best-scoring line or loop, with its positions.
     #[must_use]
     pub fn scoring_paths(&self) -> EnumMap<Color, ScoringPath> {
         self.board.scoring_paths()

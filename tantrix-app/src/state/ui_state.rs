@@ -9,13 +9,13 @@ use crate::svg::geometry::Rect;
 /// to `TurnPhase`: Setup shows the new-game form, Playing delegates to the
 /// active or game-over screen based on `TurnPhase`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Screen {
+pub(crate) enum Screen {
     Setup,
     Playing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TurnPhase {
+pub(crate) enum TurnPhase {
     SelectTile,
     SelectPosition,
     SelectRotation,
@@ -26,7 +26,7 @@ pub enum TurnPhase {
 impl TurnPhase {
     /// Human-readable hint for the HUD. `current` is the player
     /// whose turn it is (used for the waiting-for-AI message).
-    pub fn status_text(&self, current: Color, has_forced: bool) -> String {
+    pub(crate) fn status_text(&self, current: Color, has_forced: bool) -> String {
         match self {
             Self::SelectTile if has_forced => "Select a tile — forced move!".to_string(),
             Self::SelectTile => "Select a tile from your hand".to_string(),
@@ -38,7 +38,7 @@ impl TurnPhase {
     }
 
     /// The same hint in a few words, for a narrow screen.
-    pub fn short_text(&self, has_forced: bool) -> &'static str {
+    pub(crate) fn short_text(&self, has_forced: bool) -> &'static str {
         match self {
             Self::SelectTile if has_forced => "Forced move!",
             Self::SelectTile => "Select a tile",
@@ -53,7 +53,7 @@ impl TurnPhase {
 /// The single thing the user is hovering over. At any moment the user can only
 /// be pointing at one element, so the four former hovered_* fields are unified.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Hovered {
+pub(crate) enum Hovered {
     #[default]
     None,
     HandTile(usize),
@@ -63,25 +63,25 @@ pub enum Hovered {
 }
 
 impl Hovered {
-    pub fn hand_tile(&self) -> Option<usize> {
+    pub(crate) fn hand_tile(&self) -> Option<usize> {
         match self {
             Self::HandTile(i) => Some(*i),
             _ => None,
         }
     }
-    pub fn board_position(&self) -> Option<Position> {
+    pub(crate) fn board_position(&self) -> Option<Position> {
         match self {
             Self::BoardPosition(p) => Some(*p),
             _ => None,
         }
     }
-    pub fn rotation(&self) -> Option<Rotation> {
+    pub(crate) fn rotation(&self) -> Option<Rotation> {
         match self {
             Self::Rotation(r) => Some(*r),
             _ => None,
         }
     }
-    pub fn scoring_color(&self) -> Option<Color> {
+    pub(crate) fn scoring_color(&self) -> Option<Color> {
         match self {
             Self::ScoringColor(c) => Some(*c),
             _ => None,
@@ -93,7 +93,7 @@ impl Hovered {
 /// Variants are mutually exclusive — highest-priority one wins when multiple
 /// conditions apply (Selected beats Forced beats Disabled beats Idle).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HandTileState {
+pub(crate) enum HandTileState {
     /// Playable tile with no special state.
     #[default]
     Idle,
@@ -106,7 +106,7 @@ pub enum HandTileState {
 }
 
 impl HandTileState {
-    pub fn css_class(&self) -> &'static str {
+    pub(crate) fn css_class(&self) -> &'static str {
         match self {
             Self::Idle => "",
             Self::Disabled => "disabled",
@@ -115,13 +115,13 @@ impl HandTileState {
         }
     }
 
-    pub fn is_interactive(&self) -> bool {
+    pub(crate) fn is_interactive(&self) -> bool {
         !matches!(self, Self::Disabled)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Store)]
-pub struct UiState {
+pub(crate) struct UiState {
     // --- Turn phase ---
     pub phase: TurnPhase,
     pub message: String,
@@ -270,7 +270,7 @@ impl<Lens> Store<UiState, Lens> {
 /// Write `value` into one reactive field unless it already holds it, so the
 /// field's readers are only woken by a real change (a write marks them dirty
 /// whatever the value).
-pub fn set_if_changed<T, F>(mut field: F, value: T)
+pub(crate) fn set_if_changed<T, F>(mut field: F, value: T)
 where
     T: PartialEq + 'static,
     F: Readable<Target = T> + Writable<Target = T>,

@@ -1,13 +1,13 @@
 use dioxus::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Theme {
+pub(crate) enum Theme {
     Light,
     Dark,
 }
 
 impl Theme {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Theme::Light => "light",
             Theme::Dark => "dark",
@@ -15,7 +15,7 @@ impl Theme {
     }
 
     #[cfg(all(feature = "android", target_os = "android"))]
-    pub fn from_android_ui_mode(ui_mode: i32) -> Self {
+    pub(crate) fn from_android_ui_mode(ui_mode: i32) -> Self {
         // Configuration.UI_MODE_NIGHT_MASK and UI_MODE_NIGHT_YES.
         if ui_mode & 0x30 == 0x20 {
             Self::Dark
@@ -24,14 +24,14 @@ impl Theme {
         }
     }
 
-    pub fn toggle(&self) -> Self {
+    pub(crate) fn toggle(&self) -> Self {
         match self {
             Theme::Light => Theme::Dark,
             Theme::Dark => Theme::Light,
         }
     }
 
-    pub fn icon(&self) -> &'static str {
+    pub(crate) fn icon(&self) -> &'static str {
         match self {
             Theme::Light => "🌙",
             Theme::Dark => "☀",
@@ -39,7 +39,7 @@ impl Theme {
     }
 }
 
-pub static THEME: GlobalStore<Theme> = Global::new(initial_theme);
+pub(crate) static THEME: GlobalStore<Theme> = Global::new(initial_theme);
 
 fn initial_theme() -> Theme {
     #[cfg(all(feature = "android", target_os = "android"))]
@@ -48,7 +48,7 @@ fn initial_theme() -> Theme {
     Theme::Dark
 }
 
-pub fn toggle_theme() {
+pub(crate) fn toggle_theme() {
     let current = *THEME.resolve().read();
     let next = current.toggle();
     THEME.resolve().set(next);

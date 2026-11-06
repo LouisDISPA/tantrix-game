@@ -11,7 +11,7 @@ use crate::tournament::{GameResult, Tournament};
 /// [`Tournament::scheduled`] order, each result sent as its game ends.
 /// Stopping or dropping it lets the games in progress finish, and plays no
 /// more.
-pub struct Runner {
+pub(crate) struct Runner {
     pub results: mpsc::Receiver<GameResult>,
     cancel: Arc<AtomicBool>,
     pause: Arc<AtomicBool>,
@@ -20,7 +20,7 @@ pub struct Runner {
 }
 
 impl Runner {
-    pub fn start(tournament: Tournament, threads: usize) -> Self {
+    pub(crate) fn start(tournament: Tournament, threads: usize) -> Self {
         let (tx, results) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let pause = Arc::new(AtomicBool::new(false));
@@ -66,20 +66,20 @@ impl Runner {
     }
 
     /// How many games are being played right now.
-    pub fn in_flight(&self) -> u32 {
+    pub(crate) fn in_flight(&self) -> u32 {
         self.active.load(Ordering::Relaxed)
     }
 
-    pub fn pause(&self) {
+    pub(crate) fn pause(&self) {
         self.pause.store(true, Ordering::Relaxed);
     }
 
-    pub fn resume(&self) {
+    pub(crate) fn resume(&self) {
         self.pause.store(false, Ordering::Relaxed);
     }
 
     /// Play no more games, and wait for those in progress to end.
-    pub fn stop(&mut self) {
+    pub(crate) fn stop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
         if let Some(worker) = self.worker.take() {
             worker.join().ok();
@@ -94,6 +94,6 @@ impl Drop for Runner {
 }
 
 /// The number of threads to play on by default: one per core.
-pub fn default_threads() -> usize {
+pub(crate) fn default_threads() -> usize {
     thread::available_parallelism().map_or(1, |n| n.get())
 }

@@ -19,17 +19,17 @@ use crate::svg::geometry::{board_center, hex_rect, hexes_rect, Rect, HEX_SIZE};
 /// each component reads the camera fields it shows (the viewport its
 /// transform, the zoom buttons the zoom level).
 #[derive(Clone, Copy)]
-pub struct BoardCamera {
+pub(crate) struct BoardCamera {
     ui_state: Store<UiState>,
 }
 
 impl BoardCamera {
-    pub fn new(ui_state: Store<UiState>) -> Self {
+    pub(crate) fn new(ui_state: Store<UiState>) -> Self {
         Self { ui_state }
     }
 
     /// Where the camera looks now.
-    pub fn pose(self) -> Pose {
+    pub(crate) fn pose(self) -> Pose {
         let ui = self.ui_state;
         Pose {
             zoom: *ui.zoom().peek(),
@@ -39,18 +39,18 @@ impl BoardCamera {
     }
 
     /// Look from `pose`, writing only what differs from where the camera is.
-    pub fn set_pose(self, pose: Pose) {
+    pub(crate) fn set_pose(self, pose: Pose) {
         let ui = self.ui_state;
         set_if_changed(ui.zoom(), pose.zoom);
         set_if_changed(ui.pan_x(), pose.pan_x);
         set_if_changed(ui.pan_y(), pose.pan_y);
     }
 
-    pub fn zoom_in(self) {
+    pub(crate) fn zoom_in(self) {
         self.zoom_with(|zoom| zoom * 1.25);
     }
 
-    pub fn zoom_out(self) {
+    pub(crate) fn zoom_out(self) {
         self.zoom_with(|zoom| zoom / 1.25);
     }
 
@@ -58,7 +58,7 @@ impl BoardCamera {
     /// still at the home zoom of the stage it had stays at the home zoom of
     /// the new one, so a board starts (and stays, as the window is resized)
     /// as large as the window suits until the player zooms by hand.
-    pub fn stage_measured(self, stage: Rect) {
+    pub(crate) fn stage_measured(self, stage: Rect) {
         let ui = self.ui_state;
         let at_home = ui
             .stage()
@@ -80,12 +80,12 @@ impl BoardCamera {
     }
 
     /// Back to the home zoom (100% on a phone or a laptop), centered.
-    pub fn reset_zoom(self) {
+    pub(crate) fn reset_zoom(self) {
         self.set_pose(Pose::HOME.with_zoom(self.stage_home_zoom()));
     }
 
     /// Zoom in a step for a wheel scrolled up (`delta_y < 0`), out otherwise.
-    pub fn on_wheel(self, delta_y: f64) {
+    pub(crate) fn on_wheel(self, delta_y: f64) {
         let factor = if delta_y < 0.0 { 1.1 } else { 0.9 };
         self.zoom_with(|zoom| zoom * factor);
     }
@@ -93,7 +93,7 @@ impl BoardCamera {
     /// A pointer went down at (`x`, `y`) on the screen: a pan starts, or
     /// with a second pointer a pinch. `slop` is how far it may wobble and
     /// still be a tap (`gesture::TOUCH_SLOP` / `MOUSE_SLOP`).
-    pub fn pointer_down(self, id: i32, x: f64, y: f64, slop: f64) {
+    pub(crate) fn pointer_down(self, id: i32, x: f64, y: f64, slop: f64) {
         let ui = self.ui_state;
         set_if_changed(ui.dragged(), false);
         let gesture = (*ui.gesture().peek()).down(Pointer::new(id, x, y), slop);
@@ -102,7 +102,7 @@ impl BoardCamera {
 
     /// A pointer moved to (`x`, `y`): the board follows it once it has gone
     /// past the slop of a tap, or is pinched between two.
-    pub fn pointer_move(self, id: i32, x: f64, y: f64) {
+    pub(crate) fn pointer_move(self, id: i32, x: f64, y: f64) {
         let ui = self.ui_state;
         let (gesture, step) = (*ui.gesture().peek()).moved(Pointer::new(id, x, y));
         // Its readers only look at whether the board is being dragged,
@@ -128,27 +128,27 @@ impl BoardCamera {
     }
 
     /// A pointer lifted or was cancelled.
-    pub fn pointer_up(self, id: i32) {
+    pub(crate) fn pointer_up(self, id: i32) {
         let ui = self.ui_state;
         let gesture = (*ui.gesture().peek()).up(id);
         set_if_changed(ui.gesture(), gesture);
     }
 
     /// The mouse left the board: whatever it was doing there ends.
-    pub fn pointer_leave(self) {
+    pub(crate) fn pointer_leave(self) {
         set_if_changed(self.ui_state.gesture(), Default::default());
     }
 
     /// Whether the last gesture moved the board — then the click that comes
     /// with its lift is not a tap on what is under the finger.
-    pub fn was_drag(self) -> bool {
+    pub(crate) fn was_drag(self) -> bool {
         *self.ui_state.dragged().peek()
     }
 
     /// The whole board on the stage, as large as it can be (at most
     /// [`camera_math::max_fit_zoom`]). Does nothing until the stage has been
     /// measured, or on an empty board.
-    pub fn fit_board(self, placed: &[Position]) {
+    pub(crate) fn fit_board(self, placed: &[Position]) {
         let Some(stage) = *self.ui_state.stage().peek() else {
             return;
         };
@@ -168,7 +168,7 @@ impl BoardCamera {
     /// After a move: the board back in the middle at the player's zoom,
     /// zoomed out if it no longer fits. `placed` is the board's tiles. Does
     /// nothing until the stage has been measured.
-    pub fn frame_board(self, placed: &[Position]) {
+    pub(crate) fn frame_board(self, placed: &[Position]) {
         let Some(stage) = *self.ui_state.stage().peek() else {
             return;
         };
@@ -189,7 +189,7 @@ impl BoardCamera {
     /// tile fits (`spots`) is on the stage and wide enough to tap, else
     /// framing them with the tiles. Does nothing until the stage has been
     /// measured.
-    pub fn frame_spots(self, placed: &[Position], spots: &[Position]) {
+    pub(crate) fn frame_spots(self, placed: &[Position], spots: &[Position]) {
         let Some(stage) = *self.ui_state.stage().peek() else {
             return;
         };
@@ -210,7 +210,7 @@ impl BoardCamera {
     /// of options has room beside the spot `at`, else the spot centred.
     /// `placed` is the board's tiles. Does nothing until the stage has been
     /// measured.
-    pub fn make_room_for_card(self, placed: &[Position], at: Position) {
+    pub(crate) fn make_room_for_card(self, placed: &[Position], at: Position) {
         let Some(stage) = *self.ui_state.stage().peek() else {
             return;
         };
@@ -230,19 +230,19 @@ impl BoardCamera {
 
 /// The board camera of the game on screen (see [`BoardCamera`]). Subscribes
 /// to nothing.
-pub fn use_board_camera() -> BoardCamera {
+pub(crate) fn use_board_camera() -> BoardCamera {
     BoardCamera::new(use_context::<GameCtx>().ui_state)
 }
 
 /// The viewport's custom properties for a camera pose. They feed the
 /// `transform` declared in CSS, which keeps transitions and easing
 /// configurable without touching Rust.
-pub fn camera_style(zoom: f64, pan_x: f64, pan_y: f64) -> String {
+pub(crate) fn camera_style(zoom: f64, pan_x: f64, pan_y: f64) -> String {
     format!("--zoom: {zoom:.3}; --pan-x: {pan_x:.1}px; --pan-y: {pan_y:.1}px;")
 }
 
 /// The zoom level as the reset button shows it.
-pub fn zoom_percent(zoom: f64) -> i32 {
+pub(crate) fn zoom_percent(zoom: f64) -> i32 {
     (zoom * 100.0) as i32
 }
 

@@ -16,7 +16,7 @@ const RECENT_SCORES: usize = 60;
 /// seed is drawn in order from the tournament seed before any game runs,
 /// and deals the game and seeds both AIs, so a tournament gives the same
 /// results however its games are scheduled.
-pub struct Tournament {
+pub(crate) struct Tournament {
     pub seed: u64,
     pub ais: Vec<Box<dyn TantrixAi>>,
     pub games_per_pair: usize,
@@ -29,7 +29,7 @@ pub struct Tournament {
 
 /// Who plays a game, and its deal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Plan {
+pub(crate) struct Plan {
     /// Indices among the tournament's AIs.
     pub red: usize,
     pub blue: usize,
@@ -37,7 +37,7 @@ pub struct Plan {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GameResult {
+pub(crate) struct GameResult {
     pub red: usize,
     pub blue: usize,
     pub red_score: usize,
@@ -51,14 +51,14 @@ pub struct GameResult {
 
 impl GameResult {
     /// `(ai, score, opponent's score)` for both AIs.
-    pub fn sides(&self) -> [(usize, usize, usize); 2] {
+    pub(crate) fn sides(&self) -> [(usize, usize, usize); 2] {
         [
             (self.red, self.red_score, self.blue_score),
             (self.blue, self.blue_score, self.red_score),
         ]
     }
 
-    pub fn winner(&self) -> Option<usize> {
+    pub(crate) fn winner(&self) -> Option<usize> {
         match self.red_score.cmp(&self.blue_score) {
             std::cmp::Ordering::Greater => Some(self.red),
             std::cmp::Ordering::Less => Some(self.blue),
@@ -68,7 +68,7 @@ impl GameResult {
 }
 
 impl Tournament {
-    pub fn new(
+    pub(crate) fn new(
         seed: u64,
         ais: Vec<Box<dyn TantrixAi>>,
         games_per_pair: usize,
@@ -88,16 +88,16 @@ impl Tournament {
         }
     }
 
-    pub fn games(&self) -> usize {
+    pub(crate) fn games(&self) -> usize {
         self.seeds.len()
     }
 
-    pub fn names(&self) -> Vec<String> {
+    pub(crate) fn names(&self) -> Vec<String> {
         self.ais.iter().map(|ai| ai.name().to_string()).collect()
     }
 
     /// The AIs (indices) that play game `game`, in pairing order.
-    pub fn pairing(&self, game: usize) -> (usize, usize) {
+    pub(crate) fn pairing(&self, game: usize) -> (usize, usize) {
         let mut pair = game / self.games_per_pair;
         let count = self.ais.len();
         for a in 0..count {
@@ -112,7 +112,7 @@ impl Tournament {
 
     /// Who plays game `game`, and on which deal: the pairing's first AI
     /// plays Red, but on the second game of a mirrored deal.
-    pub fn plan(&self, game: usize) -> Plan {
+    pub(crate) fn plan(&self, game: usize) -> Plan {
         let (a, b) = self.pairing(game);
         let second = self.mirrored && (game % self.games_per_pair) % 2 == 1;
         let deal = if second { game - 1 } else { game };
@@ -124,14 +124,14 @@ impl Tournament {
         }
     }
 
-    pub fn play(&self, game: usize) -> GameResult {
+    pub(crate) fn play(&self, game: usize) -> GameResult {
         play(&self.ais, self.plan(game))
     }
 
     /// The game to play `turn`-th: the first game of every pairing, then
     /// the second of every pairing… so that the games played so far, at any
     /// time, are spread over every pairing.
-    pub fn scheduled(&self, turn: usize) -> usize {
+    pub(crate) fn scheduled(&self, turn: usize) -> usize {
         let pairs = self.games() / self.games_per_pair.max(1);
         (turn % pairs) * self.games_per_pair + turn / pairs
     }
@@ -139,7 +139,7 @@ impl Tournament {
 
 /// Play `plan` to the end: `ais[plan.red]` as Red against `ais[plan.blue]`
 /// as Blue, on the deal of `plan.seed`, which also seeds both AIs.
-pub fn play(ais: &[Box<dyn TantrixAi>], plan: Plan) -> GameResult {
+pub(crate) fn play(ais: &[Box<dyn TantrixAi>], plan: Plan) -> GameResult {
     let game = play_game(ais[plan.red].as_ref(), ais[plan.blue].as_ref(), plan.seed);
     let scores = game.game.scores();
     GameResult {
@@ -154,7 +154,7 @@ pub fn play(ais: &[Box<dyn TantrixAi>], plan: Plan) -> GameResult {
 }
 
 /// A game played to the end, with the time each AI took over it.
-pub struct Played {
+pub(crate) struct Played {
     pub game: Game,
     pub think: [Duration; 2],
     pub moves: [u32; 2],
@@ -162,7 +162,7 @@ pub struct Played {
 
 /// Play `red` against `blue` to the end, on the deal of `seed`, which also
 /// seeds both AIs.
-pub fn play_game(red: &dyn TantrixAi, blue: &dyn TantrixAi, seed: u64) -> Played {
+pub(crate) fn play_game(red: &dyn TantrixAi, blue: &dyn TantrixAi, seed: u64) -> Played {
     let mut seeds = Xoshiro256PlusPlus::seed_from_u64(seed);
     let ais = [
         red.with_seed(seeds.next_u64()),
@@ -194,24 +194,24 @@ pub fn play_game(red: &dyn TantrixAi, blue: &dyn TantrixAi, seed: u64) -> Played
 
 /// Wins, losses and draws.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Record {
+pub(crate) struct Record {
     pub wins: u32,
     pub losses: u32,
     pub draws: u32,
 }
 
 impl Record {
-    pub fn games(&self) -> u32 {
+    pub(crate) fn games(&self) -> u32 {
         self.wins + self.losses + self.draws
     }
 
     /// A win is a point, a draw half of one.
-    pub fn points(&self) -> f64 {
+    pub(crate) fn points(&self) -> f64 {
         self.wins as f64 + self.draws as f64 / 2.0
     }
 
     /// The share of the points played for won, from 0 to 1.
-    pub fn rate(&self) -> f64 {
+    pub(crate) fn rate(&self) -> f64 {
         match self.games() {
             0 => 0.0,
             games => self.points() / games as f64,
@@ -219,7 +219,7 @@ impl Record {
     }
 
     /// Half the width of the 95% confidence interval of [`Self::rate`].
-    pub fn margin_of_error(&self) -> f64 {
+    pub(crate) fn margin_of_error(&self) -> f64 {
         match self.games() {
             0 => 0.0,
             games => 1.96 * (self.rate() * (1.0 - self.rate()) / games as f64).sqrt(),
@@ -236,7 +236,7 @@ impl Record {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct AiStats {
+pub(crate) struct AiStats {
     pub name: String,
     pub record: Record,
     pub total_score: u64,
@@ -249,11 +249,11 @@ pub struct AiStats {
 }
 
 impl AiStats {
-    pub fn avg_score(&self) -> f64 {
+    pub(crate) fn avg_score(&self) -> f64 {
         self.per_game(self.total_score as f64)
     }
 
-    pub fn avg_margin(&self) -> f64 {
+    pub(crate) fn avg_margin(&self) -> f64 {
         self.per_game(self.total_margin as f64)
     }
 
@@ -265,7 +265,7 @@ impl AiStats {
     }
 
     /// The average time it took to choose a move, in milliseconds.
-    pub fn ms_per_move(&self) -> f64 {
+    pub(crate) fn ms_per_move(&self) -> f64 {
         match self.moves {
             0 => 0.0,
             moves => self.think.as_secs_f64() * 1000.0 / moves as f64,
@@ -275,7 +275,7 @@ impl AiStats {
 
 /// The results so far, per AI (in the tournament's order) and per pairing.
 #[derive(Debug, Clone)]
-pub struct Standings {
+pub(crate) struct Standings {
     pub stats: Vec<AiStats>,
     /// `head_to_head[a][b]`: `a`'s record against `b`.
     pub head_to_head: Vec<Vec<Record>>,
@@ -285,7 +285,7 @@ pub struct Standings {
 }
 
 impl Standings {
-    pub fn new(names: &[String]) -> Self {
+    pub(crate) fn new(names: &[String]) -> Self {
         Self {
             stats: names
                 .iter()
@@ -300,7 +300,7 @@ impl Standings {
         }
     }
 
-    pub fn record(&mut self, result: &GameResult) {
+    pub(crate) fn record(&mut self, result: &GameResult) {
         self.games += 1;
         for (seat, (ai, own, opponent)) in result.sides().into_iter().enumerate() {
             let stat = &mut self.stats[ai];
@@ -330,7 +330,7 @@ impl Standings {
     /// model, draws counting half a win each way), averaging 1500. Each
     /// pairing counts one draw more than it played, so an AI that never
     /// wins still gets a finite rating.
-    pub fn elo(&self) -> Vec<f64> {
+    pub(crate) fn elo(&self) -> Vec<f64> {
         let n = self.stats.len();
         let played = |i: usize, j: usize| self.head_to_head[i][j].games() as f64;
         let wins: Vec<f64> = (0..n)
@@ -376,7 +376,7 @@ impl Standings {
     }
 
     /// The AIs (indices), best first: by Elo, then by points.
-    pub fn ranking(&self) -> Vec<usize> {
+    pub(crate) fn ranking(&self) -> Vec<usize> {
         let elo = self.elo();
         let mut order: Vec<usize> = (0..self.stats.len()).collect();
         order.sort_by(|&a, &b| {

@@ -421,7 +421,7 @@ fn render_help(state: &TournamentState, area: Rect, buf: &mut Buffer) {
 
 /// Run the dashboard over the tournament `new_tournament` makes from a
 /// seed, starting from `seed`; [n] starts the next seed's.
-pub fn run(
+pub(crate) fn run(
     seed: u64,
     threads: usize,
     new_tournament: impl Fn(u64) -> Tournament,

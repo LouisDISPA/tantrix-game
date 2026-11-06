@@ -17,7 +17,7 @@ use crate::state::online_state::CommandSender;
 /// Let a page catch up with a change: run the memo tasks and effects it
 /// queued, and re-render the components it marked dirty. Each round drains
 /// what the previous one queued; a handful is more than any change needs.
-pub fn settle(dom: &mut VirtualDom) {
+pub(crate) fn settle(dom: &mut VirtualDom) {
     for _ in 0..10 {
         dom.render_immediate(&mut NoOpMutations);
     }
@@ -65,24 +65,24 @@ fn page_root(props: Props) -> Element {
     rsx! {}
 }
 
-pub struct GamePage {
+pub(crate) struct GamePage {
     dom: VirtualDom,
 }
 
 impl GamePage {
     /// A local game page showing `game`: every seat is played here.
-    pub fn local(game: GameState) -> Self {
+    pub(crate) fn local(game: GameState) -> Self {
         Self::new(game, None, || {})
     }
 
     /// A local game page showing `game` that also runs `hooks`.
-    pub fn local_with(game: GameState, hooks: fn()) -> Self {
+    pub(crate) fn local_with(game: GameState, hooks: fn()) -> Self {
         Self::new(game, None, hooks)
     }
 
     /// An online game page showing `game`, played from `seat` (`None`:
     /// watching), with the commands it sends the room.
-    pub fn online(
+    pub(crate) fn online(
         game: GameState,
         seat: Option<Color>,
         names: EnumMap<Color, Option<String>>,
@@ -103,13 +103,13 @@ impl GamePage {
         Self { dom }
     }
 
-    pub fn ctx(&self) -> GameCtx {
+    pub(crate) fn ctx(&self) -> GameCtx {
         self.dom.in_scope(ScopeId::APP, consume_context::<GameCtx>)
     }
 
     /// Make `change` as an event handler would (outside any render), then
     /// let the page catch up.
-    pub fn act(&mut self, change: impl FnOnce(GameCtx)) {
+    pub(crate) fn act(&mut self, change: impl FnOnce(GameCtx)) {
         let ctx = self.ctx();
         self.dom.in_scope(ScopeId::APP, || change(ctx));
         settle(&mut self.dom);
@@ -118,13 +118,13 @@ impl GamePage {
     /// Run `f` on the page: read its state (or a context its hooks
     /// provide) without subscribing to anything, or change it without
     /// letting the page catch up — its effects (the AI loop's, say) wait.
-    pub fn with<T>(&self, f: impl FnOnce(GameCtx) -> T) -> T {
+    pub(crate) fn with<T>(&self, f: impl FnOnce(GameCtx) -> T) -> T {
         let ctx = self.ctx();
         self.dom.in_scope(ScopeId::APP, || f(ctx))
     }
 
     /// Read the game, without subscribing to it.
-    pub fn game<T>(&self, read: impl FnOnce(&GameState) -> T) -> T {
+    pub(crate) fn game<T>(&self, read: impl FnOnce(&GameState) -> T) -> T {
         self.with(|ctx| read(&ctx.game_state.peek()))
     }
 }

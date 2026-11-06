@@ -10,7 +10,7 @@ use tantrix_game::Color;
 /// next human in turn order (`turn_order`, the playing colours as they
 /// take turns), the one about to play. `is_human` says whether a seat is
 /// played by a person.
-pub fn shown_hand(
+pub(super) fn shown_hand(
     peeked: Option<Color>,
     current: Color,
     my_color: Option<Color>,
