@@ -5,7 +5,7 @@ pub mod android_updates;
 pub mod config;
 #[cfg(feature = "desktop")]
 pub mod desktop_updates;
-#[cfg(not(any(feature = "desktop", feature = "android")))]
+#[cfg(not(native_client))]
 pub mod downloads;
 pub mod game_driver;
 pub mod game_state;
@@ -18,7 +18,7 @@ pub mod releases;
 pub mod room_api;
 pub mod room_connection;
 pub mod server_endpoints;
-#[cfg(any(feature = "desktop", feature = "android"))]
+#[cfg(native_client)]
 pub mod server_settings;
 #[cfg(test)]
 pub mod test_games;
@@ -26,5 +26,5 @@ pub mod theme;
 pub mod tile_drag;
 pub mod ui_state;
 
-#[cfg(any(feature = "desktop", feature = "android"))]
+#[cfg(native_client)]
 pub mod native_settings;

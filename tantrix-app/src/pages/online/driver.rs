@@ -109,10 +109,7 @@ async fn run_attempt(
         &*store.phase().peek(),
         OnlinePhase::Playing { .. } | OnlinePhase::Ended { .. }
     );
-    #[cfg(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    ))]
+    #[cfg(native_io)]
     let (handle, run) = {
         let cookie = match crate::state::server_settings::session_cookie(&url) {
             Ok(cookie) => cookie,
@@ -123,10 +120,7 @@ async fn run_attempt(
         };
         tantrix_net::open_native_session(url, nickname, cookie)
     };
-    #[cfg(not(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    )))]
+    #[cfg(not(native_io))]
     let (handle, run) = tantrix_net::open_session(url, nickname);
     let SessionHandle {
         commands,

@@ -3,7 +3,7 @@ pub mod about;
 pub mod android_update;
 #[cfg(feature = "desktop")]
 pub mod desktop_update;
-#[cfg(not(any(feature = "desktop", feature = "android")))]
+#[cfg(not(native_client))]
 pub mod download;
 pub mod game;
 pub mod learn;

@@ -29,10 +29,7 @@ pub async fn check(server: &str) -> Result<Compatibility, ()> {
     Ok(Compatibility::of(version))
 }
 
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 async fn fetch(url: &str) -> Result<String, ()> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
@@ -50,7 +47,7 @@ async fn fetch(url: &str) -> Result<String, ()> {
         .map_err(|_| ())
 }
 
-#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[cfg(web_client)]
 async fn fetch(url: &str) -> Result<String, ()> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
@@ -79,13 +76,7 @@ async fn fetch(url: &str) -> Result<String, ()> {
         .ok_or(())
 }
 
-#[cfg(not(any(
-    any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    ),
-    all(feature = "web", target_arch = "wasm32")
-)))]
+#[cfg(not(any(native_io, web_client)))]
 async fn fetch(_url: &str) -> Result<String, ()> {
     Err(())
 }

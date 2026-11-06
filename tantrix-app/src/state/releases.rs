@@ -1,6 +1,6 @@
 //! Stable GitHub app releases and package metadata shared by downloads and updates.
 
-#![cfg_attr(not(all(target_arch = "wasm32", feature = "web")), allow(dead_code))]
+#![cfg_attr(not(web_client), allow(dead_code))]
 
 pub const RELEASE_API: &str =
     "https://api.github.com/repos/LouisDISPA/tantrix-game/releases/latest";

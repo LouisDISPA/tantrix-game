@@ -67,8 +67,12 @@ js-sys = { version = "0.3.106", optional = true }
 wasm-bindgen = { version = "0.2.129", optional = true }
 wasm-bindgen-futures = "0.4.79"
 
+[build-dependencies]
+# Names the repeated platform predicates; see build.rs.
+cfg_aliases = "0.2.2"
+
 [dev-dependencies]
-serde = { version = "1.0.229", features = ["derive"] }
+serde ={ version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 tempfile = "3"
 # Room socket tests connect to the server like the native app; axum's version.

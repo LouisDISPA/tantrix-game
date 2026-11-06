@@ -78,7 +78,7 @@ fn decode_response((status, body): (u16, String)) -> Result<RoomReference, RoomA
     }
 }
 
-#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[cfg(web_client)]
 async fn request_http(
     server: &str,
     path: &str,
@@ -116,10 +116,7 @@ async fn request_http(
     Ok((status, text))
 }
 
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 async fn request_http(
     server: &str,
     path: &str,
@@ -147,16 +144,12 @@ async fn request_http(
     Ok((status, response.text().await.map_err(|e| e.to_string())?))
 }
 
-#[cfg(not(any(
-    all(feature = "web", target_arch = "wasm32"),
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-)))]
+#[cfg(not(any(web_client, native_io)))]
 async fn request_http(_: &str, _: &str, _: Option<&str>) -> Result<(u16, String), String> {
     Err("Online rooms require a client build.".into())
 }
 
-#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[cfg(web_client)]
 fn load(key: &str) -> Option<String> {
     web_sys::window()?
         .session_storage()
@@ -165,7 +158,7 @@ fn load(key: &str) -> Option<String> {
         .ok()
         .flatten()
 }
-#[cfg(all(feature = "web", target_arch = "wasm32"))]
+#[cfg(web_client)]
 fn save(key: &str, value: &str) -> Result<(), String> {
     web_sys::window()
         .and_then(|w| w.session_storage().ok().flatten())
@@ -173,33 +166,19 @@ fn save(key: &str, value: &str) -> Result<(), String> {
         .set_item(key, value)
         .map_err(|_| "Could not save the pending room request.".into())
 }
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 fn load(key: &str) -> Option<String> {
     super::native_settings::load(key)
 }
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 fn save(key: &str, value: &str) -> Result<(), String> {
     super::native_settings::save(key, value)
 }
-#[cfg(not(any(
-    all(feature = "web", target_arch = "wasm32"),
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-)))]
+#[cfg(not(any(web_client, native_io)))]
 fn load(_: &str) -> Option<String> {
     None
 }
-#[cfg(not(any(
-    all(feature = "web", target_arch = "wasm32"),
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-)))]
+#[cfg(not(any(web_client, native_io)))]
 fn save(_: &str, _: &str) -> Result<(), String> {
     Ok(())
 }

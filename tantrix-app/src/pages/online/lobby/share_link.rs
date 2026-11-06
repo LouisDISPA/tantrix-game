@@ -10,18 +10,12 @@ pub fn share_link(id: &str) -> String {
             }
         }
     }
-    #[cfg(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    ))]
+    #[cfg(native_io)]
     {
         let server =
             dioxus::prelude::consume_context::<crate::state::room_connection::RoomServer>();
         format!("{}/online/game/{id}", server.0)
     }
-    #[cfg(not(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    )))]
+    #[cfg(not(native_io))]
     format!("/online/game/{id}")
 }

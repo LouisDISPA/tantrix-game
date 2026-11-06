@@ -14,9 +14,9 @@ pub fn Download() -> Element {
         if !mounted() {
             return None;
         }
-        #[cfg(all(target_arch = "wasm32", feature = "web"))]
+        #[cfg(web_client)]
         return Some(crate::state::downloads::browser::fetch_release().await);
-        #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
+        #[cfg(not(web_client))]
         None
     });
 
