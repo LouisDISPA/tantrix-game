@@ -27,7 +27,7 @@ Other paths:
 | `cloudflare/` | Worker JS entry, Wrangler configuration |
 | `scripts/` | Worker build, release packaging, local tunnel |
 | `e2e/` | Playwright tests for both backends |
-| `vendor/dioxus-server/` | Dioxus 0.8.0-alpha.3 wasm32 patch; see `PATCHES.md` |
+| `vendor/dioxus-server/` | `dioxus-server` 0.8.0-alpha.3 plus `upstream.diff` for wasm32; see `PATCHES.md`, `just vendor-check` |
 
 ## Commands
 

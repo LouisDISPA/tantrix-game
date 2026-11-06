@@ -3,6 +3,8 @@ use crate::isrg::{
     CachedRender, IncrementalRenderer, IncrementalRendererConfig, IncrementalRendererError,
     RenderFreshness,
 };
+#[cfg(target_arch = "wasm32")]
+use crate::local_pool::{JoinHandle, LocalPoolHandle};
 use crate::streaming::{Mount, StreamingRenderer};
 use crate::{ServeConfig, document::ServerDocument};
 use dioxus_cli_config::base_path;
@@ -24,10 +26,10 @@ use std::{
     rc::Rc,
     sync::{Arc, RwLock},
 };
-#[cfg(target_arch = "wasm32")]
-use crate::local_pool::{JoinHandle, LocalPoolHandle};
 #[cfg(not(target_arch = "wasm32"))]
-use {tokio::task::JoinHandle, tokio_util::task::LocalPoolHandle};
+use tokio::task::JoinHandle;
+#[cfg(not(target_arch = "wasm32"))]
+use tokio_util::task::LocalPoolHandle;
 
 use crate::StreamingMode;
 
