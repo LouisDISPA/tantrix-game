@@ -96,7 +96,7 @@ Paths below are relative to `tantrix-app/src/`.
 
 Keep tests beside code and deterministic: seeded games/fixed data, no timers. Extract decisions into pure functions. For actions/hooks/driver tests use `util::test_page::GamePage`, `state::test_games` and `state::online_state::test_rooms`. `act` catches up the page; `with` does not, so AI timers do not start. Render counts: `util::render_count` and `pages/game/rerender_tests.rs`.
 
-Model-based tests (proptest, fixed seed) run random action sequences against `Game` (`tantrix-game/src/game/model_tests.rs`) and socket events against `RoomEngine` (`tantrix-room/src/engine/model_tests.rs`); unit tests deal each online match from its number. A failing case is saved in `<crate>/proptest-regressions/`: commit it with the fix.
+Model-based tests (proptest, fixed seed) run random action sequences against `Game` (`tantrix-game/src/game/model_tests.rs`) and socket events against `RoomEngine` (`tantrix-room/src/engine/model_tests.rs`); `tantrix-room`'s unit tests deal online matches from a seed (`room_logic::DEAL_SEED`). A failing case is saved in `<crate>/proptest-regressions/`: commit it with the fix.
 
 ## Domain docs
 

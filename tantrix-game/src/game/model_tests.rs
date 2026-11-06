@@ -1,8 +1,13 @@
 //! Model-based tests: random sequences of actions on seeded games of two to
-//! four players, some of them AIs. After every action the game must still
-//! undo, replay and save exactly, report a status that its hands and bag
-//! agree with, and offer only moves the rules allow, checked plainly from
-//! the tiles around them.
+//! four players, some of them AIs. After every action the game must save
+//! and load exactly, report a status that its hands and bag agree with, keep
+//! every tile in one place, and offer exactly the legal moves that the
+//! golden rule, the forced spaces and, while the bag has tiles, the
+//! same-color and fourth-tile restrictions allow, worked out plainly from
+//! the tiles around them. (The controlled sides are left to the `rules.rs`
+//! tests, which compare two ways of working them out.) Each undo must give
+//! back the game as it was before the event, and the seed and history must
+//! replay the game after each undo and at the end of a case.
 //!
 //! The actions are abstract (the n-th legal move, the n-th playing color),
 //! so any sequence applies to any game, and proptest shrinks a failure to a
@@ -20,8 +25,8 @@ use super::test_helpers::state;
 use crate::test_games::{broken_rule, space_rule, tiles_of};
 use crate::tiles::NUMBER_OF_TILE;
 use crate::{
-    AiView, Color, Game, GameStatus, Move, Player, RetireError, TantrixAi, TurnEvent, TurnStep,
-    TILES_IN_HAND,
+    AiView, Color, Game, GameStatus, Hand, Move, Player, Position, RetireError, Rotation,
+    TantrixAi, TurnEvent, TurnStep, TILES_IN_HAND,
 };
 
 /// Who sits at a color.
@@ -206,10 +211,18 @@ fn apply(
                 return Ok(());
             }
             let m = legal[index % legal.len()];
-            let step = game.turn_step();
+            let (mover, step) = (game.current_player(), game.turn_step());
             let from_empty_bag = game.bag_is_empty();
             let played = game.play_move(m.placement());
             prop_assert_eq!(played.map(|p| p.m), Ok(m));
+            // After the free move, the turn lasts while a forced space can
+            // be filled.
+            let turn_goes_on =
+                game.current_player() == mover && game.turn_step() == TurnStep::AfterFreeMove;
+            if (!m.forced || step == TurnStep::AfterFreeMove) && !turn_goes_on {
+                let fills = forced_fills(game, game.hand(mover));
+                prop_assert!(fills.is_empty(), "{:?} could still fill {:?}", mover, fills);
+            }
             *match (m.forced, step) {
                 (false, _) => &mut coverage.free_moves,
                 (true, TurnStep::BeforeFreeMove) => &mut coverage.forced_before_free_move,
@@ -406,23 +419,63 @@ fn check_turn(game: &Game) -> Result<(), TestCaseError> {
     Ok(())
 }
 
+/// The moves of `hand` that fill a forced space (three tiles around it or
+/// more) as the rules allow, worked out from the tiles around it.
+fn forced_fills(game: &Game, hand: &Hand) -> Vec<Move> {
+    let tiles = tiles_of(game.board());
+    let forced: HashSet<Position> = game
+        .board()
+        .iter()
+        .flat_map(|m| m.position.around().map(|(p, _)| p))
+        .filter(|p| !tiles.contains_key(p))
+        .filter(|p| p.around().filter(|(q, _)| tiles.contains_key(q)).count() >= 3)
+        .collect();
+    let mut fills = Vec::new();
+    for &tile in hand.iter() {
+        for &position in &forced {
+            for rotation in enum_iterator::all::<Rotation>() {
+                let m = Move {
+                    tile,
+                    position,
+                    rotation,
+                    forced: true,
+                };
+                let allowed = match broken_rule(&tiles, &m) {
+                    None => true,
+                    Some(rule) => rule.is_restriction() && game.bag_is_empty(),
+                };
+                if allowed {
+                    fills.push(m);
+                }
+            }
+        }
+    }
+    fills
+}
+
 /// Each legal move is a tile of the current hand that keeps the golden
 /// rule, and while the bag has tiles makes no same-color triple and gives
 /// no forced space a fourth tile, worked out from the tiles around it.
-/// Forced spaces come first, and only they after the free move.
+/// Forced spaces come first: while one can be filled, the legal moves are
+/// exactly its fills. After the free move, only they are.
 fn check_legal_moves(game: &Game) -> Result<(), TestCaseError> {
     let tiles = tiles_of(game.board());
     let hand = game.hand(game.current_player());
     let legal = game.legal_moves();
-    let any_forced = legal.iter().any(|m| m.forced);
+
+    let key = |m: &Move| (m.tile as u8, m.position, m.rotation as u8);
+    let mut fills: Vec<_> = forced_fills(game, hand).iter().map(key).collect();
+    fills.sort_unstable();
+    if !fills.is_empty() || game.turn_step() == TurnStep::AfterFreeMove {
+        let mut forced: Vec<_> = legal.iter().map(key).collect();
+        forced.sort_unstable();
+        prop_assert_eq!(forced, fills, "forced spaces come first");
+    }
+
     for m in legal {
         prop_assert!(hand.contains(&m.tile), "{:?} is not in hand", m);
         let neighbors = m.position.around().filter(|(p, _)| tiles.contains_key(p));
         prop_assert_eq!(m.forced, neighbors.count() >= 3, "{:?}", m);
-        prop_assert_eq!(m.forced, any_forced, "forced spaces come first: {:?}", m);
-        if game.turn_step() == TurnStep::AfterFreeMove {
-            prop_assert!(m.forced, "a second free move: {:?}", m);
-        }
         if let Some(rule) = broken_rule(&tiles, m) {
             prop_assert!(
                 rule.is_restriction() && game.bag_is_empty(),

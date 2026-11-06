@@ -83,11 +83,18 @@ fn deal_rng(_match_id: u32) -> impl rand::Rng {
     rand::rng()
 }
 
-/// Unit tests deal match `n` from seed `n`, so they play the same every run.
+#[cfg(test)]
+thread_local! {
+    /// Unit tests deal match `n` from this seed plus `n`, so a test plays
+    /// the same every run, and each can pick its own deals.
+    pub(crate) static DEAL_SEED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 #[cfg(test)]
 fn deal_rng(match_id: u32) -> impl rand::Rng {
     use rand::SeedableRng;
-    rand::rngs::Xoshiro256PlusPlus::seed_from_u64(match_id.into())
+    let seed = DEAL_SEED.get().wrapping_add(match_id.into());
+    rand::rngs::Xoshiro256PlusPlus::seed_from_u64(seed)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

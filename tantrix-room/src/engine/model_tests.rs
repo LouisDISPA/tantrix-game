@@ -33,7 +33,7 @@ use tantrix_game::{Color, Direction, Game, GameStatus, Placement, Position, Rota
 use tantrix_proto::{HostMessage, PeerMessage};
 
 use super::*;
-use crate::room_logic::{clean_nickname, MAX_NICKNAME_CHARS};
+use crate::room_logic::{clean_nickname, DEAL_SEED, MAX_NICKNAME_CHARS};
 
 /// People with a session cookie of their own; floods add more.
 const PEOPLE: usize = 4;
@@ -345,11 +345,13 @@ fn random_socket_events_keep_the_room_consistent() {
     let coverage = RefCell::new(Coverage::default());
     // Half the cases start in a game between two to four people.
     let cases = (
+        any::<u64>(),
         prop::option::of(2..=4usize),
         prop::collection::vec(event(), 0..150),
     );
     TestRunner::new(config(64))
-        .run(&cases, |(players, events)| {
+        .run(&cases, |(deal_seed, players, events)| {
+            DEAL_SEED.set(deal_seed);
             let mut coverage = coverage.borrow_mut();
             let mut harness = Harness::new(&mut coverage);
             harness.check()?;
@@ -432,7 +434,7 @@ impl<'a> Harness<'a> {
             }
             Event::Binary { sock } => {
                 if let Some(conn) = self.nth_open(sock) {
-                    self.on_frame(conn, |engine, now| engine.on_binary(conn, now))?;
+                    self.on_frame(conn, true, |engine, now| engine.on_binary(conn, now))?;
                 }
             }
             Event::Close { sock } => {
@@ -573,13 +575,22 @@ impl<'a> Harness<'a> {
                 nickname: "n".repeat(MAX_MESSAGE_BYTES),
             },
         };
-        serde_json::to_string(&message).unwrap()
+        wire(&message)
     }
 
     /// Open a socket for `token`; it may be closed at once if the room
     /// has no room for it.
+    /// The room is full of sockets: the oldest that never said `Hello` is
+    /// closed for the new one, or the new one if there is none.
     fn open(&mut self, token: SessionToken) -> Result<ConnId, TestCaseError> {
         let conn = ConnId(self.sockets.len() as u64);
+        let open = self.conns(true);
+        let make_room = (open.len() >= MAX_CONNECTIONS).then(|| {
+            let waiting = open
+                .into_iter()
+                .find(|c| !self.sockets[c.0 as usize].welcomed);
+            waiting.unwrap_or(conn)
+        });
         self.sockets.push(Socket {
             token: token.clone(),
             open: true,
@@ -588,21 +599,40 @@ impl<'a> Harness<'a> {
             allowance: None,
         });
         let step = self.engine.on_open(conn, token);
+        let closed = step.effects().iter().find_map(|effect| match effect {
+            Effect::Close { conn, reason } if *reason == TOO_MANY_CONNECTIONS => Some(*conn),
+            _ => None,
+        });
+        prop_assert_eq!(closed, make_room, "the socket cap");
         self.run(step)?;
         Ok(conn)
     }
 
-    /// `frame` from `conn`, as text.
+    /// `frame` from `conn`, as text. Frames that are not a message, moves
+    /// no game allows and a nickname the sender has already change nothing.
     fn send(&mut self, conn: ConnId, frame: &Frame) -> Result<(), TestCaseError> {
+        let quiet = match frame {
+            Frame::Junk(_) | Frame::Oversized | Frame::IllegalMove => true,
+            Frame::UpdateNickname(name) => {
+                let socket = &self.sockets[conn.0 as usize];
+                let member = self.engine.room().player(&socket.token);
+                socket.welcomed
+                    && member.map(|m| &m.nickname) == clean_nickname(&name.text()).as_ref()
+            }
+            _ => false,
+        };
         let text = self.frame_text(frame);
-        self.on_frame(conn, |engine, now| engine.on_text(conn, &text, now))
+        self.on_frame(conn, quiet, |engine, now| engine.on_text(conn, &text, now))
     }
 
     /// A frame from `conn` at the current time: the model's rate limit says
-    /// whether the engine lets it through or closes the socket.
+    /// whether the engine lets it through or closes the socket. One let
+    /// through that is `quiet` saves nothing and is answered to its sender
+    /// alone.
     fn on_frame(
         &mut self,
         conn: ConnId,
+        quiet: bool,
         receive: impl FnOnce(&RoomEngine, u64) -> Step,
     ) -> Result<(), TestCaseError> {
         let socket = &mut self.sockets[conn.0 as usize];
@@ -615,6 +645,12 @@ impl<'a> Harness<'a> {
             matches!(effect, Effect::Close { conn: c, reason } if *c == conn && *reason == TOO_MANY_MESSAGES)
         });
         prop_assert_eq!(too_fast, allowed.is_none(), "rate limit of {:?}", conn);
+        if quiet && allowed.is_some() {
+            prop_assert!(step.persist().is_none(), "a quiet frame saved the room");
+            let to_sender =
+                |effect: &Effect| matches!(effect, Effect::Send { to, .. } if *to == conn);
+            prop_assert!(step.effects().iter().all(to_sender), "{:?}", step.effects());
+        }
         self.run(step)
     }
 
@@ -658,7 +694,9 @@ impl<'a> Harness<'a> {
             socket.allowance = None;
             socket.open &= keep_sockets;
         }
-        self.server.slow.clear();
+        if !keep_sockets {
+            self.server.slow.clear();
+        }
         self.engine = RoomEngine::new(self.server.storage.clone(), connections);
         let step = self.engine.on_load();
         self.run(step)
@@ -885,10 +923,9 @@ fn check_resume(saved: &RoomData) -> Result<(), TestCaseError> {
     prop_assert!(again.persist().is_none() && again.effects().is_empty());
 
     // Each of them comes back to their seat, without a save.
-    let hello = serde_json::to_string(&PeerMessage::Hello {
+    let hello = wire(&PeerMessage::Hello {
         nickname: "Back".into(),
-    })
-    .unwrap();
+    });
     for (n, player) in saved.players.iter().enumerate() {
         if saved.color_of(&player.token).is_none() {
             continue;
@@ -915,7 +952,7 @@ fn check_resume(saved: &RoomData) -> Result<(), TestCaseError> {
 /// No message names a session token, holds a seed, a bag or a history, or
 /// names a tile still in the bag.
 fn check_secrets(message: &HostMessage, bag: &HashSet<String>) -> Result<(), TestCaseError> {
-    let text = serde_json::to_string(message).unwrap();
+    let text = wire(message);
     prop_assert!(!text.contains(TOKEN_PREFIX), "a session token in {}", text);
     let mut values = vec![serde_json::from_str::<Value>(&text).unwrap()];
     while let Some(value) = values.pop() {
@@ -951,6 +988,11 @@ fn bag_tiles(room: &RoomData) -> HashSet<String> {
         .iter()
         .map(|tile| tile.as_str().unwrap().to_string())
         .collect()
+}
+
+/// `message` as the servers send it.
+fn wire(message: &impl Serialize) -> String {
+    String::from_utf8(tantrix_proto::encode(message)).unwrap()
 }
 
 fn json(value: &impl Serialize) -> Value {
