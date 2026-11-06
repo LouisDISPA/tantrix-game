@@ -30,6 +30,8 @@ class_name = "Room"
 tag = "v1"
 new_sqlite_classes = ["Room"]
 
+# The Worker logs only errors, so keep every log. Invocation logs and traces
+# would record every room socket message: skip the former, sample the latter.
 [observability]
 enabled = true
 head_sampling_rate = 1
@@ -37,13 +39,13 @@ head_sampling_rate = 1
 [observability.logs]
 enabled = true
 persist = true
-invocation_logs = true
+invocation_logs = false
 head_sampling_rate = 1
 
 [observability.traces]
 enabled = true
 persist = true
-head_sampling_rate = 1
+head_sampling_rate = 0.05
 
 [[durable_objects.bindings]]
 name = "ROOM_CODES"
