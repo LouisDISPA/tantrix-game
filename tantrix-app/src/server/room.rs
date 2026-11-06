@@ -408,6 +408,11 @@ pub async fn missing_room(socket: WebSocket) {
     rejected_room(socket, RejectCode::RoomNotFound).await;
 }
 
+/// Close a socket the handshake refused, with a reason the player reads.
+pub async fn refused(mut socket: WebSocket, reason: &'static str) {
+    write(&mut socket, close_frame(reason)).await;
+}
+
 pub async fn rejected_room(mut socket: WebSocket, code: RejectCode) {
     let message = engine::rejected_welcome(code);
     if write(&mut socket, wire_message(&message)).await {

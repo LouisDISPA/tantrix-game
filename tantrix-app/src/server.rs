@@ -7,8 +7,10 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{ws::WebSocketUpgrade, ConnectInfo, Extension, FromRequestParts, Path, State};
-use axum::http::{header, request::Parts, HeaderValue, Request, StatusCode};
+use axum::extract::{
+    ws::WebSocketUpgrade, ConnectInfo, Extension, FromRequestParts, Path, RawQuery, State,
+};
+use axum::http::{header, request::Parts, HeaderMap, HeaderValue, Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -16,7 +18,7 @@ use axum::Json;
 use axum::Router;
 use dioxus::server::{DioxusRouterExt, FullstackState, ServeConfig};
 use tantrix_proto::{is_game_id, CreateRoom, RoomApiError};
-use tantrix_room::handshake::{self, Refusal};
+use tantrix_room::handshake::{self, Refusal, SiteOrigin, Upgrade};
 use tantrix_room::lifecycle;
 use tantrix_room::session_cookie::{self, SessionToken};
 #[cfg(not(debug_assertions))]
@@ -255,10 +257,29 @@ async fn room_socket(
     State(state): State<Arc<ServerState>>,
     Path(code): Path<String>,
     Extension(token): Extension<SessionToken>,
+    RawQuery(query): RawQuery,
+    headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
-    if let Err(refusal) = handshake::check(&code) {
-        return refuse(refusal);
+    let text = |name| headers.get(name).map(|value| value.to_str().unwrap_or(""));
+    // Without a configured public origin (local development), the page must
+    // come from the host it asked.
+    let site = match &state.public_origin {
+        Some(origin) => SiteOrigin::Exact(origin),
+        None => SiteOrigin::Host(text(header::HOST).unwrap_or("")),
+    };
+    let checked = handshake::check(&Upgrade {
+        id: &code,
+        origin: text(header::ORIGIN),
+        site,
+        query: query.as_deref(),
+    });
+    match checked {
+        Ok(()) => {}
+        Err(refusal) if refusal.closes_socket() => {
+            return upgrade.on_upgrade(move |socket| room::refused(socket, refusal.message()));
+        }
+        Err(refusal) => return refuse(refusal),
     }
     // Larger frames never reach the room (axum allows 64 MiB by default).
     let upgrade = upgrade
@@ -414,6 +435,93 @@ mod tests {
         )
         .await;
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    }
+
+    const MISSING_GAME: &str = "00000000-0000-4000-8000-000000000000";
+
+    /// A server with only the room socket route, on a free local port.
+    async fn serve_sockets(public_origin: Option<&str>) -> SocketAddr {
+        let state = Arc::new(ServerState {
+            rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
+            public_origin: public_origin.map(str::to_owned),
+            limits: limits::RoomLimits::new(),
+        });
+        let router = Router::new()
+            .route("/room/{id}", get(room_socket))
+            .with_state(state.clone())
+            .layer(from_fn_with_state(state, session_cookie_layer));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        address
+    }
+
+    /// The first frame of an accepted socket, or the status refusing it.
+    async fn first_frame(
+        url: &str,
+        origin: Option<&str>,
+    ) -> Result<tokio_tungstenite::tungstenite::Message, u16> {
+        use futures::StreamExt;
+        use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Error};
+        let mut request = url.into_client_request().unwrap();
+        if let Some(origin) = origin {
+            request
+                .headers_mut()
+                .insert(header::ORIGIN, origin.parse().unwrap());
+        }
+        match tokio_tungstenite::connect_async(request).await {
+            Ok((mut socket, _)) => Ok(socket.next().await.unwrap().unwrap()),
+            Err(Error::Http(response)) => Err(response.status().as_u16()),
+            Err(error) => panic!("{error}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn room_sockets_accept_their_own_site_and_native_apps_only() {
+        use crate::state::server_endpoints::room_url;
+        // Accepted sockets hear that this game is missing, in a text frame.
+        let accepted =
+            |frame| matches!(frame, Ok(tokio_tungstenite::tungstenite::Message::Text(_)));
+
+        let local = serve_sockets(None).await;
+        let own_site = format!("http://{local}");
+        let url = room_url(&own_site, MISSING_GAME);
+        assert!(accepted(first_frame(&url, None).await));
+        assert!(accepted(first_frame(&url, Some(&own_site)).await));
+        assert_eq!(
+            first_frame(&url, Some("https://evil.example")).await,
+            Err(403)
+        );
+
+        let public = serve_sockets(Some("https://tantrix.example.com")).await;
+        let url = room_url(&format!("http://{public}"), MISSING_GAME);
+        assert!(accepted(first_frame(&url, None).await));
+        assert!(accepted(
+            first_frame(&url, Some("https://tantrix.example.com")).await
+        ));
+        // Once the public origin is known, the server's own address is not it.
+        assert_eq!(
+            first_frame(&url, Some(&format!("http://{public}"))).await,
+            Err(403)
+        );
+    }
+
+    #[tokio::test]
+    async fn outdated_clients_read_why_their_socket_closed() {
+        use tantrix_proto::{ONLINE_VERSION, ONLINE_VERSION_PARAM};
+        use tokio_tungstenite::tungstenite::Message;
+        let address = serve_sockets(None).await;
+        for (version, refusal) in [
+            (ONLINE_VERSION - 1, Refusal::AppOutdated),
+            (ONLINE_VERSION + 1, Refusal::ServerOutdated),
+        ] {
+            let url =
+                format!("ws://{address}/room/{MISSING_GAME}?{ONLINE_VERSION_PARAM}={version}");
+            let Ok(Message::Close(Some(frame))) = first_frame(&url, None).await else {
+                panic!("version {version} was not refused");
+            };
+            assert_eq!(frame.reason, refusal.message());
+        }
     }
 
     #[tokio::test]

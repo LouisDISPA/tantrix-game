@@ -39,7 +39,9 @@ After a build, serve locally without rebuilding:
 
 ```sh
 cd cloudflare
-pnpm exec wrangler dev --port 8787
+pnpm exec wrangler dev --port 8787 --local-upstream localhost:8787
 ```
+
+Open the address given to `--local-upstream`. Wrangler otherwise rewrites request URLs to the route's host, and rooms refuse sockets whose page `Origin` differs from the request URL's origin.
 
 Static assets come from `target/dx/tantrix/release/web/public/`; `.assetsignore` excludes `index.html` so pages reach SSR. After deployment, check `/health`, then create a room and join from a second browser context.

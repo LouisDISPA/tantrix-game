@@ -12,7 +12,8 @@ export default defineConfig({
   workers: 8,
   use: { ...native.use, baseURL },
   webServer: process.env.BASE_URL ? undefined : {
-    command: `pnpm exec wrangler dev --port ${port} --ip 127.0.0.1`,
+    // Keep request URLs on this address: rooms compare them with the page's Origin.
+    command: `pnpm exec wrangler dev --port ${port} --ip 127.0.0.1 --local-upstream 127.0.0.1:${port}`,
     cwd: path.join(__dirname, '..', 'cloudflare'),
     url: baseURL,
     timeout: 60_000,
