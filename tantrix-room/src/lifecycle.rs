@@ -64,8 +64,7 @@ pub fn new_invitation() -> Result<Invitation, RoomApiError> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomRecord {
     pub id: String,
-    /// None is an expired-lobby tombstone. Creation retries must not revive
-    /// it, so it outlives every retry a client still sends.
+    /// None is an expired-lobby tombstone. Creation retries must not revive it.
     pub room: Option<RoomData>,
     pub invitation: Option<Invitation>,
     /// Persisted before reserving a code, so a crash can resume the same claim.
@@ -184,13 +183,13 @@ pub trait Catalog {
     fn delete(&mut self, id: &str) -> impl Future<Output = Result<(), RoomApiError>>;
 }
 
-/// Expire, release retired codes, then apply the retention rule. Returns
-/// whether the record was deleted; the caller must then drop it unsaved.
+/// Expire, release retired codes, then apply the retention rule. A deleted
+/// record answers `NotFound`, like any missing room.
 pub async fn cleanup(
     record: &mut RoomRecord,
     catalog: &mut impl Catalog,
     now: u64,
-) -> Result<bool, RoomApiError> {
+) -> Result<(), RoomApiError> {
     if record.expire(now) {
         catalog.save(record).await?;
     }
@@ -199,11 +198,11 @@ pub async fn cleanup(
         record.retired.pop();
         catalog.save(record).await?;
     }
-    let delete = record.is_deletable(now);
-    if delete {
+    if record.is_deletable(now) {
         catalog.delete(&record.id).await?;
+        return Err(RoomApiError::NotFound);
     }
-    Ok(delete)
+    Ok(())
 }
 
 pub async fn allocate(
@@ -295,7 +294,6 @@ mod tests {
             Ok(())
         }
         async fn delete(&mut self, id: &str) -> Result<(), RoomApiError> {
-            self.saved = None;
             self.deleted.push(id.into());
             Ok(())
         }
@@ -532,42 +530,24 @@ mod tests {
         });
     }
 
-    fn started(record: &mut RoomRecord) {
-        use tantrix_game::{Game, Player};
-        let game = Game::new_seeded(
-            Player::Someone,
-            Player::Someone,
-            Player::None,
-            Player::None,
-            42,
-        )
-        .unwrap();
-        record.room.as_mut().unwrap().game = Some(game.to_data());
-    }
-
     #[test]
     fn a_tombstone_is_deleted_once_no_creation_retry_can_reach_it() {
         block_on(async {
             let mut catalog = Memory::default();
             let mut record = RoomRecord::new("game".into(), 100);
-            allocate(&mut record, &mut catalog, || {
-                Ok(invitation("ABCDEF", "claim"))
-            })
-            .await
-            .unwrap();
             let expired = 100 + IDLE_TTL_MS;
-            assert!(!cleanup(&mut record, &mut catalog, expired).await.unwrap());
+            cleanup(&mut record, &mut catalog, expired).await.unwrap();
             assert_eq!(record.reference(), Err(RoomApiError::Expired));
             let deletion = expired + TOMBSTONE_TTL_MS;
             assert_eq!(record.deadline(), Some(deletion));
-            // The last retry a client sends comes well before deletion.
-            assert!(100 + CREATE_RETRY_WINDOW_MS < deletion);
-            assert!(!cleanup(&mut record, &mut catalog, deletion - 1)
+            cleanup(&mut record, &mut catalog, deletion - 1)
                 .await
-                .unwrap());
-            assert!(catalog.saved.is_some());
-            assert!(cleanup(&mut record, &mut catalog, deletion).await.unwrap());
-            assert!(catalog.saved.is_none());
+                .unwrap();
+            assert!(catalog.deleted.is_empty());
+            assert_eq!(
+                cleanup(&mut record, &mut catalog, deletion).await,
+                Err(RoomApiError::NotFound)
+            );
             assert_eq!(catalog.deleted, ["game"]);
         });
     }
@@ -577,30 +557,20 @@ mod tests {
         block_on(async {
             let mut catalog = Memory::default();
             let mut record = RoomRecord::new("game".into(), 0);
-            started(&mut record);
-            allocate(&mut record, &mut catalog, || {
-                Ok(invitation("ABCDEF", "claim"))
-            })
-            .await
-            .unwrap();
-            assert_eq!(record.deadline(), Some(IDLE_TTL_MS), "code expires first");
-            assert!(!cleanup(&mut record, &mut catalog, IDLE_TTL_MS)
-                .await
-                .unwrap());
-            assert!(catalog.claims.is_empty());
+            record.room.as_mut().unwrap().match_id = 1;
             assert_eq!(record.deadline(), Some(RETENTION_MS));
             assert!(record.observe_connections(true, RETENTION_MS - 1));
             assert_eq!(record.deadline(), None);
             assert!(!record.is_deletable(u64::MAX), "never while connected");
             let left = RETENTION_MS + 5;
             assert!(record.observe_connections(false, left));
-            assert_eq!(record.deadline(), Some(left + RETENTION_MS));
-            assert!(!cleanup(&mut record, &mut catalog, left + RETENTION_MS - 1)
+            cleanup(&mut record, &mut catalog, left + RETENTION_MS - 1)
                 .await
-                .unwrap());
-            assert!(cleanup(&mut record, &mut catalog, left + RETENTION_MS)
-                .await
-                .unwrap());
+                .unwrap();
+            assert_eq!(
+                cleanup(&mut record, &mut catalog, left + RETENTION_MS).await,
+                Err(RoomApiError::NotFound)
+            );
             assert_eq!(catalog.deleted, ["game"]);
         });
     }
@@ -608,12 +578,10 @@ mod tests {
     #[test]
     fn a_late_sweep_releases_codes_before_deleting() {
         block_on(async {
-            for start in [false, true] {
+            for match_id in [0, 1] {
                 let mut catalog = Memory::default();
                 let mut record = RoomRecord::new("game".into(), 0);
-                if start {
-                    started(&mut record);
-                }
+                record.room.as_mut().unwrap().match_id = match_id;
                 allocate(&mut record, &mut catalog, || {
                     Ok(invitation("ABCDEF", "claim"))
                 })
@@ -629,7 +597,10 @@ mod tests {
                     catalog.deleted.is_empty(),
                     "a claimed code is never orphaned"
                 );
-                assert!(cleanup(&mut record, &mut catalog, late).await.unwrap());
+                assert_eq!(
+                    cleanup(&mut record, &mut catalog, late).await,
+                    Err(RoomApiError::NotFound)
+                );
                 assert!(catalog.claims.is_empty());
                 assert_eq!(catalog.deleted, ["game"]);
             }

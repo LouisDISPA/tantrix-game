@@ -181,14 +181,13 @@ state and archives, including between matches, and release only their short
 code until [retention](#retention) deletes them. A later visit to a saved
 game allocates a fresh code when needed. Allocation failure does not prevent
 resuming a started game by its permanent link. Disconnected seats do not keep
-invitations alive; joined spectators do. Native restarts begin an inactivity
-period for rooms previously marked connected, while retaining existing deadlines.
+invitations alive; joined spectators do. A native restart starts an inactivity
+period for every room saved as connected, and keeps existing deadlines.
 
 Native SQLite stores records and uniquely claimed codes in `online_games` and
-`online_codes`; a one-minute sweep cleans due records, and startup gives every
-record without a deadline one. The Worker keeps one Room object per permanent ID
-and one RoomCodes object per invitation code, with room alarms for cleanup.
-Hibernating socket attachments preserve joined presence.
+`online_codes`; a one-minute sweep cleans due records. The Worker keeps one Room
+object per permanent ID and one RoomCodes object per invitation code, with room
+alarms for cleanup. Hibernating socket attachments preserve joined presence.
 Access also checks expiry, so delayed cleanup never makes an expired code valid.
 Code reservations are persisted before being published, and releases compare
 both game ID and a unique claim nonce. Pending reservations and releases survive
@@ -198,8 +197,7 @@ This is a breaking storage/protocol change: old code-only rooms are not migrated
 
 ### Retention
 
-Room storage is bounded by inactivity. `RoomRecord::is_deletable` decides;
-the periods are constants in `tantrix_room::lifecycle`:
+Room storage is bounded by inactivity (`tantrix_room::lifecycle`):
 
 | Record | Deleted |
 | --- | --- |
@@ -212,11 +210,10 @@ clients have stopped retrying it, and the 30 days cover client clocks set back.
 Desktop and Android v0.2.0 keep a pending request without a time limit; a retry
 after its tombstone is gone makes a new empty lobby under the old ID.
 
-Deletion first releases any invitation code, then removes the record. Native
-deletes the `online_games` row and its `online_matches` rows in one transaction.
-The Worker's room alarm calls `storage.deleteAll()`, which also clears the
-alarm (compatibility date 2026-02-24 or later). A Room object saved before
-retention existed is scheduled the next time it is loaded.
+Deletion first releases any invitation code. Native deletes the record and its
+archives in one transaction; the Worker's room alarm calls `storage.deleteAll()`,
+which also clears the alarm (compatibility date 2026-02-24 or later). A Room
+object saved before retention existed is scheduled the next time it is loaded.
 
 Events (`on_open`, `on_text`, `on_binary`, `on_close`) produce a `Step`: an
 optional room to persist and send/broadcast/close effects. Both adapters use

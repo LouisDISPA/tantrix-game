@@ -14,6 +14,36 @@ use tantrix_room::room_logic::CompletedMatch;
 pub type StoreError = Box<dyn Error + Send + Sync>;
 pub type StoreResult<T> = Result<T, StoreError>;
 
+/// A record as its `online_games` row stores it.
+struct Row {
+    id: String,
+    json: String,
+    /// When the sweep next cleans the record; codes still to release make it due now.
+    deadline: Option<u64>,
+}
+
+impl Row {
+    fn new(record: &RoomRecord) -> StoreResult<Self> {
+        Ok(Self {
+            id: record.id.clone(),
+            json: serde_json::to_string(record)?,
+            deadline: if record.retired.is_empty() {
+                record.deadline()
+            } else {
+                Some(0)
+            },
+        })
+    }
+
+    /// Overwrite the stored row; false if it is gone.
+    fn update(&self, conn: &Connection) -> rusqlite::Result<bool> {
+        Ok(conn.execute(
+            "UPDATE online_games SET record_json = ?2, deadline = ?3 WHERE id = ?1",
+            (&self.id, &self.json, self.deadline),
+        )? == 1)
+    }
+}
+
 #[derive(Clone)]
 pub struct RoomStore {
     connection: Arc<Mutex<Connection>>,
@@ -55,10 +85,9 @@ impl RoomStore {
     }
 
     pub async fn insert(&self, id: &str, now: u64) -> StoreResult<()> {
-        let record = RoomRecord::new(id.into(), now);
-        let json = serde_json::to_string(&record)?;
+        let row = Row::new(&RoomRecord::new(id.into(), now))?;
         self.with(move |conn| {
-            conn.execute("INSERT OR IGNORE INTO online_games (id, record_json, deadline) VALUES (?1, ?2, ?3)", (&record.id, &json, record.deadline()))?;
+            conn.execute("INSERT OR IGNORE INTO online_games (id, record_json, deadline) VALUES (?1, ?2, ?3)", (&row.id, &row.json, row.deadline))?;
             Ok(())
         }).await
     }
@@ -88,23 +117,13 @@ impl RoomStore {
         record: &RoomRecord,
         archive: Option<CompletedMatch>,
     ) -> StoreResult<()> {
-        let json = serde_json::to_string(record)?;
-        let id = record.id.clone();
-        let deadline = if record.retired.is_empty() {
-            record.deadline()
-        } else {
-            Some(0)
-        };
+        let row = Row::new(record)?;
         self.with(move |conn| {
             let transaction = conn.unchecked_transaction()?;
             if let Some(archive) = archive {
-                transaction.execute("INSERT OR IGNORE INTO online_matches (room_id, match_id, state_json) VALUES (?1, ?2, ?3)", (&id, archive.id, serde_json::to_string(&archive)?))?;
+                transaction.execute("INSERT OR IGNORE INTO online_matches (room_id, match_id, state_json) VALUES (?1, ?2, ?3)", (&row.id, archive.id, serde_json::to_string(&archive)?))?;
             }
-            if transaction.execute(
-                "UPDATE online_games SET record_json = ?2, deadline = ?3 WHERE id = ?1",
-                (&id, &json, deadline),
-            )? != 1
-            {
+            if !row.update(&transaction)? {
                 return Err(std::io::Error::other("room disappeared from storage").into());
             }
             transaction.commit()?;
@@ -148,22 +167,19 @@ impl RoomStore {
         .await
     }
 
-    /// No socket survives a restart. Give rooms saved as connected, and rows
-    /// saved before retention applied to them, a deadline counted from `now`.
+    /// No socket survives a restart: give every row without a deadline one,
+    /// counting rooms saved as connected as vacant from `now`.
     pub async fn schedule_unscheduled(&self, now: u64) -> StoreResult<()> {
         self.with(move |conn| {
             let transaction = conn.unchecked_transaction()?;
-            let rows: Vec<(String, String)> = transaction
-                .prepare("SELECT id, record_json FROM online_games WHERE deadline IS NULL")?
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            let records: Vec<String> = transaction
+                .prepare("SELECT record_json FROM online_games WHERE deadline IS NULL")?
+                .query_map([], |row| row.get(0))?
                 .collect::<Result<_, _>>()?;
-            for (id, json) in rows {
+            for json in records {
                 let mut record: RoomRecord = serde_json::from_str(&json)?;
                 record.observe_connections(false, now);
-                transaction.execute(
-                    "UPDATE online_games SET record_json = ?2, deadline = ?3 WHERE id = ?1",
-                    (&id, serde_json::to_string(&record)?, record.deadline()),
-                )?;
+                Row::new(&record)?.update(&transaction)?;
             }
             transaction.commit()?;
             Ok(())
@@ -249,22 +265,19 @@ pub(super) mod tests {
     use tantrix_proto::EndReason;
     use tantrix_room::lifecycle::{self, IDLE_TTL_MS, RETENTION_MS};
 
-    pub fn game() -> tantrix_game::GameData {
-        Game::new_seeded(
+    /// The archive of match 0.
+    fn archive() -> CompletedMatch {
+        let game = Game::new_seeded(
             Player::Someone,
             Player::Someone,
             Player::None,
             Player::None,
             42,
         )
-        .unwrap()
-        .to_data()
-    }
-
-    pub fn archive(id: u32) -> CompletedMatch {
+        .unwrap();
         CompletedMatch {
-            id,
-            game: game(),
+            id: 0,
+            game: game.to_data(),
             seats: Default::default(),
             reason: EndReason::Completed {
                 winners: vec![Color::Red],
@@ -272,15 +285,13 @@ pub(super) mod tests {
         }
     }
 
-    /// A stored room whose first match ended and was archived.
+    /// A stored room between matches, with match 0 archived.
     pub async fn finished_room(store: &RoomStore, id: &str, now: u64) -> RoomRecord {
         store.insert(id, now).await.unwrap();
         let mut record = store.load(id).await.unwrap().unwrap();
-        let room = record.room.as_mut().unwrap();
-        room.match_id = 1;
-        room.game = Some(game());
+        record.room.as_mut().unwrap().match_id = 1;
         store
-            .save_with_archive(&record, Some(archive(0)))
+            .save_with_archive(&record, Some(archive()))
             .await
             .unwrap();
         record
@@ -289,7 +300,7 @@ pub(super) mod tests {
     #[tokio::test]
     async fn a_failed_room_update_rolls_back_the_archive_too() {
         let store = RoomStore::open(":memory:").unwrap();
-        let archive = archive(0);
+        let archive = archive();
         let missing = RoomRecord::new("missing".into(), 0);
         assert!(store
             .save_with_archive(&missing, Some(archive))
@@ -366,9 +377,10 @@ pub(super) mod tests {
             Vec::<String>::new()
         );
         assert_eq!(store.due(RETENTION_MS).await.unwrap(), ["game"]);
-        assert!(lifecycle::cleanup(&mut record, &mut store, RETENTION_MS)
-            .await
-            .unwrap());
+        assert_eq!(
+            lifecycle::cleanup(&mut record, &mut store, RETENTION_MS).await,
+            Err(RoomApiError::NotFound)
+        );
         assert!(store.load("game").await.unwrap().is_none());
         assert!(store.load_match("game", 0).await.unwrap().is_none());
         assert_eq!(store.due(10 * RETENTION_MS).await.unwrap(), ["other"]);
