@@ -17,3 +17,6 @@ pub mod startup_loading;
 pub mod theme_toggle;
 pub mod tile;
 pub mod title_decoration;
+
+#[cfg(test)]
+mod tier_tests;

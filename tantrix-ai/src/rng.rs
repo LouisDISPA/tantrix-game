@@ -24,6 +24,10 @@ impl AiRng {
     /// A generator for one decision, seeded from this one: a seeded AI
     /// makes the same decisions from the same seed, and holds no lock while
     /// it thinks.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an unseeded AI forks from OS entropy"
+    )]
     pub(crate) fn fork(&self) -> Xoshiro256PlusPlus {
         match &self.seeded {
             Some(rng) => {

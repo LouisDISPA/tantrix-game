@@ -47,11 +47,42 @@ launcher unmounts (typical for polling / subscriptions), `spawn` is right.
 
 ### Concrete example from this codebase (Tantrix AI loop)
 
-`state/actions.rs::advance_turn` only flips the phase to `WaitingForAi`.
-`pages/local_game/mod.rs::LocalGame` owns a `use_effect` that reacts to
-that phase and calls `spawn(async move { run_ai_loop(ctx).await; ... })`.
-That keeps the task in the page scope: it survives transient clicked
-tiles/hexes unmounting, but is cancelled when the local game page unmounts.
+The AI's turn loop (`state/ai_service.rs::run_ai_loop`) runs for seconds
+across several tiles. It used to be spawned straight from the turn
+actions, along this path:
+
+```
+EmptyHex.onclick → click_position → execute_move → advance_turn → spawn(ai_loop)
+```
+
+The clicked `EmptyHex` unmounts on the very next render (its position is
+now occupied), so the task tied to its scope was cancelled before it
+polled.
+
+The fix keeps the spawn out of the click entirely. `advance_turn` only
+flips the phase to `WaitingForAi`; the game page owns an effect (installed
+by `hooks::use_game_ctx`) that reacts to that phase and spawns the loop in
+the **page's** scope — where `GameCtx`'s signals are owned:
+
+```rust
+// hooks/game_ctx.rs (simplified)
+use_effect(move || {
+    if *ctx.ui_state.phase().read() != TurnPhase::WaitingForAi || *ai_in_flight.read() {
+        return;
+    }
+    ai_in_flight.set(true);
+    spawn(async move {          // page scope: survives tile/hex unmounts,
+        run_ai_loop(ctx).await; // cancelled when the user leaves the page
+        advance_turn(ctx);      // hand the turn on (maybe to the next AI)
+        ai_in_flight.set(false);
+    });
+});
+```
+
+`spawn_forever` would also survive the unmount, but it outlives the page
+too: leaving mid-game would leave the loop touching `GameCtx`'s dropped
+signals (see the gotcha below). Spawning from the scope that owns the
+state ties the task to exactly the right lifetime.
 
 ### `spawn_forever` has a gotcha of its own
 
@@ -59,11 +90,11 @@ tiles/hexes unmounting, but is cancelled when the local game page unmounts.
 **lifetime of the app**. If the captured signal lives in a component that
 unmounts, accessing it from the still-running future will panic.
 
-Safe: capture signals owned by the root or a long-lived context (e.g. the
-app-level `GameCtx` — it's `Copy` and the stores live as long as the
-`LocalGame` component it was provided in).
+Safe: capture signals owned by the root, a `GlobalSignal`, or a context
+provided at the app root.
 
-Unsafe: capture a signal from a child component that can unmount.
+Unsafe: capture a signal from a component that can unmount — including a
+page-level context like `GameCtx`, whose signals die with `LocalGame`.
 
 ## The four ways to run a future
 
@@ -107,15 +138,16 @@ Returns a `Task` handle. Cancelled on component unmount.
 use dioxus::core::spawn_forever;
 
 spawn_forever(async move {
-    run_ai_loop(ctx).await;
-    settle_turn(ctx);
+    sync_preferences(app_settings).await; // app-root state only
 });
 ```
 
 Runs on `ScopeId::ROOT`. Lifetime = app lifetime. Use when:
 
-- The future outlives the component that triggered it (AI loops,
-  long-running work, turn handoffs, background syncs).
+- The future outlives the component that triggered it *and* every signal
+  it touches lives at the app root (background syncs, app-wide work). For
+  page-scoped work like the AI loop, spawn from the page's own scope
+  instead (an effect on the page, as above).
 - The caller is a transient UI element (menu item, dialog button,
   momentary hex on a board) that will unmount during the work.
 

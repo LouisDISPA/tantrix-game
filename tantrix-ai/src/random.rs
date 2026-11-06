@@ -57,6 +57,10 @@ impl TantrixAi for RandomAi {
         Box::new(Self::seeded(seed))
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an unseeded random AI picks from OS entropy"
+    )]
     fn choose_move(&self, view: &AiView) -> Move {
         let chosen = match &self.rng {
             Some(rng) => view.legal_moves.choose(&mut *lock(rng)),

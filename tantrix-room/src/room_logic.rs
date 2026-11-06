@@ -310,6 +310,10 @@ impl RoomData {
                 // seed, and no seed is kept. Nothing needs one: `GameData`
                 // keeps the bag and the full history, and undoing the history
                 // gives back the deal. Snapshots carry neither.
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "online deals stay secret: no seed exists"
+                )]
                 let mut game = Game::from_players_with_rng(players, &mut rand::rng())
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
                 self.ended = game.skip_stuck_players();

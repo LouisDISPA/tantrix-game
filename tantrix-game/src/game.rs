@@ -105,6 +105,10 @@ impl Game {
     }
 
     /// A game between `players` dealt from a random seed.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "draws a fresh seed, which the game keeps for replay"
+    )]
     pub fn from_players(players: EnumMap<Color, Player>) -> Result<Self, SetupError> {
         Self::from_players_seeded(players, rand::random())
     }

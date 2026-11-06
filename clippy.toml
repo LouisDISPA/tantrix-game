@@ -1,0 +1,12 @@
+# Games, AIs and tournaments must replay from a seed. OS-seeded randomness is
+# allowed only where a fresh, secret deal is the point; mark those sites with
+# `#[expect(clippy::disallowed_methods, reason = "…")]`.
+disallowed-methods = [
+    { path = "rand::rng", reason = "seed an RNG (`Xoshiro256PlusPlus::seed_from_u64`) so games replay" },
+    { path = "rand::random", reason = "seed an RNG so games replay" },
+    { path = "rand::random_iter", reason = "seed an RNG so games replay" },
+    { path = "rand::random_range", reason = "seed an RNG so games replay" },
+    { path = "rand::random_bool", reason = "seed an RNG so games replay" },
+    { path = "rand::random_ratio", reason = "seed an RNG so games replay" },
+    { path = "rand::fill", reason = "seed an RNG so games replay" },
+]

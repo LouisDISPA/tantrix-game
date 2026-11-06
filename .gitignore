@@ -1,7 +1,8 @@
 /target
 /bundles
 /artifacts
-.claude
+.claude/settings.local.json
+.claude/worktrees/
 cloudflare/node_modules/
 cloudflare/.wrangler/
 e2e/node_modules/

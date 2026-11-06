@@ -1,6 +1,6 @@
 ---
 name: dioxus-hoisting
-description: Dioxus 0.7 state hoisting — lifting state to a common ancestor, passing props as `ReadSignal<T>` so children participate in reactivity, and replacing mutable props with callbacks. Use when designing a component tree, choosing prop types, splitting a big component, or debugging over-/under-rendering.
+description: Dioxus state hoisting — lifting state to a common ancestor, passing props as `ReadSignal<T>` so children participate in reactivity, and replacing mutable props with callbacks. Use when designing a component tree, choosing prop types, splitting a big component, or debugging over-/under-rendering.
 allowed-tools: Read, Grep, Glob, Edit, Write
 ---
 
@@ -110,6 +110,15 @@ SubmitButton { enabled: is_valid }                        // sibling also subscr
 Both children now re-render only when `is_valid` actually flips — not on
 every keystroke in `name` or `email`.
 
+In this codebase, `Board` (`components/board/mod.rs`) does this for the
+turn phase: three memos — `use_valid_positions`, `use_preview_placement`,
+`use_orientations` — created once and handed to `BoardEmptyLayer {
+positions }`, `BoardPreview { placement }` and `OrientationPicker {
+orientations, placed }`. Hovering a hex changes the preview memo only, so
+only the ghost tile re-renders. Splitting one bundled `PhaseView` memo into
+the three is what stopped the card of options waking on every hover: keep one memo per derivation, so
+each reader subscribes to exactly what it shows.
+
 ## Why `ReadSignal<T>` instead of plain `T`
 
 From the docs: "Only reactive types like Signal, Memo, Resource, and
@@ -175,16 +184,19 @@ The project uses a four-tier taxonomy (`global → organism → molecule → ato
 Hoisting rules apply per tier:
 
 - **Atoms** in `components/` accept only plain types or `ReadSignal<T>` +
-  `EventHandler<T>`. No state, no reactive backbone imports.
+  `EventHandler<T>`. No state, no context.
 - **Molecules** in `components/` may own behaviour-local state
   (see `components/share_chip.rs`'s `copied`, `components/nickname_input.rs`'s
-  `draft`). They still receive reactive inputs as `ReadSignal<T>` and emit
-  callbacks upward.
-- **Organisms** and **globals** under `pages/{feature}/` are allowed to
-  accept `Store<T>` / `Signal<T>` as props; that's by design for
-  store-aware glue, not a hoisting violation. They derive props for
-  molecules + atoms via `use_memo`.
+  `draft`) and may read `GameCtx` from context to derive their own display
+  values (`HandTile`, `BoardTilesLayer`). They still receive reactive inputs
+  as `ReadSignal<T>` and emit callbacks upward. Session state
+  (`crate::pages`, `state::online_state`, `SessionCommand`) never reaches
+  them; `components/tier_tests.rs` fails if it does.
+- **Organisms** and **globals** under `pages/{feature}/` may accept the
+  backbone (`state: Store<OnlineState>`) as a read-only prop; that's by
+  design for store-aware glue, not a hoisting violation. They derive props
+  for molecules + atoms via `use_memo`.
 
-See [rules/architecture.md](../../rules/architecture.md) for the full
+See [doc/components.md](../../../doc/components.md#tiers) for the full
 tier rules, and [dioxus-state](../dioxus-state/SKILL.md) for Signal vs
 Store decisions.
