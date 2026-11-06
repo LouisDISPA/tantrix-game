@@ -372,9 +372,9 @@ fn moves_into(hand: &Hand, spaces: &[Space], include: impl Fn(&Space) -> bool) -
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use crate::test_games::{for_each_seeded_state, for_each_seeded_state_after};
+    use crate::test_games::{
+        broken_rule, for_each_seeded_state, for_each_seeded_state_after, tiles_of,
+    };
     use crate::{
         Bag, Board, Color, Direction, Edges, Game, Hand, Move, Position, Rotation, Tile, TurnStep,
     };
@@ -410,55 +410,6 @@ mod tests {
             moves.retain(|m| m.forced);
         }
         moves
-    }
-
-    /// The board's tiles by position.
-    fn tiles_of(board: &Board) -> HashMap<Position, Move> {
-        board.iter().map(|m| (m.position, *m)).collect()
-    }
-
-    /// The rule that playing `m` among `tiles` breaks while the bag has
-    /// tiles, if any, worked out plainly from the tiles around it rather
-    /// than with the move generator's helpers.
-    fn broken_rule(tiles: &HashMap<Position, Move>, m: &Move) -> Option<&'static str> {
-        if tiles.contains_key(&m.position) {
-            return Some("occupied position");
-        }
-        if !tiles.is_empty() && !m.position.around().any(|(p, _)| tiles.contains_key(&p)) {
-            return Some("touches no tile");
-        }
-        for (p, dir) in m.position.around() {
-            if tiles
-                .get(&p)
-                .is_some_and(|t| t.color(dir.opposite()) != m.color(dir))
-            {
-                return Some("golden rule");
-            }
-        }
-        // Only the empty positions around the move gain a neighbor.
-        for (space, _) in m.position.around() {
-            if tiles.contains_key(&space) {
-                continue;
-            }
-            let colors: Vec<Color> = space
-                .around()
-                .filter_map(|(p, dir)| {
-                    let tile = if p == m.position {
-                        Some(m)
-                    } else {
-                        tiles.get(&p)
-                    };
-                    tile.map(|t| t.color(dir.opposite()))
-                })
-                .collect();
-            if colors.len() >= 4 {
-                return Some("fourth neighbor around a forced space");
-            }
-            if colors.len() == 3 && colors.iter().all(|&c| c == colors[0]) {
-                return Some("same-color triple");
-            }
-        }
-        None
     }
 
     /// A hand holding only `tile`.
@@ -601,7 +552,7 @@ mod tests {
                     for m in game.board().possible_moves(game.hand(color), false, step) {
                         if let Some(rule) = broken_rule(&tiles, &m) {
                             panic!(
-                                "{rule}: {m:?}, {color:?}, {step:?}, board {:?}",
+                                "{rule:?}: {m:?}, {color:?}, {step:?}, board {:?}",
                                 game.board()
                             );
                         }

@@ -23,7 +23,10 @@ All paths below are under `tantrix-game/src/`.
 by concern into `setup.rs` (deal, save, mirror a snapshot), `queries.rs`,
 `turns.rs`, `history.rs` (undo, replay) and `ai.rs` (`AiView`, play-ahead
 games). Each file's tests sit at its end; `test_helpers.rs` holds the shared
-test games.
+test games. `model_tests.rs` plays random sequences of moves, skips, AI
+turns, retirements and undos, and checks after each that the game undoes,
+replays and saves exactly, that its status matches its hands and bag, and
+that every legal move keeps the rules, checked from the tiles around it.
 
 ## Rules and turns
 

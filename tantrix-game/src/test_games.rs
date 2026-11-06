@@ -1,10 +1,13 @@
 //! Seeded games for tests that compare two ways of computing the same
-//! thing, or check an invariant, over many game states.
+//! thing, or check an invariant, over many game states, and the rules
+//! worked out plainly from the tiles around a move, to check moves against.
+
+use std::collections::HashMap;
 
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::{Rng, SeedableRng};
 
-use crate::{Board, Game, GameStatus, Player};
+use crate::{Board, Color, Game, GameStatus, Move, Player, Position};
 
 /// Plays `games` seeded games of two to four players, each move picked at
 /// random (seeded) among the legal ones, and calls `visit` on every state
@@ -48,4 +51,78 @@ pub(crate) fn for_each_seeded_state_after(
             game.play_move(m.placement()).unwrap();
         }
     }
+}
+
+/// The board's tiles by position.
+pub(crate) fn tiles_of(board: &Board) -> HashMap<Position, Move> {
+    board.iter().map(|m| (m.position, *m)).collect()
+}
+
+/// A rule that a move breaks ([`broken_rule`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BrokenRule {
+    /// A tile is there already.
+    Occupied,
+    /// The board has tiles, and none is next to the move.
+    Detached,
+    /// An edge shows another color than the tile it touches.
+    GoldenRule,
+    /// An empty neighbor would have four tiles or more around it: the move
+    /// surrounds a forced space with a fourth tile.
+    FourthNeighbor,
+    /// An empty neighbor would have three tiles around it, all showing it
+    /// the same color: a forced space no tile can fill.
+    SameColorTriple,
+}
+
+impl BrokenRule {
+    /// Whether the rule applies only while the bag has tiles.
+    pub(crate) fn is_restriction(self) -> bool {
+        matches!(self, Self::FourthNeighbor | Self::SameColorTriple)
+    }
+}
+
+/// The rule that playing `m` among `tiles` breaks while the bag has
+/// tiles, if any, worked out plainly from the tiles around it rather
+/// than with the move generator's helpers. The restriction rules come
+/// last: a move that breaks one keeps the others.
+pub(crate) fn broken_rule(tiles: &HashMap<Position, Move>, m: &Move) -> Option<BrokenRule> {
+    if tiles.contains_key(&m.position) {
+        return Some(BrokenRule::Occupied);
+    }
+    if !tiles.is_empty() && !m.position.around().any(|(p, _)| tiles.contains_key(&p)) {
+        return Some(BrokenRule::Detached);
+    }
+    for (p, dir) in m.position.around() {
+        if tiles
+            .get(&p)
+            .is_some_and(|t| t.color(dir.opposite()) != m.color(dir))
+        {
+            return Some(BrokenRule::GoldenRule);
+        }
+    }
+    // Only the empty positions around the move gain a neighbor.
+    for (space, _) in m.position.around() {
+        if tiles.contains_key(&space) {
+            continue;
+        }
+        let colors: Vec<Color> = space
+            .around()
+            .filter_map(|(p, dir)| {
+                let tile = if p == m.position {
+                    Some(m)
+                } else {
+                    tiles.get(&p)
+                };
+                tile.map(|t| t.color(dir.opposite()))
+            })
+            .collect();
+        if colors.len() >= 4 {
+            return Some(BrokenRule::FourthNeighbor);
+        }
+        if colors.len() == 3 && colors.iter().all(|&c| c == colors[0]) {
+            return Some(BrokenRule::SameColorTriple);
+        }
+    }
+    None
 }
