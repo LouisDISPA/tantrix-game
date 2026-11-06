@@ -15,7 +15,7 @@ pub fn is_game_id(id: &str) -> bool {
 
 /// Clients retry an unanswered `CreateRoom` with the same `request_id` for
 /// at most this long after making it; servers keep tombstones longer.
-pub const CREATE_RETRY_WINDOW_MS: u64 = 24 * 60 * 60 * 1000;
+pub const CREATE_RETRY_WINDOW_MS: u64 = 60 * 60 * 1000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateRoom {

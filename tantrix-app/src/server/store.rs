@@ -167,9 +167,9 @@ impl RoomStore {
         .await
     }
 
-    /// No socket survives a restart: give every row without a deadline one,
-    /// counting rooms saved as connected as vacant from `now`.
-    pub async fn schedule_unscheduled(&self, now: u64) -> StoreResult<()> {
+    /// No socket survives a restart: rooms saved as connected (the rows
+    /// without a deadline) become vacant from `now`, which schedules cleanup.
+    pub async fn mark_vacant(&self, now: u64) -> StoreResult<()> {
         self.with(move |conn| {
             let transaction = conn.unchecked_transaction()?;
             let records: Vec<String> = transaction
@@ -392,13 +392,13 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
-    async fn rooms_left_connected_or_saved_before_retention_get_a_deadline_at_startup() {
+    async fn rooms_left_connected_get_a_deadline_at_startup() {
         let store = RoomStore::open(":memory:").unwrap();
         let mut record = finished_room(&store, "game", 0).await;
         record.observe_connections(true, 5);
         store.save_record(&record).await.unwrap();
         assert!(store.due(10 * RETENTION_MS).await.unwrap().is_empty());
-        store.schedule_unscheduled(1_000).await.unwrap();
+        store.mark_vacant(1_000).await.unwrap();
         assert!(store
             .due(1_000 + RETENTION_MS - 1)
             .await

@@ -12,14 +12,15 @@ use tantrix_proto::{
     RoomApiError, RoomReference, CREATE_RETRY_WINDOW_MS, ROOM_CODE_ALPHABET, ROOM_CODE_LEN,
 };
 
-const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+const HOUR_MS: u64 = 60 * 60 * 1000;
+const DAY_MS: u64 = 24 * HOUR_MS;
 /// A lobby, or an invitation code, with nobody connected for this long expires.
-pub const IDLE_TTL_MS: u64 = DAY_MS;
+pub const IDLE_TTL_MS: u64 = HOUR_MS;
 /// An expired lobby's tombstone is deleted this long after the lobby expired.
-pub const TOMBSTONE_TTL_MS: u64 = 30 * DAY_MS;
+pub const TOMBSTONE_TTL_MS: u64 = DAY_MS;
 /// A room whose game started is deleted, with its match history, after
 /// nobody has been connected for this long.
-pub const RETENTION_MS: u64 = 90 * DAY_MS;
+pub const RETENTION_MS: u64 = 3 * DAY_MS;
 pub const ALLOCATION_ATTEMPTS: usize = 10;
 
 // A lobby's inactivity starts no earlier than the request that created it,
