@@ -1,21 +1,18 @@
-use std::sync::{Mutex, MutexGuard, PoisonError};
-
 use rand::prelude::IndexedRandom;
-use rand::rngs::Xoshiro256PlusPlus;
-use rand::SeedableRng;
 use tantrix_game::{AiView, Move, TantrixAi};
 
+use crate::rng::AiRng;
+
 /// Plays a random legal move. [`RandomAi::seeded`] makes its choices
-/// reproducible.
-#[derive(Default)]
+/// reproducible; a seeded copy carries on from the same RNG state, so both
+/// make the same choices from there.
+#[derive(Default, Clone)]
 pub struct RandomAi {
-    /// `None` draws from the thread's RNG. A seeded AI owns its RNG, behind
-    /// a `Mutex` since choosing a move takes `&self` and AIs are `Sync`.
-    rng: Option<Mutex<Xoshiro256PlusPlus>>,
+    rng: AiRng,
 }
 
 impl RandomAi {
-    /// Draws its choices from the thread's RNG.
+    /// Draws its choices from OS entropy.
     pub fn new() -> Self {
         Self::default()
     }
@@ -24,22 +21,7 @@ impl RandomAi {
     /// moves to choose from.
     pub fn seeded(seed: u64) -> Self {
         Self {
-            rng: Some(Mutex::new(Xoshiro256PlusPlus::seed_from_u64(seed))),
-        }
-    }
-}
-
-fn lock(rng: &Mutex<Xoshiro256PlusPlus>) -> MutexGuard<'_, Xoshiro256PlusPlus> {
-    // A panic mid-choice leaves the RNG usable; its state is still valid.
-    rng.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-impl Clone for RandomAi {
-    /// A seeded copy carries on from this one's RNG state: both make the same
-    /// choices from here on.
-    fn clone(&self) -> Self {
-        Self {
-            rng: self.rng.as_ref().map(|rng| Mutex::new(lock(rng).clone())),
+            rng: AiRng::seeded(seed),
         }
     }
 }
@@ -57,16 +39,9 @@ impl TantrixAi for RandomAi {
         Box::new(Self::seeded(seed))
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "an unseeded random AI picks from OS entropy"
-    )]
     fn choose_move(&self, view: &AiView) -> Move {
-        let chosen = match &self.rng {
-            Some(rng) => view.legal_moves.choose(&mut *lock(rng)),
-            None => view.legal_moves.choose(&mut rand::rng()),
-        };
-        *chosen.expect("possible_moves must not be empty")
+        let chosen = self.rng.with(|rng| view.legal_moves.choose(rng).copied());
+        chosen.expect("possible_moves must not be empty")
     }
 }
 
