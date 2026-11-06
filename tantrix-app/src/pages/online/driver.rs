@@ -9,8 +9,9 @@ use tantrix_net::{SessionEvent, SessionHandle};
 use tantrix_proto::RejectCode;
 
 use crate::state::online_state::{
-    queries, recovery::Recovery, CommandSender, ConnectionStatus, FailureReason, OnlinePhase,
-    OnlineState, OnlineStateStoreExt,
+    queries,
+    recovery::{self, Recovery},
+    CommandSender, ConnectionStatus, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
 use crate::util::sleep;
 
@@ -43,7 +44,7 @@ pub fn spawn_session(
         loop {
             sender.set(None);
             let deadline = if recovering {
-                let Some(retry) = recovery.disconnected(now()) else {
+                let Some(retry) = recovery.disconnected(now(), recovery::random_jitter()) else {
                     store.connection().set(ConnectionStatus::Stopped);
                     return;
                 };

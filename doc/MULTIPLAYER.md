@@ -59,7 +59,7 @@ themes and leaving still work. Selections, drags and room confirmation dialogs
 close. Commands are never replayed on a replacement socket.
 
 Recovery joins the captured server and room with the existing session identity,
-using its permanent game ID. It tries up to three times after 1, 2 and 4 seconds. Each attempt
+using its permanent game ID. It tries up to three times after 1, 2 and 4 seconds, each shortened at random by up to half so clients dropped together by a restart don't all return at once. Each attempt
 has 20 seconds to receive a fresh snapshot, bounded by 60 seconds total from the
 first loss. Brief connections keep consuming that allowance; 30 seconds of stable
 connection renews it. **Retry** starts a new bounded cycle after exhaustion.
