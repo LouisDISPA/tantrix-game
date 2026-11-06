@@ -8,7 +8,7 @@ use tantrix_game::{
     TILES_IN_HAND,
 };
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
-use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
+use tantrix_room::room_logic::{clean_nickname, RoomData, MAX_MEMBERS};
 use tantrix_room::session_cookie::{self, SessionToken};
 
 /// The seeded two-player game the browser test plays: a free move creates a
@@ -324,73 +324,68 @@ fn started_game_reserves_disconnected_seat_for_token_reconnect() {
 }
 
 #[test]
-fn a_watcher_can_replace_a_player_mid_game_and_inherit_the_turn() {
+fn a_watcher_can_take_over_an_offline_player_mid_game_and_inherit_the_turn() {
     let (mut room, red, blue, connected) = setup();
     room.apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
         .unwrap();
     let watcher = join(&mut room, "watcher");
+    // Blue dropped out; Red is still playing.
     let online = HashSet::from([red.clone(), watcher.clone()]);
-    let current = room.snapshot(&online).unwrap().current_player;
-    let (current_holder, other_color) = if current == Color::Red {
-        (red.clone(), Color::Blue)
-    } else {
-        (blue.clone(), Color::Red)
-    };
 
-    // A seated player can't grab a second seat; an unplayed color is refused.
     let reject = |room: &mut RoomData, who: &SessionToken, color| {
         room.apply(who, PeerMessage::ReplaceSeat { color }, &online)
             .err()
             .unwrap()
             .0
     };
+    // A seated player can't grab a second seat; an unplayed color is refused.
     assert_eq!(
-        reject(&mut room, &red, other_color),
+        reject(&mut room, &red, Color::Blue),
         RejectCode::InvalidMove
     );
     assert_eq!(
         reject(&mut room, &watcher, Color::Green),
         RejectCode::InvalidMove
     );
+    // Nobody takes the hand of a player who is still connected.
+    assert_eq!(
+        reject(&mut room, &watcher, Color::Red),
+        RejectCode::ColorTaken
+    );
+    assert_eq!(room.color_of(&red), Some(Color::Red));
 
-    // The watcher takes the seat whose turn it is, and may now play it.
-    let hand_before = room.snapshot(&online).unwrap().hands[current].clone();
+    // The watcher takes Blue's seat with its hand; Blue, offline, leaves.
+    let hand_before = room.snapshot(&online).unwrap().hands[Color::Blue].clone();
     let change = room
         .apply(
             &watcher,
-            PeerMessage::ReplaceSeat { color: current },
+            PeerMessage::ReplaceSeat { color: Color::Blue },
             &online,
         )
         .unwrap();
     assert!(matches!(change.message, HostMessage::StateUpdate { .. }));
-    assert_eq!(room.color_of(&watcher), Some(current));
-    assert_eq!(room.snapshot(&online).unwrap().hands[current], hand_before);
-    // The replaced player can no longer act for that seat; the watcher can.
-    // (Online they stay to watch, so it isn't their turn; offline they have
-    // left the room.) Who starts is dealt at random, so either can happen.
-    let game = Game::from_data(room.game.clone().unwrap());
-    let play = PeerMessage::PlayMove {
+    assert_eq!(room.color_of(&watcher), Some(Color::Blue));
+    assert_eq!(
+        room.snapshot(&online).unwrap().hands[Color::Blue],
+        hand_before
+    );
+    assert!(room.player(&blue).is_none());
+
+    // Who starts is dealt at random: let Red open if it's Red's turn.
+    let play = |room: &RoomData| PeerMessage::PlayMove {
         match_id: 0,
-        placement: game.legal_moves()[0].placement(),
+        placement: Game::from_data(room.game.clone().unwrap()).legal_moves()[0].placement(),
     };
-    let refused = if online.contains(&current_holder) {
-        RejectCode::NotYourTurn
-    } else {
+    if room.snapshot(&online).unwrap().current_player == Color::Red {
+        room.apply(&red, play(&room), &online).unwrap();
+    }
+    assert_eq!(room.snapshot(&online).unwrap().current_player, Color::Blue);
+    // The replaced player can no longer act for that seat; the watcher can.
+    assert_eq!(
+        room.apply(&blue, play(&room), &online).err().unwrap().0,
         RejectCode::InvalidMove
-    };
-    assert_eq!(
-        room.apply(&current_holder, play.clone(), &online)
-            .err()
-            .unwrap()
-            .0,
-        refused
     );
-    room.apply(&watcher, play, &online).unwrap();
-    // Online replaced players stay to watch; offline ones leave.
-    assert_eq!(
-        room.player(&current_holder).is_some(),
-        online.contains(&current_holder)
-    );
+    room.apply(&watcher, play(&room), &online).unwrap();
 }
 
 #[test]
@@ -772,4 +767,67 @@ fn rematch_keeps_connected_watchers_and_releases_offline_seats() {
     assert!(room
         .apply(&red, PeerMessage::StartGame { match_id: 1 }, &connected)
         .is_ok());
+}
+
+#[test]
+fn nicknames_lose_hidden_characters_but_keep_emoji() {
+    let clean = |name: &str| clean_nickname(name);
+    assert_eq!(clean("  Ann \t").as_deref(), Some("Ann"));
+    // Zero-width spaces, direction overrides and controls go.
+    assert_eq!(clean("A\u{200B}nn\u{202E}\u{0007}").as_deref(), Some("Ann"));
+    // Names that would look blank are refused.
+    assert_eq!(clean("\u{3164}"), None);
+    assert_eq!(clean(" \u{200D}\u{FE0F} "), None);
+    // Joiners and variation selectors stay: emoji need them.
+    assert_eq!(
+        clean("\u{1F469}\u{200D}\u{1F680}").as_deref(),
+        Some("\u{1F469}\u{200D}\u{1F680}")
+    );
+    assert_eq!(clean(&"é".repeat(24)).map(|n| n.chars().count()), Some(24));
+    assert_eq!(clean(&"é".repeat(25)), None);
+
+    let mut room = RoomData::default();
+    let ann = SessionToken::new("secret-ann-123456789");
+    assert_eq!(
+        room.hello(ann.clone(), "\u{202E}".into(), PeerId::new("ann")),
+        Err(RejectCode::InvalidMove)
+    );
+    room.hello(ann.clone(), "\u{202E}Ann".into(), PeerId::new("ann"))
+        .unwrap();
+    assert_eq!(room.player(&ann).unwrap().nickname, "Ann");
+}
+
+#[test]
+fn a_nickname_change_is_saved_only_when_it_changes_and_keeps_the_game_going() {
+    let (mut room, red, _, connected) = setup();
+    let rename = |name: &str| PeerMessage::UpdateNickname {
+        nickname: name.into(),
+    };
+    // The same name again (once cleaned) is answered but not saved.
+    let change = room
+        .apply(&red, rename(" Red\u{200B}"), &connected)
+        .unwrap();
+    assert!(!change.persist);
+    assert!(matches!(change.message, HostMessage::LobbyUpdate { .. }));
+
+    // Mid-game a new name is a state update, not a new game.
+    room.apply(&red, PeerMessage::StartGame { match_id: 0 }, &connected)
+        .unwrap();
+    let change = room.apply(&red, rename("Scarlet"), &connected).unwrap();
+    assert!(change.persist);
+    assert!(matches!(
+        change.message,
+        HostMessage::StateUpdate {
+            last_move: None,
+            ..
+        }
+    ));
+    assert_eq!(room.player(&red).unwrap().nickname, "Scarlet");
+    assert_eq!(
+        room.apply(&red, rename("\u{2066}"), &connected)
+            .err()
+            .unwrap()
+            .0,
+        RejectCode::InvalidMove
+    );
 }

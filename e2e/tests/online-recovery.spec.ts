@@ -270,6 +270,9 @@ test('a lost seat resumes as a spectator with a fresh board and no automatic rec
     await expect(page.getByRole('group', { name: 'Take a seat' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'End Game', exact: true })).toHaveCount(0);
     expect(connection.commands.filter(command => command.includes('ReplaceSeat'))).toHaveLength(0);
+    // A connected player's seat can't be taken; it can once they leave.
+    await expect(page.getByRole('button', { name: /Red ·/ })).toBeDisabled();
+    await watcher.close();
     // A takeover confirmation also closes on connection loss.
     await page.getByRole('button', { name: /Red ·/ }).click();
     await expect(page.getByRole('dialog')).toBeVisible();

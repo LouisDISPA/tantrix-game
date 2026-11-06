@@ -17,9 +17,11 @@ browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.
    **Start game** once at least two seated players are connected. There is no
    host role: the room belongs to nobody, and its creator can leave.
 3. Players take turns; the server rejects out-of-turn or illegal moves.
-   Anyone without a seat watches, and can take over any playing seat (after
-   confirming), inheriting its hand and turn — e.g. when a player drops out
-   and would otherwise stall the game. The replaced player watches instead.
+   Anyone without a seat watches, and can take over the seat of a player who
+   disconnected (after confirming), inheriting its hand and turn, so a
+   dropped player doesn't stall the game. Seats of connected players can't
+   be taken mid-game. The replaced player leaves the room, and watches if
+   they come back.
 4. Results stay available in the room after the game ends.
 
 ## Disconnects and joining
@@ -164,6 +166,21 @@ optional room to persist and send/broadcast/close effects. Both adapters use
   bad nickname) gets a rejected `Welcome` and the socket is closed;
   anything else it sends is ignored, so a retry needs a new connection.
 - **Frames.** Binary frames, frames over 8 KiB and invalid JSON are
-  answered with an error and change nothing.
+  answered with an error and change nothing. The native server drops frames
+  over 64 KiB before they reach the room.
+- **Rate limit.** A socket may send 20 frames at once, then 2 per second on
+  average; one that sends faster is closed with *Too many messages.* and
+  leaves the room as a disconnect would. The allowance is kept in memory, so
+  a restart or a hibernated Durable Object refills it.
+- **Socket cap.** A room keeps at most 64 sockets (twice the member limit).
+  A new socket in a full room closes the oldest one that never said `Hello`
+  (*Too many connections to this room.*).
+- **Timeouts (native).** A socket must send something other than a keepalive
+  within 10 seconds of opening, then some frame at least every 75 seconds,
+  or it is closed with *Connection timed out.* A peer that stops reading for
+  10 seconds is dropped. The Worker relies on the runtime and the socket cap.
+- **Nicknames.** Control characters, text-direction overrides and invisible
+  fillers are removed; a name with no visible character is refused. Setting
+  the same name again saves and broadcasts nothing.
 - **Restarts.** A room loaded from storage forgets members without a seat
   whose sockets are gone; seated players keep their seats.

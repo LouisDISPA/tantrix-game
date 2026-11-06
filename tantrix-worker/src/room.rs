@@ -215,14 +215,20 @@ impl Room {
         live.record.reference()
     }
 
+    /// Save the record if who is connected changed it. A changed room
+    /// was already saved with the presence it had.
     async fn sync_presence(&self, live: &mut LiveRoom) -> Result<()> {
         let connected = live
             .engine
             .as_ref()
             .is_some_and(|e| e.connections().any(|(_, c)| c.joined));
-        live.record
-            .observe_connections(connected, catalog::now_ms());
-        catalog::persist(&self.state.storage(), &live.record).await
+        if live
+            .record
+            .observe_connections(connected, catalog::now_ms())
+        {
+            catalog::persist(&self.state.storage(), &live.record).await?;
+        }
+        Ok(())
     }
 
     /// A number no socket of this object has used: attachments of closing
@@ -385,8 +391,10 @@ impl DurableObject for Room {
         };
         let mut host = Host::new(&self.state, &mut live.record);
         let step = match message {
-            WebSocketIncomingMessage::String(text) => engine.on_text(conn, &text),
-            WebSocketIncomingMessage::Binary(_) => engine.on_binary(conn),
+            WebSocketIncomingMessage::String(text) => {
+                engine.on_text(conn, &text, catalog::now_ms())
+            }
+            WebSocketIncomingMessage::Binary(_) => engine.on_binary(conn, catalog::now_ms()),
         };
         if let Err(error) = engine.run(&mut host, step).await {
             console_error!("room storage error: {error}");

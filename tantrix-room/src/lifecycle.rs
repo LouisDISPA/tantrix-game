@@ -91,12 +91,15 @@ impl RoomRecord {
         })
     }
 
-    pub fn observe_connections(&mut self, connected: bool, now: u64) {
+    /// Note whether anyone is connected; `true` if that changed the record.
+    pub fn observe_connections(&mut self, connected: bool, now: u64) -> bool {
+        let before = self.vacant_since;
         if connected {
             self.vacant_since = None;
         } else if self.vacant_since.is_none() {
             self.vacant_since = Some(now);
         }
+        self.vacant_since != before
     }
 
     pub fn deadline(&self) -> Option<u64> {
@@ -320,9 +323,11 @@ mod tests {
             .await
             .unwrap();
             assert!(!record.expire(100 + IDLE_TTL_MS - 1));
-            record.observe_connections(true, 200);
+            assert!(record.observe_connections(true, 200));
+            assert!(!record.observe_connections(true, 250), "still connected");
             assert!(!record.expire(100 + IDLE_TTL_MS));
-            record.observe_connections(false, 300);
+            assert!(record.observe_connections(false, 300));
+            assert!(!record.observe_connections(false, 350), "vacant since 300");
             cleanup(&mut record, &mut catalog, 300 + IDLE_TTL_MS)
                 .await
                 .unwrap();

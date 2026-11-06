@@ -166,8 +166,9 @@ pub enum PeerMessage {
     PickColor { color: Option<Color> },
     /// Deliberately take `color` from whoever holds it (the UI asks for
     /// confirmation first). In the lobby anyone may do this; during a game
-    /// only someone without a seat can, and inherits that seat's hand and
-    /// turn. The replaced player stays in the room without a seat.
+    /// only someone without a seat can, from a player who is not connected
+    /// (`ColorTaken` otherwise), and inherits that seat's hand and turn. The
+    /// replaced player stays in the room without a seat if connected.
     ReplaceSeat { color: Color },
     /// A seated player's request to transition lobby → game.
     StartGame { match_id: u32 },
