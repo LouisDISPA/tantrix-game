@@ -1,31 +1,26 @@
-//! Hibernatable, authoritative room Durable Object. A `RoomEngine`
-//! (`tantrix_room::engine`) decides what every socket event does; this
-//! object owns the sockets, their attachments, keepalive auto-responses and
-//! Durable Object storage.
+//! Hibernatable, authoritative room Durable Object. A `RoomService`
+//! (`tantrix_room::service`) decides what every request, socket event and
+//! alarm does; this object owns the sockets, their attachments, keepalive
+//! auto-responses and Durable Object storage.
 
 use std::collections::BTreeMap;
-use std::future::Future;
 
 use crate::catalog::{self, WorkerCatalog};
 use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
-use tantrix_proto::{HostMessage, RejectCode, RoomApiError, RoomReference};
-use tantrix_room::engine::{self, ConnId, Connection, Effect, RoomEngine, RoomHost};
+use tantrix_proto::{HostMessage, RejectCode, RoomApiError};
+use tantrix_room::engine::{self, ConnId, Connection, Effect};
 use tantrix_room::handshake::{self, Refusal, SiteOrigin, Upgrade};
-use tantrix_room::lifecycle::{self, RoomRecord};
-use tantrix_room::room_logic::RoomData;
+use tantrix_room::lifecycle::RoomRecord;
+use tantrix_room::room_logic::CompletedMatch;
+use tantrix_room::service::{RoomService, ServiceHost};
 use tantrix_room::session_cookie;
 use worker::{
-    console_error, durable_object, DurableObject, Env, Request, Response, Result, State, Storage,
-    WebSocket, WebSocketIncomingMessage, WebSocketPair,
+    durable_object, DurableObject, Env, Request, Response, Result, State, WebSocket,
+    WebSocketIncomingMessage, WebSocketPair,
 };
 
 const STORAGE_KEY: &str = "record";
-
-struct LiveRoom {
-    record: RoomRecord,
-    engine: Option<RoomEngine>,
-}
 
 /// Stored on each socket so it survives hibernation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,7 +36,7 @@ fn attachment(ws: &WebSocket) -> Option<Attachment> {
     ws.deserialize_attachment().ok().flatten()
 }
 
-/// Mark the socket as done, so a rebuilt engine leaves it out.
+/// Mark the socket as done, so a rebuilt room leaves it out.
 fn retire(ws: &WebSocket, mut attachment: Attachment) {
     attachment.left = true;
     let _ = ws.serialize_attachment(&attachment);
@@ -66,22 +61,21 @@ fn closed(reason: &str) -> Result<Response> {
 #[durable_object]
 pub struct Room {
     state: State,
-    /// The room and its sockets while the object is awake. After
-    /// hibernation it is rebuilt from storage and the socket attachments.
-    engine: Mutex<Option<LiveRoom>>,
+    /// The room while the object is awake. After hibernation it is rebuilt
+    /// from storage and the socket attachments.
+    service: Mutex<Option<RoomService>>,
     env: Env,
 }
 
-/// The object's I/O for the engine: storage, and the sockets the room
-/// still serves.
-struct Host<'a> {
-    storage: Storage,
-    record: &'a mut RoomRecord,
+/// The object's I/O for its room: storage, invitation codes, and the
+/// sockets the room still serves.
+struct Host {
+    catalog: WorkerCatalog,
     sockets: BTreeMap<ConnId, (WebSocket, Attachment)>,
 }
 
-impl<'a> Host<'a> {
-    fn new(state: &State, record: &'a mut RoomRecord) -> Self {
+impl Host {
+    fn new(state: &State, env: &Env) -> Self {
         let sockets = state
             .get_websockets()
             .into_iter()
@@ -91,8 +85,10 @@ impl<'a> Host<'a> {
             })
             .collect();
         Self {
-            storage: state.storage(),
-            record,
+            catalog: WorkerCatalog {
+                storage: state.storage(),
+                env: env.clone(),
+            },
             sockets,
         }
     }
@@ -116,12 +112,21 @@ impl<'a> Host<'a> {
     }
 }
 
-impl RoomHost for Host<'_> {
-    type Error = worker::Error;
+impl ServiceHost for Host {
+    type Catalog = WorkerCatalog;
 
-    fn save(&mut self, room: &RoomData) -> impl Future<Output = Result<()>> {
-        let archive = self.record.replace_room(room);
-        catalog::persist_with_archive(&self.storage, self.record, archive)
+    fn catalog(&mut self) -> &mut WorkerCatalog {
+        &mut self.catalog
+    }
+
+    async fn save_record(
+        &mut self,
+        record: &RoomRecord,
+        archive: Option<CompletedMatch>,
+    ) -> std::result::Result<(), RoomApiError> {
+        catalog::persist_with_archive(&self.catalog.storage, record, archive)
+            .await
+            .map_err(catalog::unavailable)
     }
 
     fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
@@ -148,103 +153,36 @@ impl RoomHost for Host<'_> {
 }
 
 impl Room {
-    fn close_sockets(&self, reason: &str) {
-        for ws in self.state.get_websockets() {
-            if let Some(a) = attachment(&ws) {
-                retire(&ws, a);
-            }
-            let _ = ws.close(Some(1000), Some(reason));
-        }
-    }
-    fn close_failed_sockets(&self) {
-        self.close_sockets(engine::STORAGE_UNAVAILABLE);
-    }
-    /// After `settle` failed: failed storage, or a room the retention rule
-    /// deleted (`NotFound`), leaves nothing to cache or serve.
-    fn forget(&self, cache: &mut Option<LiveRoom>, error: RoomApiError) {
-        let reason = match error {
-            RoomApiError::StorageUnavailable => engine::STORAGE_UNAVAILABLE,
-            RoomApiError::NotFound => "Room deleted.",
-            _ => return,
-        };
-        self.close_sockets(reason);
-        *cache = None;
-    }
-    async fn load(&self, cache: &mut Option<LiveRoom>) -> Result<()> {
-        if cache.is_some() {
-            return Ok(());
-        }
-        let Some(mut record) = self.state.storage().get::<RoomRecord>(STORAGE_KEY).await? else {
-            return Ok(());
-        };
-        let mut host = Host::new(&self.state, &mut record);
-        let mut engine = host
-            .record
-            .room
-            .clone()
-            .map(|room| RoomEngine::new(room, host.connections()));
-        if let Some(engine) = &mut engine {
-            let loaded = engine.on_load();
-            engine.run(&mut host, loaded).await?;
-        }
-        let connected = engine
-            .as_ref()
-            .is_some_and(|e| e.connections().any(|(_, c)| c.joined));
-        record.observe_connections(connected, catalog::now_ms());
-        catalog::persist(&self.state.storage(), &record).await?;
-        *cache = Some(LiveRoom { record, engine });
-        Ok(())
-    }
-
-    async fn settle(
+    /// Wake the room unless it is awake: read its record and settle it with
+    /// the sockets that outlived hibernation. A service that closed (storage
+    /// failed, or the room was deleted) is read again. Nothing stored leaves
+    /// `cache` empty. On failure every socket is closed.
+    async fn load(
         &self,
-        live: &mut LiveRoom,
-        allocate: bool,
-    ) -> std::result::Result<RoomReference, RoomApiError> {
-        let connected = live
-            .engine
+        cache: &mut Option<RoomService>,
+        host: &mut Host,
+    ) -> std::result::Result<(), RoomApiError> {
+        if cache
             .as_ref()
-            .is_some_and(|e| e.connections().any(|(_, c)| c.joined));
-        live.record
-            .observe_connections(connected, catalog::now_ms());
-        let mut catalog = WorkerCatalog {
-            storage: self.state.storage(),
-            env: self.env.clone(),
-        };
-        lifecycle::cleanup(&mut live.record, &mut catalog, catalog::now_ms()).await?;
-        if live.record.room.is_none() {
-            live.engine = None;
-            self.close_sockets("Lobby expired.");
-            return Err(RoomApiError::Expired);
-        }
-        if allocate {
-            if live.record.invitation.is_none() && live.record.vacant_since.is_some() {
-                live.record.vacant_since = Some(catalog::now_ms());
-            }
-            match lifecycle::allocate(&mut live.record, &mut catalog, lifecycle::new_invitation)
-                .await
-            {
-                Err(RoomApiError::AllocationBusy)
-                    if live.record.room.as_ref().is_some_and(|r| r.game.is_some()) => {}
-                result => result?,
-            }
-        }
-        live.record.reference()
-    }
-
-    /// Save the record if who is connected changed it. A changed room
-    /// was already saved with the presence it had.
-    async fn sync_presence(&self, live: &mut LiveRoom) -> Result<()> {
-        let connected = live
-            .engine
-            .as_ref()
-            .is_some_and(|e| e.connections().any(|(_, c)| c.joined));
-        if live
-            .record
-            .observe_connections(connected, catalog::now_ms())
+            .is_some_and(|service| service.closed().is_none())
         {
-            catalog::persist(&self.state.storage(), &live.record).await?;
+            return Ok(());
         }
+        *cache = None;
+        let record = match self.state.storage().get::<RoomRecord>(STORAGE_KEY).await {
+            Ok(record) => record,
+            Err(error) => {
+                let sockets = host.sockets.keys().copied().collect::<Vec<_>>();
+                host.deliver(engine::storage_unavailable(sockets));
+                return Err(catalog::unavailable(error));
+            }
+        };
+        let Some(record) = record else {
+            return Ok(());
+        };
+        let mut service = RoomService::new(record, host.connections());
+        service.load(host, catalog::now_ms()).await?;
+        *cache = Some(service);
         Ok(())
     }
 
@@ -262,6 +200,10 @@ impl Room {
     }
 }
 
+fn failed(error: RoomApiError) -> worker::Error {
+    worker::Error::RustError(error.message().into())
+}
+
 impl DurableObject for Room {
     fn new(state: State, env: Env) -> Self {
         // Client keepalives are answered by the runtime without waking the
@@ -274,7 +216,7 @@ impl DurableObject for Room {
         }
         Self {
             state,
-            engine: Mutex::new(None),
+            service: Mutex::new(None),
             env,
         }
     }
@@ -298,30 +240,28 @@ impl DurableObject for Room {
                 Err(refusal) => return refuse(refusal),
             }
         }
-        let mut cache = self.engine.lock().await;
-        if let Err(error) = self.load(&mut cache).await {
-            console_error!("room load failed: {error}");
-            self.close_failed_sockets();
-            *cache = None;
-            return crate::rooms_api::error(RoomApiError::StorageUnavailable);
+        let mut cache = self.service.lock().await;
+        let mut host = Host::new(&self.state, &self.env);
+        if let Err(error) = self.load(&mut cache, &mut host).await {
+            return crate::rooms_api::error(error);
         }
+        let now = catalog::now_ms();
         if let Some(id) = url.path().strip_prefix("/create/") {
             if !tantrix_proto::is_game_id(id) {
                 return crate::rooms_api::error(RoomApiError::InvalidRequest);
             }
             if cache.is_none() {
-                let record = RoomRecord::new(id.into(), catalog::now_ms());
-                catalog::persist(&self.state.storage(), &record).await?;
-                *cache = Some(LiveRoom {
-                    record,
-                    engine: Some(RoomEngine::default()),
-                });
+                let mut service = RoomService::new(RoomRecord::new(id.into(), now), []);
+                if let Err(error) = service.load(&mut host, now).await {
+                    return crate::rooms_api::error(error);
+                }
+                *cache = Some(service);
             }
         }
         if url.path().starts_with("/room/") && !websocket {
             return Response::error("expected websocket", 426);
         }
-        let Some(live) = cache.as_mut() else {
+        let Some(service) = cache.as_mut() else {
             if !websocket {
                 return crate::rooms_api::error(RoomApiError::NotFound);
             }
@@ -329,10 +269,9 @@ impl DurableObject for Room {
         };
         let allocate =
             websocket || url.path().starts_with("/create/") || url.query() == Some("allocate=1");
-        let reference = match self.settle(live, allocate).await {
+        let reference = match service.inspect(&mut host, allocate, now).await {
             Ok(reference) => reference,
             Err(error) => {
-                self.forget(&mut cache, error);
                 return match (websocket, error) {
                     (true, RoomApiError::Expired) => rejected(RejectCode::RoomExpired),
                     (true, RoomApiError::NotFound) => rejected(RejectCode::RoomNotFound),
@@ -358,13 +297,9 @@ impl DurableObject for Room {
             left: false,
         };
         pair.server.serialize_attachment(&attachment)?;
-        pair.server
-            .send_with_str(json(&HostMessage::RoomInfo { room: reference }))?;
-        let mut host = Host::new(&self.state, &mut live.record);
         host.sockets.insert(conn, (pair.server.clone(), attachment));
-        let engine = live.engine.as_mut().expect("live room has an engine");
-        let opened = engine.on_open(conn, token);
-        engine.run(&mut host, opened).await?;
+        // A failure closes the socket with its reason, which the player reads.
+        let _ = service.open(&mut host, conn, token, now).await;
         let mut response = Response::from_websocket(pair.client)?;
         if let Some(cookie) = set_cookie {
             response.headers_mut().set("Set-Cookie", &cookie)?;
@@ -373,21 +308,14 @@ impl DurableObject for Room {
     }
 
     async fn alarm(&self) -> Result<Response> {
-        let mut cache = self.engine.lock().await;
-        if let Err(error) = self.load(&mut cache).await {
-            self.close_failed_sockets();
-            *cache = None;
-            return Err(error);
-        }
-        if let Some(live) = cache.as_mut() {
-            match self.settle(live, false).await {
-                Ok(_) | Err(RoomApiError::Expired) => {}
-                Err(error) => {
-                    self.forget(&mut cache, error);
-                    if error != RoomApiError::NotFound {
-                        return Err(worker::Error::RustError(error.to_string()));
-                    }
-                }
+        let mut cache = self.service.lock().await;
+        let mut host = Host::new(&self.state, &self.env);
+        // A failed alarm is retried.
+        self.load(&mut cache, &mut host).await.map_err(failed)?;
+        if let Some(service) = cache.as_mut() {
+            match service.inspect(&mut host, false, catalog::now_ms()).await {
+                Ok(_) | Err(RoomApiError::Expired | RoomApiError::NotFound) => {}
+                Err(error) => return Err(failed(error)),
             }
         }
         Response::ok("ok")
@@ -402,44 +330,30 @@ impl DurableObject for Room {
             return Ok(());
         };
         let conn = attachment.conn;
-        let mut cache = self.engine.lock().await;
-        if let Err(error) = self.load(&mut cache).await {
-            self.close_failed_sockets();
-            *cache = None;
-            return Err(error);
-        }
-        let Some(live) = cache.as_mut() else {
+        let mut cache = self.service.lock().await;
+        let mut host = Host::new(&self.state, &self.env);
+        self.load(&mut cache, &mut host).await.map_err(failed)?;
+        let Some(service) = cache.as_mut() else {
             return Ok(());
         };
-        let Some(engine) = live.engine.as_mut() else {
-            return Ok(());
-        };
-        let mut host = Host::new(&self.state, &mut live.record);
-        let step = match message {
+        let now = catalog::now_ms();
+        let _ = match message {
             WebSocketIncomingMessage::String(text) => {
-                engine.on_text(conn, &text, catalog::now_ms())
+                service.text(&mut host, conn, &text, now).await
             }
-            WebSocketIncomingMessage::Binary(_) => engine.on_binary(conn, catalog::now_ms()),
+            WebSocketIncomingMessage::Binary(_) => service.binary(&mut host, conn, now).await,
         };
-        if let Err(error) = engine.run(&mut host, step).await {
-            console_error!("room storage error: {error}");
-            *cache = None;
-            return Ok(());
-        }
         // A socket that joined must still be joined after hibernation.
-        if let Some(connection) = engine.connection(conn) {
-            if *connection != attachment.connection {
-                ws.serialize_attachment(Attachment {
-                    conn,
-                    connection: connection.clone(),
-                    left: false,
-                })?;
-            }
-        }
-        if let Err(error) = self.sync_presence(live).await {
-            self.close_failed_sockets();
-            *cache = None;
-            return Err(error);
+        let joined = service
+            .engine()
+            .and_then(|engine| engine.connection(conn))
+            .filter(|connection| **connection != attachment.connection);
+        if let Some(connection) = joined {
+            ws.serialize_attachment(Attachment {
+                conn,
+                connection: connection.clone(),
+                left: false,
+            })?;
         }
         Ok(())
     }
@@ -456,32 +370,15 @@ impl DurableObject for Room {
             return Ok(());
         };
         let conn = attachment.conn;
-        let mut cache = self.engine.lock().await;
-        if let Err(error) = self.load(&mut cache).await {
-            self.close_failed_sockets();
-            *cache = None;
-            return Err(error);
-        }
-        let Some(live) = cache.as_mut() else {
+        let mut cache = self.service.lock().await;
+        let mut host = Host::new(&self.state, &self.env);
+        self.load(&mut cache, &mut host).await.map_err(failed)?;
+        let Some(service) = cache.as_mut() else {
             return Ok(());
         };
-        let Some(engine) = live.engine.as_mut() else {
-            return Ok(());
-        };
-        let mut host = Host::new(&self.state, &mut live.record);
         host.sockets.remove(&conn);
         retire(&ws, attachment);
-        let step = engine.on_close(conn);
-        if let Err(error) = engine.run(&mut host, step).await {
-            console_error!("room storage error: {error}");
-            *cache = None;
-            return Ok(());
-        }
-        if let Err(error) = self.sync_presence(live).await {
-            self.close_failed_sockets();
-            *cache = None;
-            return Err(error);
-        }
+        let _ = service.close(&mut host, conn, catalog::now_ms()).await;
         Ok(())
     }
 

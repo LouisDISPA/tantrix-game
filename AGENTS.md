@@ -13,7 +13,7 @@ Rust nightly workspace: nine crates for a 2–4-player hex-tile game. Dioxus 0.8
 | `tantrix-app` | Dioxus UI library, `tantrix` binary, Axum/SQLite backend |
 | `tantrix-proto` | JSON client/server messages and snapshots |
 | `tantrix-net` | Browser/native WebSocket sessions |
-| `tantrix-room` | Shared room engine, rules, handshake, session cookies |
+| `tantrix-room` | Shared room engine, lifecycle driver, rules, handshake, session cookies |
 | `tantrix-worker` | Cloudflare SSR and room Durable Object |
 
 Other paths:
@@ -75,7 +75,7 @@ Paths below are relative to `tantrix-app/src/`.
 - `Game` owns game state; mutate through its API. `GameState` adds cached `Game::moves_by_tile()` results (`hand_info`).
 - `Placement` = tile + axial position + rotation; `Move` adds the rules' forced flag. `Board` stores up to 56 moves, sorted by position. Each tile has three of four colors; rotations step by 60°.
 - `TurnEvent` records moves, skips and retirements for undo/replay. Local games/tournaments retain reproducible seeds; online rooms use random deals and persist `GameData`. Never send a seed or bag order to players.
-- `RoomEngine` takes socket events and produces state/effects. Both backends persist before committing state and delivering effects.
+- `RoomService` drives a room (load, socket events, cleanup, code allocation) over its `RoomEngine`, which turns socket events into state/effects. Backends are thin adapters (sockets, timers, storage); both persist before committing state and delivering effects.
 - `GameCtx` = atomic `Signal<GameState>` + field-reactive `Store<UiState>` + `GameDriver`. `Local` runs turns/AI here; `Online(RoomLink)` sends intents and mirrors authoritative snapshots. Components query the driver; actions dispatch through it.
 - `TurnPhase`: SelectTile → SelectPosition → SelectRotation, plus WaitingForAi/GameOver.
 

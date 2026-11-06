@@ -1,6 +1,7 @@
 //! Native room WebSockets. One actor task per room feeds its sockets'
-//! events to a `RoomEngine` (one at a time) and carries out its effects;
-//! the room rules and orchestration live in `tantrix_room::engine`.
+//! events to a `RoomService` (one at a time) and carries out its effects;
+//! the room's lifecycle runs in `tantrix_room::service`. This module owns
+//! the socket tasks, their timeouts, and the actor's SQLite host.
 //!
 //! Logs: a room's work runs in a `room` span (`room` = its permanent ID) and
 //! each socket in a `socket` span (`room`, `conn`, and `peer`, the player's
@@ -8,7 +9,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -18,15 +18,16 @@ use futures::{Sink, SinkExt, StreamExt};
 use tantrix_proto::{
     HostMessage, RejectCode, RoomApiError, RoomReference, KEEPALIVE_PING, KEEPALIVE_PONG,
 };
-use tantrix_room::engine::{self, ConnId, Effect, RoomEngine, RoomHost};
-use tantrix_room::lifecycle::{self, RoomRecord};
-use tantrix_room::room_logic::RoomData;
+use tantrix_room::engine::{self, ConnId, Effect};
+use tantrix_room::lifecycle::RoomRecord;
+use tantrix_room::room_logic::CompletedMatch;
+use tantrix_room::service::{Cleanup, RoomService, ServiceHost};
 use tantrix_room::session_cookie::SessionToken;
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
 use tokio::time::Instant;
 use tracing::{Instrument, Span};
 
-use super::store::{RoomStore, StoreError, StoreResult};
+use super::store::{self, RoomStore, StoreResult};
 
 const OUTGOING_CAPACITY: usize = 64;
 const COMMAND_CAPACITY: usize = 64;
@@ -104,7 +105,7 @@ impl RoomManager {
 
     pub async fn create(&self, id: &str, now: u64) -> Result<RoomReference, RoomApiError> {
         async {
-            if super::store::unavailable(self.store.insert(id, now).await)? {
+            if store::unavailable(self.store.insert(id, now).await)? {
                 tracing::info!("room created");
             }
             self.inspect(id, now, true).await
@@ -131,7 +132,7 @@ impl RoomManager {
         now: u64,
         allocate: bool,
     ) -> Result<RoomReference, RoomApiError> {
-        match super::store::unavailable(self.open(id, now).await)? {
+        match store::unavailable(self.open(id, now).await)? {
             OpenRoom::Ready(handle) => handle.inspect(now, allocate).await,
             OpenRoom::Missing => Err(RoomApiError::NotFound),
             OpenRoom::Expired => Err(RoomApiError::Expired),
@@ -139,8 +140,8 @@ impl RoomManager {
     }
 
     pub async fn resolve(&self, code: &str, now: u64) -> Result<RoomReference, RoomApiError> {
-        let id = super::store::unavailable(self.store.find_code(code).await)?
-            .ok_or(RoomApiError::NotFound)?;
+        let id =
+            store::unavailable(self.store.find_code(code).await)?.ok_or(RoomApiError::NotFound)?;
         let reference = self.reference(&id, now, false).await?;
         if reference.code.as_deref() != Some(code) {
             return Err(RoomApiError::NotFound);
@@ -170,57 +171,31 @@ impl RoomManager {
                 return Ok(OpenRoom::Ready(handle));
             }
         }
-        let Some(mut record) = self.store.load(id).await? else {
+        let Some(record) = self.store.load(id).await? else {
             return Ok(OpenRoom::Missing);
         };
-        // Tombstones and rooms due for deletion need no actor.
         let deletable = record.is_deletable(now);
-        let Some(room) = record.room.clone().filter(|_| !deletable) else {
-            return match clean(&mut record, &mut self.store.clone(), now).await {
-                Ok(()) => Ok(OpenRoom::Expired),
-                Err(RoomApiError::NotFound) => Ok(OpenRoom::Missing),
-                Err(error) => Err(error.into()),
-            };
-        };
-        let engine = RoomEngine::new(room, []);
+        let mut host = Host::new(self.store.clone());
+        let mut service = RoomService::new(record, []);
+        // Tombstones and rooms due for deletion need no actor.
+        if deletable || service.engine().is_none() {
+            match service.inspect(&mut host, false, now).await {
+                Err(RoomApiError::Expired) => return Ok(OpenRoom::Expired),
+                Err(RoomApiError::NotFound) => return Ok(OpenRoom::Missing),
+                Err(error) => return Err(error.into()),
+                Ok(_) => {}
+            }
+        }
         let (tx, rx) = mpsc::channel(COMMAND_CAPACITY);
         let handle = Arc::new(RoomHandle {
             id: id.to_owned(),
             tx,
         });
         rooms.insert(id.to_owned(), Arc::downgrade(&handle));
-        let actor = RoomActor::new(record, engine, self.store.clone());
+        let actor = RoomActor { service, host };
         tokio::spawn(actor.run(rx).instrument(room_span(id)));
         Ok(OpenRoom::Ready(handle))
     }
-}
-
-/// Run the lifecycle cleanup on `record`, logging any expiry or deletion.
-async fn clean(
-    record: &mut RoomRecord,
-    store: &mut RoomStore,
-    now: u64,
-) -> Result<(), RoomApiError> {
-    let had_room = record.room.is_some();
-    let had_code = record.invitation.is_some();
-    let result = lifecycle::cleanup(record, store, now).await;
-    match result {
-        // Cleanup reports a deleted record as not found.
-        Err(RoomApiError::NotFound) => {
-            let record = if had_room {
-                "started room"
-            } else {
-                "tombstone"
-            };
-            tracing::info!(record, "room deleted");
-        }
-        Ok(()) if had_room && record.room.is_none() => tracing::info!("lobby expired"),
-        Ok(()) if had_code && record.invitation.is_none() => {
-            tracing::info!("invitation code released");
-        }
-        _ => {}
-    }
-    result
 }
 
 pub struct RoomHandle {
@@ -289,30 +264,11 @@ struct Socket {
 }
 
 struct RoomActor {
-    record: RoomRecord,
-    engine: RoomEngine,
-    sockets: HashMap<ConnId, Socket>,
-    store: RoomStore,
+    service: RoomService,
+    host: Host,
 }
 
 impl RoomActor {
-    fn new(record: RoomRecord, engine: RoomEngine, store: RoomStore) -> Self {
-        Self {
-            record,
-            engine,
-            sockets: HashMap::new(),
-            store,
-        }
-    }
-
-    fn host(&mut self) -> Host<'_> {
-        Host {
-            record: &mut self.record,
-            store: &self.store,
-            sockets: &mut self.sockets,
-        }
-    }
-
     /// Serve the room until it stops, in its room span.
     async fn run(mut self, commands: mpsc::Receiver<RoomCommand>) {
         let reason = self.serve(commands).await;
@@ -323,138 +279,70 @@ impl RoomActor {
     async fn serve(&mut self, mut commands: mpsc::Receiver<RoomCommand>) -> &'static str {
         // No socket outlives its actor: a room saved as connected starts an
         // inactivity period (startup does this for every room in the store).
-        self.record.observe_connections(false, now_ms());
-        let loaded = self.engine.on_load();
-        let mut host = Host {
-            record: &mut self.record,
-            store: &self.store,
-            sockets: &mut self.sockets,
-        };
-        let loaded = match self.engine.run(&mut host, loaded).await {
-            Ok(()) => self.store.save_record(&self.record).await,
-            Err(error) => Err(error),
-        };
-        if let Err(error) = loaded {
-            tracing::error!(%error, "room storage error");
+        if self.service.load(&mut self.host, now_ms()).await.is_err() {
             return STORAGE_FAILED;
         }
-        let room = self.engine.room();
-        tracing::info!(
-            match_id = room.match_id,
-            players = room.players.len(),
-            started = room.has_started(),
-            "room loaded"
-        );
+        if let Some(engine) = self.service.engine() {
+            let room = engine.room();
+            tracing::info!(
+                match_id = room.match_id,
+                players = room.players.len(),
+                started = room.has_started(),
+                "room loaded"
+            );
+        }
         loop {
             let Some(command) = commands.recv().await else {
                 return IDLE;
             };
-            if let RoomCommand::Inspect {
-                now,
-                allocate,
-                reply,
-            } = command
-            {
-                self.record
-                    .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now);
-                let result = async {
-                    clean(&mut self.record, &mut self.store, now).await?;
-                    self.record.reference()?;
-                    if allocate {
-                        if self.record.invitation.is_none() && self.record.vacant_since.is_some() {
-                            self.record.vacant_since = Some(now);
-                        }
-                        match lifecycle::allocate(
-                            &mut self.record,
-                            &mut self.store,
-                            lifecycle::new_invitation,
-                        )
-                        .await
-                        {
-                            Err(RoomApiError::AllocationBusy)
-                                if self.engine.room().game.is_some() => {}
-                            result => result?,
-                        }
-                    }
-                    self.record.reference()
+            let host = &mut self.host;
+            match command {
+                RoomCommand::Inspect {
+                    now,
+                    allocate,
+                    reply,
+                } => {
+                    let result = self.service.inspect(host, allocate, now).await;
+                    let _ = reply.send(result);
                 }
-                .await;
-                // Stop once storage failed, or holds no live room (NotFound: deleted).
-                let stop = match &result {
-                    Err(RoomApiError::StorageUnavailable) => Some(STORAGE_FAILED),
-                    Err(RoomApiError::NotFound) => Some(DELETED),
-                    _ if self.record.room.is_none() => Some(EXPIRED),
-                    _ => None,
-                };
-                let _ = reply.send(result);
-                match stop {
-                    Some(reason) => return reason,
-                    None => continue,
-                }
-            }
-            // A text may be the `Hello` that joins its socket.
-            let sender = match &command {
-                RoomCommand::Text { conn, .. } => Some(*conn),
-                _ => None,
-            };
-            let mut done = None;
-            let step = match command {
                 RoomCommand::Open {
                     conn,
                     token,
                     socket,
                 } => {
-                    if let Ok(room) = self.record.reference() {
-                        let _ = socket
-                            .outgoing
-                            .try_send(wire_message(&HostMessage::RoomInfo { room }));
-                    }
-                    self.sockets.insert(conn, socket);
-                    self.engine.on_open(conn, token)
+                    host.sockets.insert(conn, socket);
+                    let _ = self.service.open(host, conn, token, now_ms()).await;
                 }
-                RoomCommand::Text { conn, text } => self.engine.on_text(conn, &text, now_ms()),
-                RoomCommand::Binary { conn } => self.engine.on_binary(conn, now_ms()),
-                RoomCommand::Close { conn, done: ack } => {
-                    self.sockets.remove(&conn);
-                    done = Some(ack);
-                    self.engine.on_close(conn)
+                RoomCommand::Text { conn, text } => {
+                    let _ = self.service.text(host, conn, &text, now_ms()).await;
+                    self.note_joined(conn);
                 }
-                RoomCommand::Inspect { .. } => unreachable!(),
-            };
-            let mut host = Host {
-                record: &mut self.record,
-                store: &self.store,
-                sockets: &mut self.sockets,
-            };
-            let result = self.engine.run(&mut host, step).await;
-            if let Some(conn) = sender {
-                self.note_joined(conn);
+                RoomCommand::Binary { conn } => {
+                    let _ = self.service.binary(host, conn, now_ms()).await;
+                }
+                RoomCommand::Close { conn, done } => {
+                    host.sockets.remove(&conn);
+                    let _ = self.service.close(host, conn, now_ms()).await;
+                    let _ = done.send(());
+                }
             }
-            let presence = self
-                .record
-                .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now_ms());
-            // A changed room was saved with the presence it had; save again
-            // only for a new presence, and never after a failed run.
-            let saved = match &result {
-                Ok(()) if presence => self.store.save_record(&self.record).await,
-                _ => Ok(()),
-            };
-            if let Some(done) = done {
-                let _ = done.send(());
-            }
-            if let Err(error) = result.and(saved) {
-                tracing::error!(%error, "room storage error");
-                let conns: Vec<_> = self.sockets.keys().copied().collect();
-                self.host().deliver(engine::storage_unavailable(conns));
-                return STORAGE_FAILED;
+            // Stop once storage failed, or holds no live room.
+            match self.service.closed() {
+                Some(RoomApiError::NotFound) => return DELETED,
+                Some(_) => return STORAGE_FAILED,
+                None if self.service.engine().is_none() => return EXPIRED,
+                None => {}
             }
         }
     }
 
     /// Name the player in `conn`'s logs once the room has accepted its `Hello`.
     fn note_joined(&mut self, conn: ConnId) {
+        let Some(engine) = self.service.engine() else {
+            return;
+        };
         let (Some(socket), Some(connection)) =
-            (self.sockets.get_mut(&conn), self.engine.connection(conn))
+            (self.host.sockets.get_mut(&conn), engine.connection(conn))
         else {
             return;
         };
@@ -462,7 +350,7 @@ impl RoomActor {
             return;
         }
         socket.joined = true;
-        if let Some(player) = self.engine.room().player(&connection.token) {
+        if let Some(player) = engine.room().player(&connection.token) {
             socket
                 .span
                 .record("peer", tracing::field::display(player.id.as_str()));
@@ -471,26 +359,46 @@ impl RoomActor {
     }
 }
 
-/// The actor's I/O for the engine: SQLite and the socket tasks' queues.
-struct Host<'a> {
-    record: &'a mut RoomRecord,
-    store: &'a RoomStore,
-    sockets: &'a mut HashMap<ConnId, Socket>,
+/// The actor's I/O for its room: SQLite and the socket tasks' queues.
+struct Host {
+    store: RoomStore,
+    sockets: HashMap<ConnId, Socket>,
 }
 
-impl RoomHost for Host<'_> {
-    type Error = StoreError;
-
-    /// The record takes the new room only once storage holds it, so a
-    /// failed save leaves nothing uncommitted for a later save to write.
-    fn save(&mut self, room: &RoomData) -> impl Future<Output = StoreResult<()>> {
-        let mut next = self.record.clone();
-        let archive = next.replace_room(room);
-        async move {
-            self.store.save_with_archive(&next, archive).await?;
-            *self.record = next;
-            Ok(())
+impl Host {
+    fn new(store: RoomStore) -> Self {
+        Self {
+            store,
+            sockets: HashMap::new(),
         }
+    }
+
+    /// Queue `message` for `conn`, or report it: its queue is full, or its
+    /// task is gone.
+    fn queue(&self, conn: ConnId, message: Message, unreachable: &mut Vec<ConnId>) {
+        let queued = self
+            .sockets
+            .get(&conn)
+            .is_some_and(|socket| socket.outgoing.try_send(message).is_ok());
+        if !queued {
+            unreachable.push(conn);
+        }
+    }
+}
+
+impl ServiceHost for Host {
+    type Catalog = RoomStore;
+
+    fn catalog(&mut self) -> &mut RoomStore {
+        &mut self.store
+    }
+
+    async fn save_record(
+        &mut self,
+        record: &RoomRecord,
+        archive: Option<CompletedMatch>,
+    ) -> Result<(), RoomApiError> {
+        store::unavailable(self.store.save_with_archive(record, archive).await)
     }
 
     fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
@@ -530,18 +438,19 @@ impl RoomHost for Host<'_> {
         }
         unreachable
     }
-}
 
-impl Host<'_> {
-    /// Queue `message` for `conn`, or report it: its queue is full, or its
-    /// task is gone.
-    fn queue(&self, conn: ConnId, message: Message, unreachable: &mut Vec<ConnId>) {
-        let queued = self
-            .sockets
-            .get(&conn)
-            .is_some_and(|socket| socket.outgoing.try_send(message).is_ok());
-        if !queued {
-            unreachable.push(conn);
+    fn cleaned(&mut self, cleanup: Cleanup) {
+        match cleanup {
+            Cleanup::LobbyExpired => tracing::info!("lobby expired"),
+            Cleanup::CodeReleased => tracing::info!("invitation code released"),
+            Cleanup::Deleted { tombstone } => {
+                let record = if tombstone {
+                    "tombstone"
+                } else {
+                    "started room"
+                };
+                tracing::info!(record, "room deleted");
+            }
         }
     }
 }
@@ -764,36 +673,6 @@ mod tests {
         assert_eq!(liveness.deadline, at(36) + IDLE_TIMEOUT);
         // Clients ping every 30 s; one missed ping must not close them.
         assert!(IDLE_TIMEOUT > Duration::from_secs(60));
-    }
-
-    #[tokio::test]
-    async fn a_failed_save_leaves_the_record_as_storage_has_it() {
-        let store = RoomStore::open(":memory:").unwrap();
-        let mut sockets = HashMap::new();
-        let next = RoomData {
-            match_id: 7,
-            ..RoomData::default()
-        };
-        // Storage has no row for this room yet, so saving it fails.
-        let mut record = RoomRecord::new("game".into(), 0);
-        let mut host = Host {
-            record: &mut record,
-            store: &store,
-            sockets: &mut sockets,
-        };
-        assert!(host.save(&next).await.is_err());
-        assert_eq!(record.room.as_ref().map(|room| room.match_id), Some(0));
-
-        store.insert("game", 0).await.unwrap();
-        let mut host = Host {
-            record: &mut record,
-            store: &store,
-            sockets: &mut sockets,
-        };
-        host.save(&next).await.unwrap();
-        assert_eq!(record.room.as_ref().map(|room| room.match_id), Some(7));
-        let stored = store.load("game").await.unwrap().unwrap();
-        assert_eq!(stored.room.map(|room| room.match_id), Some(7));
     }
 
     fn test_socket() -> (Socket, mpsc::Receiver<Message>) {

@@ -1,11 +1,12 @@
 //! The room engine as both servers drive it: socket events in, effects out,
 //! through a fake host that records saves and deliveries.
 
+mod support;
+
 use std::collections::HashSet;
 use std::future::Future;
-use std::pin::pin;
-use std::task::{Context, Poll, Waker};
 
+use support::{closes, hello, now, token};
 use tantrix_game::Color;
 use tantrix_proto::{HostMessage, PeerMessage, RejectCode};
 use tantrix_room::engine::{
@@ -58,14 +59,6 @@ fn message_recipients(effect: &Effect) -> Vec<ConnId> {
         Effect::Send { to, .. } => vec![*to],
         Effect::Broadcast { to, .. } => to.clone(),
         Effect::Close { .. } => Vec::new(),
-    }
-}
-
-/// The fake host never waits, so one poll finishes a run.
-fn now<F: Future>(future: F) -> F::Output {
-    match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
-        Poll::Ready(output) => output,
-        Poll::Pending => panic!("the fake host never waits"),
     }
 }
 
@@ -145,16 +138,6 @@ impl Room {
     }
 }
 
-fn token(name: &str) -> SessionToken {
-    SessionToken::new(format!("secret-{name}-0123456789"))
-}
-
-fn hello(nickname: &str) -> PeerMessage {
-    PeerMessage::Hello {
-        nickname: nickname.into(),
-    }
-}
-
 /// The messages `conn` receives, in order, from direct sends and broadcasts.
 fn received(effects: &[Effect], conn: u64) -> Vec<&HostMessage> {
     effects
@@ -162,16 +145,6 @@ fn received(effects: &[Effect], conn: u64) -> Vec<&HostMessage> {
         .filter_map(|effect| match effect {
             Effect::Send { to, message } if *to == ConnId(conn) => Some(message),
             Effect::Broadcast { to, message } if to.contains(&ConnId(conn)) => Some(message),
-            _ => None,
-        })
-        .collect()
-}
-
-fn closes(effects: &[Effect]) -> Vec<(u64, &'static str)> {
-    effects
-        .iter()
-        .filter_map(|effect| match effect {
-            Effect::Close { conn, reason } => Some((conn.0, *reason)),
             _ => None,
         })
         .collect()

@@ -68,7 +68,7 @@ pub fn unavailable(error: worker::Error) -> RoomApiError {
     RoomApiError::StorageUnavailable
 }
 
-pub async fn persist(storage: &Storage, record: &RoomRecord) -> Result<()> {
+async fn persist(storage: &Storage, record: &RoomRecord) -> Result<()> {
     persist_with_archive(storage, record, None).await
 }
 

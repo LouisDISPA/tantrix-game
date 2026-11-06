@@ -1,11 +1,11 @@
 //! One room's orchestration without I/O, shared by both servers.
 //!
 //! A [`RoomEngine`] holds a room's [`RoomData`] and the sockets open on it.
-//! Its adapter (the Durable Object, or the native room actor) turns socket
+//! Its driver, [`RoomService`](crate::service::RoomService), turns socket
 //! events into calls — [`on_open`](RoomEngine::on_open),
 //! [`on_text`](RoomEngine::on_text), [`on_binary`](RoomEngine::on_binary),
-//! [`on_close`](RoomEngine::on_close) — and owns only what the engine can't:
-//! sockets, keepalives and storage.
+//! [`on_close`](RoomEngine::on_close) — and handles what the engine can't
+//! through its server: sockets, keepalives and storage.
 //!
 //! Each call returns a [`Step`] and changes nothing yet. A step may carry a
 //! new room to persist ([`Step::persist`]) and a list of [`Effect`]s: sends,
@@ -16,8 +16,8 @@
 //!    is the step committed (room and sockets), and only then are its
 //!    effects delivered, so nobody hears of a change storage doesn't hold.
 //! 2. If the save fails, nothing is committed: every socket is closed with
-//!    [`STORAGE_UNAVAILABLE`] and the error is returned. The adapter then
-//!    drops the engine and loads the room from storage again next time.
+//!    [`STORAGE_UNAVAILABLE`] and the error is returned. The service then
+//!    drops the engine, and the room is loaded from storage again next time.
 //! 3. A socket the host could not hand a message to (its queue is full, or
 //!    it is gone) is closed with [`TOO_SLOW`] and leaves the room as a
 //!    disconnect would, and the others hear the new roster.
@@ -192,7 +192,7 @@ pub trait RoomHost {
 }
 
 /// A room and its open sockets. See the [module docs](self).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RoomEngine {
     room: RoomData,
     connections: Connections,
