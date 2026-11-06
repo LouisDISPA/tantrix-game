@@ -84,11 +84,12 @@ impl RoomStore {
         .await?
     }
 
-    pub async fn insert(&self, id: &str, now: u64) -> StoreResult<()> {
+    /// Store a new room; false if one with this ID exists (or existed).
+    pub async fn insert(&self, id: &str, now: u64) -> StoreResult<bool> {
         let row = Row::new(&RoomRecord::new(id.into(), now))?;
         self.with(move |conn| {
-            conn.execute("INSERT OR IGNORE INTO online_games (id, record_json, deadline) VALUES (?1, ?2, ?3)", (&row.id, &row.json, row.deadline))?;
-            Ok(())
+            let inserted = conn.execute("INSERT OR IGNORE INTO online_games (id, record_json, deadline) VALUES (?1, ?2, ?3)", (&row.id, &row.json, row.deadline))?;
+            Ok(inserted == 1)
         }).await
     }
 
@@ -201,7 +202,7 @@ impl RoomStore {
 
 pub fn unavailable<T>(result: StoreResult<T>) -> Result<T, RoomApiError> {
     result.map_err(|error| {
-        log::error!("room storage error: {error}");
+        tracing::error!(%error, "room storage error");
         RoomApiError::StorageUnavailable
     })
 }
@@ -336,7 +337,7 @@ pub(super) mod tests {
             .unwrap();
         assert!(store.find_code("ABCDEF").await.unwrap().is_none());
         assert!(store.due(IDLE_TTL_MS).await.unwrap().is_empty());
-        store.insert("game", IDLE_TTL_MS).await.unwrap();
+        assert!(!store.insert("game", IDLE_TTL_MS).await.unwrap(), "kept");
         assert_eq!(
             store.load("game").await.unwrap().unwrap().reference(),
             Err(RoomApiError::Expired)

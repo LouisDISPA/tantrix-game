@@ -1,7 +1,12 @@
 //! Native room WebSockets. One actor task per room feeds its sockets'
 //! events to a `RoomEngine` (one at a time) and carries out its effects;
 //! the room rules and orchestration live in `tantrix_room::engine`.
+//!
+//! Logs: a room's work runs in a `room` span (`room` = its permanent ID) and
+//! each socket in a `socket` span (`room`, `conn`, and `peer`, the player's
+//! public ID, once joined). Session tokens are never logged.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,6 +24,7 @@ use tantrix_room::room_logic::RoomData;
 use tantrix_room::session_cookie::SessionToken;
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
 use tokio::time::Instant;
+use tracing::{Instrument, Span};
 
 use super::store::{RoomStore, StoreError, StoreResult};
 
@@ -35,8 +41,40 @@ const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 /// Close reason for a socket that went quiet.
 const TIMED_OUT: &str = "Connection timed out.";
 
+/// Why a socket closed, when the server sent its peer no reason: logged only.
+const CLIENT_CLOSED: &str = "closed by the client";
+const CONNECTION_LOST: &str = "connection lost";
+const STOPPED_READING: &str = "client stopped reading";
+const ROOM_STOPPED: &str = "room stopped";
+/// The engine closes a socket whose `Hello` it refused without a reason.
+const HELLO_REFUSED: &str = "hello refused";
+
+/// Why a room actor stopped.
+const IDLE: &str = "no sockets or requests left";
+const DELETED: &str = "deleted";
+const EXPIRED: &str = "expired";
+const STORAGE_FAILED: &str = "storage unavailable";
+
 /// Socket numbers, unique across the process and so within each room.
 static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
+
+/// The span of a room's work: its actor, and each request that opens it.
+/// Error level, so failures keep their room when `RUST_LOG` hides info.
+pub fn room_span(id: &str) -> Span {
+    tracing::error_span!(parent: None, "room", room = %id)
+}
+
+/// The span of one socket. Its actor records `peer` once the room accepts
+/// the socket's `Hello`.
+pub(super) fn socket_span(room: &str, conn: ConnId) -> Span {
+    tracing::error_span!(
+        parent: None,
+        "socket",
+        room = %room,
+        conn = conn.0,
+        peer = tracing::field::Empty,
+    )
+}
 
 pub struct RoomManager {
     rooms: Mutex<HashMap<String, Weak<RoomHandle>>>,
@@ -65,11 +103,29 @@ impl RoomManager {
     }
 
     pub async fn create(&self, id: &str, now: u64) -> Result<RoomReference, RoomApiError> {
-        super::store::unavailable(self.store.insert(id, now).await)?;
-        self.reference(id, now, true).await
+        async {
+            if super::store::unavailable(self.store.insert(id, now).await)? {
+                tracing::info!("room created");
+            }
+            self.inspect(id, now, true).await
+        }
+        .instrument(room_span(id))
+        .await
     }
 
     pub async fn reference(
+        &self,
+        id: &str,
+        now: u64,
+        allocate: bool,
+    ) -> Result<RoomReference, RoomApiError> {
+        self.inspect(id, now, allocate)
+            .instrument(room_span(id))
+            .await
+    }
+
+    /// [`Self::reference`], in the caller's room span.
+    async fn inspect(
         &self,
         id: &str,
         now: u64,
@@ -93,7 +149,11 @@ impl RoomManager {
     }
 
     pub async fn cleanup(&self, now: u64) -> StoreResult<()> {
-        for id in self.store.due(now).await? {
+        let due = self.store.due(now).await?;
+        if !due.is_empty() {
+            tracing::debug!(rooms = due.len(), "cleanup sweep");
+        }
+        for id in due {
             match self.reference(&id, now, false).await {
                 Ok(_) | Err(RoomApiError::Expired | RoomApiError::NotFound) => {}
                 Err(error) => return Err(error.into()),
@@ -116,7 +176,7 @@ impl RoomManager {
         // Tombstones and rooms due for deletion need no actor.
         let deletable = record.is_deletable(now);
         let Some(room) = record.room.clone().filter(|_| !deletable) else {
-            return match lifecycle::cleanup(&mut record, &mut self.store.clone(), now).await {
+            return match clean(&mut record, &mut self.store.clone(), now).await {
                 Ok(()) => Ok(OpenRoom::Expired),
                 Err(RoomApiError::NotFound) => Ok(OpenRoom::Missing),
                 Err(error) => Err(error.into()),
@@ -124,14 +184,48 @@ impl RoomManager {
         };
         let engine = RoomEngine::new(room, []);
         let (tx, rx) = mpsc::channel(COMMAND_CAPACITY);
-        let handle = Arc::new(RoomHandle { tx });
+        let handle = Arc::new(RoomHandle {
+            id: id.to_owned(),
+            tx,
+        });
         rooms.insert(id.to_owned(), Arc::downgrade(&handle));
-        tokio::spawn(RoomActor::new(record, engine, self.store.clone()).run(rx));
+        let actor = RoomActor::new(record, engine, self.store.clone());
+        tokio::spawn(actor.run(rx).instrument(room_span(id)));
         Ok(OpenRoom::Ready(handle))
     }
 }
 
+/// Run the lifecycle cleanup on `record`, logging any expiry or deletion.
+async fn clean(
+    record: &mut RoomRecord,
+    store: &mut RoomStore,
+    now: u64,
+) -> Result<(), RoomApiError> {
+    let had_room = record.room.is_some();
+    let had_code = record.invitation.is_some();
+    let result = lifecycle::cleanup(record, store, now).await;
+    match result {
+        // Cleanup reports a deleted record as not found.
+        Err(RoomApiError::NotFound) => {
+            let record = if had_room {
+                "started room"
+            } else {
+                "tombstone"
+            };
+            tracing::info!(record, "room deleted");
+        }
+        Ok(()) if had_room && record.room.is_none() => tracing::info!("lobby expired"),
+        Ok(()) if had_code && record.invitation.is_none() => {
+            tracing::info!("invitation code released");
+        }
+        _ => {}
+    }
+    result
+}
+
 pub struct RoomHandle {
+    /// The room's permanent ID.
+    id: String,
     tx: mpsc::Sender<RoomCommand>,
 }
 
@@ -188,6 +282,10 @@ struct Socket {
     outgoing: mpsc::Sender<Message>,
     /// Close now with this reason, when the queue can't take a close frame.
     close: watch::Sender<Option<String>>,
+    /// The socket task's span, for what the room does with this socket.
+    span: Span,
+    /// The room accepted its `Hello`, and `span` names its player.
+    joined: bool,
 }
 
 struct RoomActor {
@@ -215,7 +313,14 @@ impl RoomActor {
         }
     }
 
-    async fn run(mut self, mut commands: mpsc::Receiver<RoomCommand>) {
+    /// Serve the room until it stops, in its room span.
+    async fn run(mut self, commands: mpsc::Receiver<RoomCommand>) {
+        let reason = self.serve(commands).await;
+        tracing::info!(reason, "room stopped");
+    }
+
+    /// Serve the room; returns why it stopped.
+    async fn serve(&mut self, mut commands: mpsc::Receiver<RoomCommand>) -> &'static str {
         // No socket outlives its actor: a room saved as connected starts an
         // inactivity period (startup does this for every room in the store).
         self.record.observe_connections(false, now_ms());
@@ -225,13 +330,25 @@ impl RoomActor {
             store: &self.store,
             sockets: &mut self.sockets,
         };
-        if self.engine.run(&mut host, loaded).await.is_err() {
-            return;
+        let loaded = match self.engine.run(&mut host, loaded).await {
+            Ok(()) => self.store.save_record(&self.record).await,
+            Err(error) => Err(error),
+        };
+        if let Err(error) = loaded {
+            tracing::error!(%error, "room storage error");
+            return STORAGE_FAILED;
         }
-        if self.store.save_record(&self.record).await.is_err() {
-            return;
-        }
-        while let Some(command) = commands.recv().await {
+        let room = self.engine.room();
+        tracing::info!(
+            match_id = room.match_id,
+            players = room.players.len(),
+            started = room.has_started(),
+            "room loaded"
+        );
+        loop {
+            let Some(command) = commands.recv().await else {
+                return IDLE;
+            };
             if let RoomCommand::Inspect {
                 now,
                 allocate,
@@ -241,7 +358,7 @@ impl RoomActor {
                 self.record
                     .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now);
                 let result = async {
-                    lifecycle::cleanup(&mut self.record, &mut self.store, now).await?;
+                    clean(&mut self.record, &mut self.store, now).await?;
                     self.record.reference()?;
                     if allocate {
                         if self.record.invitation.is_none() && self.record.vacant_since.is_some() {
@@ -263,16 +380,23 @@ impl RoomActor {
                 }
                 .await;
                 // Stop once storage failed, or holds no live room (NotFound: deleted).
-                let stop = matches!(
-                    result,
-                    Err(RoomApiError::StorageUnavailable | RoomApiError::NotFound)
-                ) || self.record.room.is_none();
+                let stop = match &result {
+                    Err(RoomApiError::StorageUnavailable) => Some(STORAGE_FAILED),
+                    Err(RoomApiError::NotFound) => Some(DELETED),
+                    _ if self.record.room.is_none() => Some(EXPIRED),
+                    _ => None,
+                };
                 let _ = reply.send(result);
-                if stop {
-                    break;
+                match stop {
+                    Some(reason) => return reason,
+                    None => continue,
                 }
-                continue;
             }
+            // A text may be the `Hello` that joins its socket.
+            let sender = match &command {
+                RoomCommand::Text { conn, .. } => Some(*conn),
+                _ => None,
+            };
             let mut done = None;
             let step = match command {
                 RoomCommand::Open {
@@ -303,6 +427,9 @@ impl RoomActor {
                 sockets: &mut self.sockets,
             };
             let result = self.engine.run(&mut host, step).await;
+            if let Some(conn) = sender {
+                self.note_joined(conn);
+            }
             let presence = self
                 .record
                 .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now_ms());
@@ -316,12 +443,31 @@ impl RoomActor {
                 let _ = done.send(());
             }
             if let Err(error) = result.and(saved) {
-                log::error!("room stopped after storage error: {error}");
+                tracing::error!(%error, "room storage error");
                 let conns: Vec<_> = self.sockets.keys().copied().collect();
                 self.host().deliver(engine::storage_unavailable(conns));
-                break;
+                return STORAGE_FAILED;
             }
         }
+    }
+
+    /// Name the player in `conn`'s logs once the room has accepted its `Hello`.
+    fn note_joined(&mut self, conn: ConnId) {
+        let (Some(socket), Some(connection)) =
+            (self.sockets.get_mut(&conn), self.engine.connection(conn))
+        else {
+            return;
+        };
+        if socket.joined || !connection.joined {
+            return;
+        }
+        socket.joined = true;
+        if let Some(player) = self.engine.room().player(&connection.token) {
+            socket
+                .span
+                .record("peer", tracing::field::display(player.id.as_str()));
+        }
+        socket.span.in_scope(|| tracing::info!("socket joined"));
     }
 }
 
@@ -352,6 +498,17 @@ impl RoomHost for Host<'_> {
         for effect in effects {
             match effect {
                 Effect::Send { to, message } => {
+                    if let HostMessage::Welcome {
+                        rejected: Some(code),
+                        ..
+                    } = &message
+                    {
+                        if let Some(socket) = self.sockets.get(&to) {
+                            socket
+                                .span
+                                .in_scope(|| tracing::info!(?code, "hello refused"));
+                        }
+                    }
                     self.queue(to, wire_message(&message), &mut unreachable);
                 }
                 Effect::Broadcast { to, message } => {
@@ -404,16 +561,12 @@ fn close_frame(reason: &str) -> Message {
     }))
 }
 
-/// Answer a socket for a code with no room, then close it.
-pub async fn missing_room(socket: WebSocket) {
-    rejected_room(socket, RejectCode::RoomNotFound).await;
-}
-
 /// Close a socket the handshake refused, with a reason the player reads.
 pub async fn refused(mut socket: WebSocket, reason: &'static str) {
     write(&mut socket, close_frame(reason)).await;
 }
 
+/// Answer a socket for a missing or expired room, then close it.
 pub async fn rejected_room(mut socket: WebSocket, code: RejectCode) {
     let message = engine::rejected_welcome(code);
     if write(&mut socket, wire_message(&message)).await {
@@ -458,6 +611,20 @@ impl Liveness {
 
 pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: SessionToken) {
     let conn = ConnId(NEXT_CONN.fetch_add(1, Ordering::Relaxed));
+    let span = socket_span(&handle.id, conn);
+    serve_socket(socket, handle, token, conn, span.clone())
+        .instrument(span)
+        .await;
+}
+
+async fn serve_socket(
+    socket: WebSocket,
+    handle: Arc<RoomHandle>,
+    token: SessionToken,
+    conn: ConnId,
+    span: Span,
+) {
+    tracing::info!("socket opened");
     let (mut writer, mut reader) = socket.split();
     let (outgoing, mut incoming) = mpsc::channel(OUTGOING_CAPACITY);
     let (close, mut closed) = watch::channel::<Option<String>>(None);
@@ -467,10 +634,12 @@ pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: S
         socket: Socket {
             outgoing: outgoing.clone(),
             close,
+            span,
+            joined: false,
         },
     };
 
-    if handle.send(open).await {
+    let reason: Cow<'static, str> = if handle.send(open).await {
         let mut liveness = Liveness::new(Instant::now());
         loop {
             // Outgoing frames first, so a close reason or a rejection
@@ -478,19 +647,20 @@ pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: S
             tokio::select! {
                 biased;
                 message = incoming.recv() => {
-                    let Some(message) = message else { break; };
-                    let is_close = matches!(message, Message::Close(_));
-                    if !write(&mut writer, message).await || is_close { break; }
+                    let Some(message) = message else { break ROOM_STOPPED.into(); };
+                    let closing = close_reason(&message);
+                    let written = write(&mut writer, message).await;
+                    if let Some(reason) = closing { break reason.into(); }
+                    if !written { break STOPPED_READING.into(); }
                 }
                 changed = closed.changed() => {
-                    if changed.is_ok() {
-                        let reason = closed.borrow().clone().unwrap_or_default();
-                        write(&mut writer, close_frame(&reason)).await;
-                    }
-                    break;
+                    if changed.is_err() { break ROOM_STOPPED.into(); }
+                    let reason = closed.borrow().clone().unwrap_or_default();
+                    write(&mut writer, close_frame(&reason)).await;
+                    break reason.into();
                 }
                 frame = reader.next() => {
-                    let Some(Ok(frame)) = frame else { break; };
+                    let Some(Ok(frame)) = frame else { break CONNECTION_LOST.into(); };
                     let keepalive = match &frame {
                         Message::Text(text) => text.as_str() == KEEPALIVE_PING,
                         Message::Ping(_) | Message::Pong(_) => true,
@@ -503,24 +673,68 @@ pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: S
                             let _ = outgoing.try_send(Message::Text(KEEPALIVE_PONG.into()));
                             continue;
                         }
-                        Message::Text(text) => RoomCommand::Text { conn, text: text.to_string() },
-                        Message::Binary(_) => RoomCommand::Binary { conn },
-                        Message::Close(_) => break,
+                        Message::Text(text) => {
+                            tracing::debug!(bytes = text.len(), "text frame");
+                            RoomCommand::Text { conn, text: text.to_string() }
+                        }
+                        Message::Binary(data) => {
+                            tracing::debug!(bytes = data.len(), "binary frame");
+                            RoomCommand::Binary { conn }
+                        }
+                        Message::Close(_) => break CLIENT_CLOSED.into(),
                         Message::Ping(_) | Message::Pong(_) => continue,
                     };
-                    if !handle.send(command).await { break; }
+                    if !handle.send(command).await { break ROOM_STOPPED.into(); }
                 }
                 _ = tokio::time::sleep_until(liveness.deadline) => {
                     write(&mut writer, close_frame(TIMED_OUT)).await;
-                    break;
+                    break TIMED_OUT.into();
                 }
-                _ = handle.tx.closed() => break,
+                _ = handle.tx.closed() => break ROOM_STOPPED.into(),
             }
         }
-    }
+    } else {
+        ROOM_STOPPED.into()
+    };
+    log_closed(&reason);
     let (done, acknowledged) = oneshot::channel();
     if handle.send(RoomCommand::Close { conn, done }).await {
         let _ = acknowledged.await;
+    }
+}
+
+/// The reason in a close frame the room queued for its peer.
+fn close_reason(message: &Message) -> Option<String> {
+    let Message::Close(frame) = message else {
+        return None;
+    };
+    Some(
+        frame
+            .as_ref()
+            .map_or_else(String::new, |frame| frame.reason.as_str().to_owned()),
+    )
+}
+
+/// Log why a socket closed: the reason the server sent its peer, or what
+/// its task saw. Limits hit and failures are warnings.
+pub(super) fn log_closed(reason: &str) {
+    let reason = if reason.is_empty() {
+        HELLO_REFUSED
+    } else {
+        reason
+    };
+    let failure = [
+        engine::TOO_MANY_MESSAGES,
+        engine::TOO_MANY_CONNECTIONS,
+        engine::TOO_SLOW,
+        engine::STORAGE_UNAVAILABLE,
+        STOPPED_READING,
+    ]
+    .contains(&reason);
+    if failure {
+        tracing::warn!(reason, "socket closed");
+    } else {
+        tracing::info!(reason, "socket closed");
     }
 }
 
@@ -585,7 +799,13 @@ mod tests {
     fn test_socket() -> (Socket, mpsc::Receiver<Message>) {
         let (outgoing, messages) = mpsc::channel(8);
         let (close, _closed) = watch::channel(None);
-        (Socket { outgoing, close }, messages)
+        let socket = Socket {
+            outgoing,
+            close,
+            span: Span::none(),
+            joined: false,
+        };
+        (socket, messages)
     }
 
     #[tokio::test]

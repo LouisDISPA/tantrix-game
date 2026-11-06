@@ -121,6 +121,33 @@ Rooms deal with the OS-seeded thread RNG and retain no seed. Saves retain
 the bag and history; snapshots expose neither. See
 [history and persistence](game.md#history-seeds-and-persistence).
 
+### Server logs
+
+The native server logs to stdout, filtered by `RUST_LOG`
+([`EnvFilter` directives](https://docs.rs/tracing-subscriber/0.3/tracing_subscriber/filter/struct.EnvFilter.html#directives);
+default `tantrix_app=info,tower_http=info`). It writes compact text, or one
+JSON object per line with `TANTRIX_LOG_FORMAT=json`.
+
+Room work runs in a `room` span whose `room` field is the permanent game ID.
+Each socket runs in a `socket` span with `room`, `conn` (a socket number) and,
+once its `Hello` is accepted, `peer` (the player's public ID). Session tokens,
+cookies, seeds and bags are never logged.
+
+| Level | Events |
+| --- | --- |
+| info | Room created, loaded and stopped (`reason`); socket opened, joined, refused, rejected or closed (`reason`); lobby expired, invitation code released, room deleted |
+| warn | Socket closed for a limit or failure: *Too many messages.*, *Too many connections to this room.*, *Connection is too slow.*, *Room storage is unavailable.*, or the client stopped reading. Rate-limited room requests (`client`, `limit`) |
+| error | Storage errors, failed cleanup sweeps |
+| debug | Each frame's size, cleanup sweeps |
+
+A socket closed by the client, a lost connection or *Connection timed out.*
+is info. To follow one room:
+
+```sh
+RUST_LOG='tantrix_app=info,[{room=<ID>}]=debug'   # debug for that room only
+jq -c 'select(.span.room == "<ID>")' server.log   # saved JSON logs
+```
+
 ## Room servers
 
 `tantrix_room::engine::RoomEngine` handles socket events without I/O;

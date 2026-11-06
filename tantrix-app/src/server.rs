@@ -17,12 +17,16 @@ use axum::routing::{get, post};
 use axum::Json;
 use axum::Router;
 use dioxus::server::{DioxusRouterExt, FullstackState, ServeConfig};
-use tantrix_proto::{is_game_id, CreateRoom, RoomApiError};
+use tantrix_proto::{is_game_id, CreateRoom, RejectCode, RoomApiError};
 use tantrix_room::handshake::{self, Refusal, SiteOrigin, Upgrade};
 use tantrix_room::lifecycle;
 use tantrix_room::session_cookie::{self, SessionToken};
 #[cfg(not(debug_assertions))]
 use tower_http::compression::CompressionLayer;
+use tracing::Instrument;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::Layer;
 
 use crate::app;
 use crate::route::Route;
@@ -69,7 +73,7 @@ fn bind_addr() -> SocketAddr {
 pub fn run() {
     setup_logging();
     let addr = bind_addr();
-    println!("Tantrix fullstack server listening on {addr}");
+    tracing::info!(%addr, "Tantrix fullstack server listening");
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -97,7 +101,7 @@ pub fn run() {
             loop {
                 interval.tick().await;
                 if let Err(error) = cleanup_state.rooms.cleanup(room::now_ms()).await {
-                    log::error!("room cleanup failed: {error}");
+                    tracing::error!(%error, "room cleanup failed");
                 }
             }
         });
@@ -223,6 +227,7 @@ async fn create_room(
     Json(request): Json<CreateRoom>,
 ) -> Response {
     if !state.limits.allow_creation(client) {
+        tracing::warn!(%client, limit = "room creation", "request rate limited");
         return api_error(RoomApiError::RateLimited);
     }
     if !is_game_id(&request.request_id) {
@@ -238,6 +243,7 @@ async fn resolve_room(
     Path(code): Path<String>,
 ) -> Response {
     if !state.limits.allow_lookup(client) {
+        tracing::warn!(%client, limit = "code lookup", "request rate limited");
         return api_error(RoomApiError::RateLimited);
     }
     if !tantrix_proto::is_room_code(&code) {
@@ -274,12 +280,13 @@ async fn room_socket(
         site,
         query: query.as_deref(),
     });
-    match checked {
-        Ok(()) => {}
-        Err(refusal) if refusal.closes_socket() => {
+    if let Err(refusal) = checked {
+        // The ID may be invalid, so it stays out of the logs.
+        tracing::info!(reason = refusal.message(), "socket refused");
+        if refusal.closes_socket() {
             return upgrade.on_upgrade(move |socket| room::refused(socket, refusal.message()));
         }
-        Err(refusal) => return refuse(refusal),
+        return refuse(refusal);
     }
     // Larger frames never reach the room (axum allows 64 MiB by default).
     let upgrade = upgrade
@@ -287,24 +294,30 @@ async fn room_socket(
         .max_frame_size(tantrix_room::engine::MAX_FRAME_BYTES);
 
     let now = room::now_ms();
-    match state.rooms.open(&code, now).await {
+    let span = room::room_span(&code);
+    let opened = state.rooms.open(&code, now).instrument(span.clone()).await;
+    let rejected = match opened {
         Ok(room::OpenRoom::Ready(handle)) => match handle.inspect(now, true).await {
-            Ok(_) => upgrade.on_upgrade(move |socket| room::socket_session(socket, handle, token)),
-            Err(RoomApiError::Expired) => upgrade.on_upgrade(|socket| {
-                room::rejected_room(socket, tantrix_proto::RejectCode::RoomExpired)
-            }),
-            Err(RoomApiError::NotFound) => upgrade.on_upgrade(room::missing_room),
-            Err(error) => api_error(error),
+            Ok(_) => {
+                return upgrade
+                    .on_upgrade(move |socket| room::socket_session(socket, handle, token))
+            }
+            Err(RoomApiError::Expired) => RejectCode::RoomExpired,
+            Err(RoomApiError::NotFound) => RejectCode::RoomNotFound,
+            Err(error) => {
+                span.in_scope(|| tracing::warn!(?error, "socket refused"));
+                return api_error(error);
+            }
         },
-        Ok(room::OpenRoom::Missing) => upgrade.on_upgrade(room::missing_room),
-        Ok(room::OpenRoom::Expired) => upgrade.on_upgrade(|socket| {
-            room::rejected_room(socket, tantrix_proto::RejectCode::RoomExpired)
-        }),
+        Ok(room::OpenRoom::Missing) => RejectCode::RoomNotFound,
+        Ok(room::OpenRoom::Expired) => RejectCode::RoomExpired,
         Err(error) => {
-            log::error!("failed to open room {code}: {error}");
-            refuse(Refusal::StorageUnavailable)
+            span.in_scope(|| tracing::error!(%error, "room storage error"));
+            return refuse(Refusal::StorageUnavailable);
         }
-    }
+    };
+    span.in_scope(|| tracing::info!(?rejected, "socket rejected"));
+    upgrade.on_upgrade(move |socket| room::rejected_room(socket, rejected))
 }
 
 fn refuse(refusal: Refusal) -> Response {
@@ -313,14 +326,59 @@ fn refuse(refusal: Refusal) -> Response {
     (status, refusal.message()).into_response()
 }
 
+/// How the server writes logs to stdout; `RUST_LOG` filters either.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogFormat {
+    /// One line of text per event, then its fields and spans' fields.
+    Compact,
+    /// One JSON object per line: `TANTRIX_LOG_FORMAT=json`.
+    Json,
+}
+
+impl LogFormat {
+    /// The format `TANTRIX_LOG_FORMAT` names, or `None` for an unknown one.
+    fn parse(value: Option<&str>) -> Option<Self> {
+        match value.map(str::trim) {
+            None | Some("" | "compact") => Some(Self::Compact),
+            Some("json") => Some(Self::Json),
+            Some(_) => None,
+        }
+    }
+}
+
+/// Events and their spans' fields, written as `format` lines to `writer`.
+fn log_layer<S, W>(format: LogFormat, writer: W) -> Box<dyn Layer<S> + Send + Sync>
+where
+    S: tracing::Subscriber + for<'span> LookupSpan<'span>,
+    W: for<'writer> MakeWriter<'writer> + Send + Sync + 'static,
+{
+    let layer = tracing_subscriber::fmt::layer().with_writer(writer);
+    match format {
+        LogFormat::Compact => layer.compact().boxed(),
+        // Event fields sit beside `message`; `span` is the innermost span.
+        LogFormat::Json => layer.json().flatten_event(true).boxed(),
+    }
+}
+
 fn setup_logging() {
     use tracing_subscriber::prelude::*;
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| "tantrix_app=info,tower_http=info".into());
+    let requested = std::env::var("TANTRIX_LOG_FORMAT").ok();
+    let format = LogFormat::parse(requested.as_deref());
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer().compact())
+        .with(log_layer(
+            format.unwrap_or(LogFormat::Compact),
+            std::io::stdout,
+        ))
         .init();
+    if format.is_none() {
+        tracing::warn!(
+            value = requested.as_deref(),
+            "unknown TANTRIX_LOG_FORMAT; using compact"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -441,11 +499,16 @@ mod tests {
 
     /// A server with only the room socket route, on a free local port.
     async fn serve_sockets(public_origin: Option<&str>) -> SocketAddr {
-        let state = Arc::new(ServerState {
+        serve_state(Arc::new(ServerState {
             rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
             public_origin: public_origin.map(str::to_owned),
             limits: limits::RoomLimits::new(),
-        });
+        }))
+        .await
+    }
+
+    /// `state`'s room socket route, on a free local port.
+    async fn serve_state(state: Arc<ServerState>) -> SocketAddr {
         let router = Router::new()
             .route("/room/{id}", get(room_socket))
             .with_state(state.clone())
@@ -582,5 +645,171 @@ mod tests {
             assert_eq!(lookup().await.status(), StatusCode::NOT_FOUND);
         }
         assert_eq!(lookup().await.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    /// What a test's log layer wrote.
+    #[derive(Clone, Default)]
+    struct Logs(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Logs {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl MakeWriter<'_> for Logs {
+        type Writer = Self;
+
+        fn make_writer(&self) -> Self {
+            self.clone()
+        }
+    }
+
+    impl Logs {
+        fn text(&self) -> String {
+            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+        }
+
+        /// The first JSON event with `message`, once a server task logs it.
+        async fn event(&self, message: &str) -> serde_json::Value {
+            for _ in 0..1000 {
+                let text = self.text();
+                let mut events = text.lines().map(|line| {
+                    serde_json::from_str::<serde_json::Value>(line)
+                        .expect("one JSON object per line")
+                });
+                if let Some(event) = events.find(|event| event["message"] == message) {
+                    return event;
+                }
+                tokio::task::yield_now().await;
+            }
+            panic!("no {message:?} event in:\n{}", self.text());
+        }
+    }
+
+    #[tokio::test]
+    async fn socket_logs_name_the_room_connection_and_reason_but_not_the_token() {
+        use futures::{SinkExt, StreamExt};
+        use tantrix_proto::{HostMessage, PeerMessage};
+        use tantrix_room::engine::{MESSAGE_BURST, TOO_MANY_MESSAGES};
+        use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
+        use tracing_subscriber::prelude::*;
+
+        const GAME: &str = "01234567-89ab-4def-8123-456789abcdef";
+        const TOKEN: &str = "private-session-token-1234";
+        let logs = Logs::default();
+        // Every level of the server's own events; the test's client traces
+        // its handshake request, cookie included.
+        let _logging = tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::new("tantrix_app=trace"))
+            .with(log_layer(LogFormat::Json, logs.clone()))
+            .set_default();
+        let state = test_state();
+        state.rooms.create(GAME, room::now_ms()).await.unwrap();
+        let address = serve_state(state).await;
+
+        let url = crate::state::server_endpoints::room_url(&format!("http://{address}"), GAME);
+        let mut request = url.into_client_request().unwrap();
+        let cookie = format!("{}={TOKEN}", session_cookie::COOKIE_NAME);
+        request
+            .headers_mut()
+            .insert(header::COOKIE, cookie.parse().unwrap());
+        let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        let hello = PeerMessage::Hello {
+            nickname: "Player".into(),
+        };
+        let hello = serde_json::to_string(&hello).unwrap();
+        socket.send(Message::text(hello)).await.unwrap();
+        let peer = loop {
+            let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+                continue;
+            };
+            if let HostMessage::Welcome { your_peer_id, .. } = serde_json::from_str(&text).unwrap()
+            {
+                break your_peer_id;
+            }
+        };
+        // Invalid frames, each answered before the next, until the room
+        // closes the socket: nothing is left unread when it does.
+        let mut reason = None;
+        for _ in 0..4 * MESSAGE_BURST {
+            socket.send(Message::text("{}")).await.unwrap();
+            match socket.next().await {
+                Some(Ok(Message::Text(_))) => {}
+                Some(Ok(Message::Close(Some(frame)))) => {
+                    reason = Some(frame.reason.to_string());
+                    break;
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        assert_eq!(reason.as_deref(), Some(TOO_MANY_MESSAGES));
+
+        let created = logs.event("room created").await;
+        assert_eq!(created["span"]["room"], GAME);
+        assert_eq!(logs.event("room loaded").await["span"]["room"], GAME);
+        let opened = logs.event("socket opened").await;
+        assert_eq!(opened["span"]["room"], GAME);
+        assert!(opened["span"]["peer"].is_null(), "not joined yet");
+        let conn = opened["span"]["conn"].as_u64().unwrap();
+        let joined = logs.event("socket joined").await;
+        let closed = logs.event("socket closed").await;
+        for event in [&joined, &closed] {
+            assert_eq!(event["span"]["name"], "socket");
+            assert_eq!(event["span"]["room"], GAME);
+            assert_eq!(event["span"]["conn"], conn);
+            assert_eq!(event["span"]["peer"], peer.as_str());
+        }
+        assert_eq!(closed["level"], "WARN");
+        assert_eq!(closed["reason"], TOO_MANY_MESSAGES);
+        assert!(!logs.text().contains(TOKEN), "{}", logs.text());
+    }
+
+    #[test]
+    fn compact_logs_carry_the_socket_fields() {
+        use tantrix_room::engine::{ConnId, TOO_MANY_CONNECTIONS};
+        use tracing_subscriber::prelude::*;
+
+        let logs = Logs::default();
+        let subscriber =
+            tracing_subscriber::registry().with(log_layer(LogFormat::Compact, logs.clone()));
+        tracing::subscriber::with_default(subscriber, || {
+            let span = room::socket_span(MISSING_GAME, ConnId(7));
+            span.record("peer", tracing::field::display("peer-7"));
+            span.in_scope(|| room::log_closed(TOO_MANY_CONNECTIONS));
+        });
+        // Strip colours: `ESC [ … m`.
+        let mut line = String::new();
+        let mut chars = logs.text().chars().collect::<Vec<_>>().into_iter();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                chars.find(|&c| c == 'm');
+            } else {
+                line.push(c);
+            }
+        }
+        for part in [
+            "WARN",
+            "socket closed",
+            &format!("reason={TOO_MANY_CONNECTIONS:?}"),
+            &format!("room={MISSING_GAME}"),
+            "conn=7",
+            "peer=peer-7",
+        ] {
+            assert!(line.contains(part), "{part} missing from {line}");
+        }
+    }
+
+    #[test]
+    fn logs_are_compact_unless_json_is_asked_for() {
+        assert_eq!(LogFormat::parse(None), Some(LogFormat::Compact));
+        assert_eq!(LogFormat::parse(Some("compact")), Some(LogFormat::Compact));
+        assert_eq!(LogFormat::parse(Some(" json")), Some(LogFormat::Json));
+        assert_eq!(LogFormat::parse(Some("yaml")), None);
     }
 }
