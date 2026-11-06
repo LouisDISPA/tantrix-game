@@ -16,8 +16,14 @@ All paths below are under `tantrix-game/src/`.
 | `Move` | Placement + `forced`, determined by the rules |
 | `Board` (`board.rs`) | `ArrayVec<Move, 56>`, sorted by position |
 | `Hand`, `Bag` | Up to six tiles per player; shared draw pile |
-| `Game` (`game.rs`) | Source of truth: players, board, hands, bag, turn, history, cached legal moves |
+| `Game` (`game/`) | Source of truth: players, board, hands, bag, turn, history, cached legal moves |
 | `TurnEvent` (`history.rs`) | Played move, skipped turn or retirement |
+
+`game/mod.rs` holds `Game`, `GameData` and `GameStatus`; its methods are split
+by concern into `setup.rs` (deal, save, mirror a snapshot), `queries.rs`,
+`turns.rs`, `history.rs` (undo, replay) and `ai.rs` (`AiView`, play-ahead
+games). Each file's tests sit at its end; `test_helpers.rs` holds the shared
+test games.
 
 ## Rules and turns
 
