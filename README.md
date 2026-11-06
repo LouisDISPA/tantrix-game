@@ -75,7 +75,8 @@ Rust tests cover game rules, scoring, room behavior and application state. Playw
 just fmt-check
 just lint
 just test
-just native-e2e                  # Axum browser tests
+just test-e2e                    # Axum browser tests
+just ci                          # all of the above, as CI runs them
 just worker-e2e                  # Worker browser tests
 ```
 

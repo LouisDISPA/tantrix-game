@@ -16,7 +16,7 @@ pub mod camera;
 pub mod derived;
 #[cfg(feature = "desktop")]
 pub mod desktop_updates;
-#[cfg(not(any(feature = "desktop", feature = "native", feature = "android")))]
+#[cfg(not(any(feature = "desktop", feature = "android")))]
 pub mod downloads;
 pub mod game_ctx;
 pub mod online_game;

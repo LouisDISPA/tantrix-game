@@ -5,7 +5,7 @@ pub mod android_updates;
 pub mod config;
 #[cfg(feature = "desktop")]
 pub mod desktop_updates;
-#[cfg(not(any(feature = "desktop", feature = "native", feature = "android")))]
+#[cfg(not(any(feature = "desktop", feature = "android")))]
 pub mod downloads;
 pub mod game_driver;
 pub mod game_state;
@@ -13,7 +13,7 @@ pub mod gesture;
 pub mod nickname;
 pub mod online_compatibility;
 pub mod online_state;
-#[cfg(any(feature = "android", not(any(feature = "desktop", feature = "native"))))]
+#[cfg(any(feature = "android", not(feature = "desktop")))]
 pub mod releases;
 pub mod room_api;
 pub mod room_connection;
