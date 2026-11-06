@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::{Rng, SeedableRng};
-use tantrix_game::{Color, Game, Player, TantrixAi};
+use tantrix_game::{Color, Game, GameStatus, Player, TantrixAi};
 
 /// How many of each AI's latest scores the standings keep.
 const RECENT_SCORES: usize = 60;
@@ -179,7 +179,8 @@ pub fn play_game(red: &dyn TantrixAi, blue: &dyn TantrixAi, seed: u64) -> Played
     let mut think = [Duration::ZERO; 2];
     let mut moves = [0; 2];
     // Like `Game::advance`, timing each choice.
-    while !game.skip_stuck_players() && !game.is_game_over() {
+    while game.status() == GameStatus::Playing {
+        game.skip_stuck_players();
         let seat = usize::from(game.current_player() == Color::Blue);
         let start = Instant::now();
         let m = ais[seat].choose_move(&game.ai_view());

@@ -92,16 +92,15 @@ impl GameState {
         Ok(played)
     }
 
-    /// Pass the turn over players who cannot move; `true` when nobody can
+    /// Pass the turn over players who cannot move to the next one who can
     /// (see [`Game::skip_stuck_players`]). When the current player can move,
-    /// nothing changes and `hand_info` is kept as it is.
-    pub fn skip_stuck_players(&mut self) -> bool {
-        if !self.game.is_stuck() {
-            return false;
+    /// or nobody can ([`Game::status`]), nothing changes and `hand_info` is
+    /// kept as it is.
+    pub fn skip_stuck_players(&mut self) {
+        if self.game.is_stuck() {
+            self.game.skip_stuck_players();
+            self.refresh_hand_info();
         }
-        let stalled = self.game.skip_stuck_players();
-        self.refresh_hand_info();
-        stalled
     }
 
     fn refresh_hand_info(&mut self) {
@@ -111,7 +110,7 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use tantrix_game::{Board, Color, EnumMap, TurnStep};
+    use tantrix_game::{Board, Color, EnumMap, GameStatus, TurnStep};
     use tantrix_proto::GameSnapshot;
 
     use super::GameState;
@@ -174,7 +173,7 @@ mod tests {
         let (player, hand_info) = (game.current_player(), game.hand_info().to_vec());
         assert!(!game.is_stuck());
 
-        assert!(!game.skip_stuck_players());
+        game.skip_stuck_players();
         assert_eq!(game.current_player(), player);
         assert_eq!(game.hand_info(), hand_info);
         assert!(game.history().is_empty());
@@ -195,10 +194,12 @@ mod tests {
             participants: Vec::new(),
         };
         let mut game = GameState::from_snapshot(&snapshot);
-        assert!(!game.is_game_over());
+        assert_eq!(game.status(), GameStatus::Stalled);
 
-        assert!(game.skip_stuck_players());
+        game.skip_stuck_players();
+        assert_eq!(game.status(), GameStatus::Stalled);
         assert_eq!(game.current_player(), Color::Blue);
+        assert!(game.history().is_empty());
         assert!(game.hand_info().is_empty());
     }
 

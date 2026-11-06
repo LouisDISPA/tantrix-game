@@ -12,7 +12,7 @@ use ratatui::DefaultTerminal;
 use ratatui_macros::line;
 use tantrix_ai::RandomAi;
 use tantrix_game::{
-    Color, Direction, Game, Placement, Player, Position, Rotation, Tile, TileMoveInfo,
+    Color, Direction, Game, GameStatus, Placement, Player, Position, Rotation, Tile, TileMoveInfo,
 };
 
 // Hex geometry constants for Canvas rendering
@@ -449,10 +449,10 @@ impl App {
     }
 
     fn after_move(&mut self) {
-        let stalled = self.game.advance();
+        self.game.advance();
 
         // A stalled game, with tiles left that fit nowhere, is over too.
-        if self.game.is_game_over() || stalled {
+        if self.game.status() != GameStatus::Playing {
             self.phase = TurnPhase::GameOver;
             self.message = "Game Over!".to_string();
             return;
@@ -851,7 +851,7 @@ impl Widget for &App {
 
 #[cfg(test)]
 mod tests {
-    use tantrix_game::{Board, Color, EnumMap, Game, Player, TurnStep};
+    use tantrix_game::{Board, Color, EnumMap, Game, GameStatus, Player, TurnStep};
 
     use super::{App, TurnPhase};
 
@@ -900,7 +900,8 @@ mod tests {
 
         app.after_move();
 
-        assert!(!app.game.is_game_over(), "tiles are left");
+        assert_eq!(app.game.status(), GameStatus::Stalled, "tiles are left");
+        assert!(app.game.history().is_empty(), "nobody is skipped");
         assert_eq!(app.phase, TurnPhase::GameOver);
         assert_eq!(app.message, "Game Over!");
     }

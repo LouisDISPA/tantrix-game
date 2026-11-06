@@ -53,6 +53,18 @@ pub struct GameData {
     history: Vec<TurnEvent>,
 }
 
+/// Whether a game goes on ([`Game::status`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameStatus {
+    /// Someone can move: the current player, or a player after them once
+    /// [`Game::skip_stuck_players`] passes the turn on.
+    Playing,
+    /// The bag and every hand are empty.
+    Finished,
+    /// Tiles are left, but none of them fits anywhere: nobody can move.
+    Stalled,
+}
+
 impl Game {
     /// A game dealt from a random seed, which it keeps (see [`Self::seed`]).
     pub fn new(
@@ -287,8 +299,23 @@ impl Game {
         self.bag.is_empty()
     }
 
+    /// Whether the bag and every hand are empty: [`GameStatus::Finished`].
+    /// A game can also end by stalling; see [`Self::status`].
     pub fn is_game_over(&self) -> bool {
         self.bag.is_empty() && self.hands.values().all(|h| h.is_empty())
+    }
+
+    /// Whether the game goes on, is finished, or has stalled. Skipping
+    /// stuck players never changes it. Cheap while the current player can
+    /// move; otherwise it works out the other players' moves.
+    pub fn status(&self) -> GameStatus {
+        if self.is_game_over() {
+            GameStatus::Finished
+        } else if self.turns_to_next_mover().is_some() {
+            GameStatus::Playing
+        } else {
+            GameStatus::Stalled
+        }
     }
 
     /// The seed the game was dealt from ([`Self::new`],
@@ -316,10 +343,30 @@ impl Game {
         })
     }
 
-    /// Whether the current player has no legal move although the game is
-    /// not over: [`Self::skip_stuck_players`] would pass their turn.
+    /// Whether the current player has no legal move but a player after
+    /// them has: [`Self::skip_stuck_players`] would pass their turn.
     pub fn is_stuck(&self) -> bool {
-        !self.is_game_over() && self.legal_moves().is_empty()
+        self.turns_to_next_mover().is_some_and(|turns| turns > 0)
+    }
+
+    /// How many turns pass before someone can move: none when the current
+    /// player can, `k` when only the `k`-th player after them can at the
+    /// start of their turn, `None` when nobody can (the game is finished or
+    /// stalled).
+    fn turns_to_next_mover(&self) -> Option<usize> {
+        if !self.legal_moves().is_empty() {
+            return Some(0);
+        }
+        let colors = self.playing_colors();
+        let current = colors.iter().position(|&c| c == self.current_player())?;
+        (1..colors.len()).find(|turns| {
+            let color = colors[(current + turns) % colors.len()];
+            // Each turn starts where `TurnTracker::next` puts it.
+            !self
+                .board
+                .possible_moves(&self.hands[color], self.bag.is_empty(), TurnStep::default())
+                .is_empty()
+        })
     }
 
     /// [`Self::legal_moves`] grouped per tile of the current player's hand,
@@ -449,32 +496,28 @@ impl Game {
         self.clear_legal_moves();
     }
 
-    /// Pass the turn over players who have no legal move, checking each
-    /// player at most once. Returns `true` when none of them can move although
-    /// the game is not over: it has stalled, with tiles left that fit nowhere.
-    /// A game that is over is left as it is.
-    pub fn skip_stuck_players(&mut self) -> bool {
-        for _ in 0..self.playing_colors().len() {
-            if !self.is_stuck() {
-                return false;
-            }
+    /// Pass the turn over the players who have no legal move, recording a
+    /// skip for each, to the next player who can move. A game that is not
+    /// [`GameStatus::Playing`] is left as it is, its history untouched:
+    /// once finished or stalled, nobody can move, so nobody is skipped.
+    pub fn skip_stuck_players(&mut self) {
+        for _ in 0..self.turns_to_next_mover().unwrap_or(0) {
             self.skip_turn();
         }
-        true
     }
 
-    /// Play all AI turns and skip players with no valid moves. Returns when
-    /// it is a human player's turn, the game is over, or no one can move —
-    /// `true` in that last case, like [`Game::skip_stuck_players`].
-    pub fn advance(&mut self) -> bool {
-        while !self.skip_stuck_players() {
+    /// Play all AI turns and skip players with no legal move. Returns when
+    /// it is a human player's turn or the game is no longer
+    /// [`GameStatus::Playing`]; [`Self::status`] tells which.
+    pub fn advance(&mut self) {
+        while self.status() == GameStatus::Playing {
+            self.skip_stuck_players();
             let Some(m) = self.ai_choose() else {
-                return false; // Game over, or a human player with moves
+                return; // A human player with moves
             };
             self.play_move(m.placement())
                 .expect("AI chose invalid move");
         }
-        true
     }
 
     /// Remove `color` from the turn cycle mid-game. Used when a seated
@@ -608,8 +651,9 @@ mod tests {
 
     use crate::test_games::for_each_seeded_state;
     use crate::{
-        AiView, Bag, Board, Color, Direction, EventError, Game, Hand, Move, MoveError, Placement,
-        Player, Position, ReplayError, Rotation, SetupError, TantrixAi, Tile, TurnEvent, TurnStep,
+        AiView, Bag, Board, Color, Direction, EventError, Game, GameStatus, Hand, Move, MoveError,
+        Placement, Player, Position, ReplayError, Rotation, SetupError, TantrixAi, Tile, TurnEvent,
+        TurnStep,
     };
 
     /// The legal moves of `game` worked out from scratch.
@@ -967,35 +1011,87 @@ mod tests {
     fn stuck_players_pass_the_turn_to_the_next_who_can_move() {
         let mut game = game_with_hands(0, 6, 10);
         assert!(game.legal_moves().is_empty());
+        assert!(game.is_stuck());
+        assert_eq!(game.status(), GameStatus::Playing);
 
-        assert!(!game.skip_stuck_players());
+        game.skip_stuck_players();
         assert_eq!(game.current_player(), Color::Blue);
         assert!(!game.legal_moves().is_empty());
+        assert!(!game.is_stuck());
+        assert_eq!(game.status(), GameStatus::Playing);
 
         // A player who can move keeps the turn.
-        assert!(!game.skip_stuck_players());
+        game.skip_stuck_players();
         assert_eq!(game.current_player(), Color::Blue);
+        assert_eq!(game.history().len(), 1);
     }
 
     #[test]
-    fn a_round_where_nobody_can_move_stalls_the_game() {
+    fn a_game_where_nobody_can_move_stalls_and_skips_nobody() {
         // Tiles are left in the bag, but no one holds any.
         let mut game = game_with_hands(0, 0, 10);
         assert!(!game.is_game_over());
+        assert_eq!(game.status(), GameStatus::Stalled);
+        assert!(!game.is_stuck());
 
-        assert!(game.skip_stuck_players());
-        assert_eq!(game.current_player(), Color::Red);
+        // However often it is asked, nobody is skipped and nothing is recorded.
+        for _ in 0..3 {
+            game.skip_stuck_players();
+            assert_eq!(game.current_player(), Color::Red);
+            assert_eq!(game.turn_step(), TurnStep::BeforeFreeMove);
+            assert!(game.history().is_empty());
+            assert_eq!(game.status(), GameStatus::Stalled);
+        }
         // `advance` gives up too instead of looping.
         game.advance();
         assert_eq!(game.current_player(), Color::Red);
+        assert!(game.history().is_empty());
     }
 
     #[test]
     fn a_finished_game_is_not_skipped() {
         let mut game = game_with_hands(0, 0, 0);
         assert!(game.is_game_over());
-        assert!(!game.skip_stuck_players());
+        assert_eq!(game.status(), GameStatus::Finished);
+        game.skip_stuck_players();
         assert_eq!(game.current_player(), Color::Red);
+        assert!(game.history().is_empty());
+    }
+
+    /// Whether a player can move, found the long way: by passing the turn
+    /// round the table until someone has a legal move.
+    fn someone_can_move(game: &Game) -> bool {
+        let mut round = game.clone();
+        for _ in game.playing_colors() {
+            if !round.legal_moves().is_empty() {
+                return true;
+            }
+            round.skip_turn();
+        }
+        false
+    }
+
+    #[test]
+    fn status_tells_who_can_still_move_without_changing_the_game() {
+        for_each_seeded_state(6, |game| {
+            let expected = if game.is_game_over() {
+                GameStatus::Finished
+            } else if someone_can_move(game) {
+                GameStatus::Playing
+            } else {
+                GameStatus::Stalled
+            };
+            assert_eq!(game.status(), expected);
+            assert_eq!(
+                game.is_stuck(),
+                expected == GameStatus::Playing && game.legal_moves().is_empty()
+            );
+
+            // Skipping stuck players never changes the status.
+            let mut skipped = game.clone();
+            skipped.skip_stuck_players();
+            assert_eq!(skipped.status(), expected);
+        });
     }
 
     /// Always plays the first legal move.
@@ -1056,10 +1152,8 @@ mod tests {
             assert!(sim.history().is_empty() && sim.seed().is_none());
 
             // It plays on to the end.
-            loop {
-                if sim.skip_stuck_players() || sim.is_game_over() {
-                    break;
-                }
+            while sim.status() == GameStatus::Playing {
+                sim.skip_stuck_players();
                 let m = sim.legal_moves()[0];
                 sim.play_move(m.placement()).unwrap();
             }
@@ -1078,11 +1172,11 @@ mod tests {
             )
             .unwrap();
             // An all-AI game only stops once it is over or nobody can move.
-            let stalled = game.advance();
-            assert_eq!(stalled, !game.is_game_over(), "seed {seed}");
-            if stalled {
-                assert!(game.skip_stuck_players(), "seed {seed}");
-            }
+            game.advance();
+            assert_ne!(game.status(), GameStatus::Playing, "seed {seed}");
+            let history = game.history().len();
+            game.skip_stuck_players();
+            assert_eq!(game.history().len(), history, "seed {seed}");
         }
     }
 
@@ -1292,7 +1386,8 @@ mod tests {
         let mut turns_kept_after_free_move = 0;
         for seed in 0..20 {
             let mut game = seeded_game(seed);
-            while !game.is_game_over() && !game.skip_stuck_players() {
+            while game.status() == GameStatus::Playing {
+                game.skip_stuck_players();
                 let m = game.legal_moves()[0];
                 let player = game.current_player();
                 let step = game.turn_step();
@@ -1369,7 +1464,8 @@ mod tests {
     /// Play the first legal move, skipping stuck players, until the game
     /// is over or stalls.
     fn play_out(game: &mut Game) {
-        while !game.is_game_over() && !game.skip_stuck_players() {
+        while game.status() == GameStatus::Playing {
+            game.skip_stuck_players();
             let m = game.legal_moves()[0];
             game.play_move(m.placement()).unwrap();
         }
@@ -1444,7 +1540,8 @@ mod tests {
     fn undo_then_the_same_move_gives_the_same_state() {
         for seed in 0..5 {
             let mut game = Game::from_players_seeded(players(3), seed).unwrap();
-            while !game.is_game_over() && !game.skip_stuck_players() {
+            while game.status() == GameStatus::Playing {
+                game.skip_stuck_players();
                 let (before, legal) = (state(&game), game.legal_moves().to_vec());
                 let m = legal[0];
                 game.play_move(m.placement()).unwrap();
@@ -1466,7 +1563,7 @@ mod tests {
     #[test]
     fn skipped_turns_are_recorded_and_undone() {
         let mut game = game_with_hands(0, 6, 10);
-        assert!(!game.skip_stuck_players());
+        game.skip_stuck_players();
         let skip = TurnEvent::Skipped {
             player: Color::Red,
             step: TurnStep::BeforeFreeMove,

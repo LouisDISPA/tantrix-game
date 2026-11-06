@@ -37,13 +37,16 @@ applies after the bag empties; only the three restrictions lift.
 returns `PlayedMove`, or `MoveError::TileNotInHand` / `InvalidMove`.
 `Board::insert_move` only checks occupancy; it is not a legal-play API.
 
-`Game::skip_stuck_players` skips each player at most once and reports a
-stall when nobody can move. `Game::advance` also plays AI turns until a
-human can move, the game ends, or it stalls. The app, tournament and room
-engine use the same skip routine.
-
-Natural completion means an empty bag and empty hands. Callers also handle
-stalls and explicit endings.
+`Game::status()` is the one answer to whether a game goes on:
+`GameStatus::Playing` (someone can move, perhaps after stuck players pass),
+`Finished` (empty bag and hands) or `Stalled` (tiles left that fit nowhere).
+It is read-only, and skipping stuck players never changes it.
+`Game::skip_stuck_players` passes the turn to the next player who can move,
+recording a `Skipped` event per player passed; on a finished or stalled game
+it does nothing and records nothing. `Game::advance` also plays AI turns
+until a human can move or the game stops playing. The app, TUI, tournament,
+room engine and MonteCarlo playouts skip, then end the game once `status()`
+is not `Playing`; only explicit endings are theirs to handle.
 
 ## Scoring
 

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use enum_map::EnumMap;
 use serde::{Deserialize, Serialize};
-use tantrix_game::{Color, Game, GameData, Hand, Move, Player};
+use tantrix_game::{Color, Game, GameData, GameStatus, Hand, Move, Player};
 use tantrix_proto::{
     EndReason, GameSnapshot, HostMessage, LobbyState, Participant, ParticipantRole, PeerId,
     PeerMessage, RejectCode, Seat,
@@ -376,7 +376,8 @@ impl RoomData {
                 )]
                 let mut game = Game::from_players_with_rng(players, &mut rand::rng())
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
-                self.ended = game.skip_stuck_players();
+                game.skip_stuck_players();
+                self.ended = game.status() != GameStatus::Playing;
                 self.game = Some(game.to_data());
                 Ok(Change {
                     message: self.current_message(connected),
@@ -388,8 +389,8 @@ impl RoomData {
                 let played = game
                     .play_move(placement)
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
-                let stalled = game.skip_stuck_players();
-                self.finish_turn(game, played.m, stalled, connected)
+                game.skip_stuck_players();
+                self.finish_turn(game, played.m, connected)
             }
             PeerMessage::EndGame { .. } => {
                 let Some(data) = &self.game else {
@@ -488,10 +489,10 @@ impl RoomData {
         &mut self,
         game: Game,
         last_move: Move,
-        stalled: bool,
         connected: &HashSet<SessionToken>,
     ) -> Result<Change, (RejectCode, String)> {
-        self.ended = game.is_game_over() || stalled;
+        // Finished or stalled: either way nobody can move any more.
+        self.ended = game.status() != GameStatus::Playing;
         if self.ended {
             self.end_reason = Some(EndReason::Completed {
                 winners: game.winners(),
@@ -548,5 +549,68 @@ impl RoomData {
         } else {
             self.current_message(connected)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tantrix_game::{Board, Position, Rotation, Tile, TurnStep};
+
+    use super::*;
+
+    /// A room seating Red and Blue in `game`.
+    fn room_playing(game: &Game) -> RoomData {
+        let mut room = RoomData {
+            match_id: 1,
+            game: Some(game.to_data()),
+            ..RoomData::default()
+        };
+        room.seats[Color::Red] = Some(SessionToken::new("red"));
+        room.seats[Color::Blue] = Some(SessionToken::new("blue"));
+        room
+    }
+
+    #[test]
+    fn a_turn_ends_the_game_only_once_nobody_can_move() {
+        let last_move = Move {
+            tile: Tile::BYYBRR,
+            position: Position::CENTER,
+            rotation: Rotation::None,
+            forced: false,
+        };
+        let players = EnumMap::from_fn(|c| match c {
+            Color::Red | Color::Blue => Player::Someone,
+            _ => Player::None,
+        });
+        let dealt = Game::from_players_seeded(players, 0).unwrap();
+        let mut room = room_playing(&dealt);
+        let change = room.finish_turn(dealt, last_move, &HashSet::new()).unwrap();
+        assert!(!room.ended);
+        assert!(matches!(change.message, HostMessage::StateUpdate { .. }));
+
+        // Tiles are left in the bag, but no one holds any: the game stalls.
+        let stalled = Game::from_snapshot(
+            Board::default(),
+            EnumMap::default(),
+            10,
+            Color::Red,
+            [Color::Red, Color::Blue],
+            TurnStep::BeforeFreeMove,
+        )
+        .unwrap();
+        let mut room = room_playing(&stalled);
+        let change = room
+            .finish_turn(stalled, last_move, &HashSet::new())
+            .unwrap();
+        assert!(room.ended);
+        let HostMessage::GameEnded { reason, .. } = change.message else {
+            panic!("a stalled game ends");
+        };
+        assert_eq!(
+            reason,
+            EndReason::Completed {
+                winners: vec![Color::Red, Color::Blue]
+            }
+        );
     }
 }
