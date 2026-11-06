@@ -6,11 +6,9 @@
 //!
 //! The actions are abstract (the n-th legal move, the n-th playing color),
 //! so any sequence applies to any game, and proptest shrinks a failure to a
-//! short one. Cases come from a fixed seed. A failing case is saved under
-//! `tantrix-game/proptest-regressions/` and replayed first on every run:
-//! check the file in with the fix.
+//! short one. Cases come from a fixed seed.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::HashSet;
 
 use enum_map::EnumMap;
@@ -18,7 +16,8 @@ use proptest::prelude::*;
 use proptest::test_runner::{Config, FileFailurePersistence, RngSeed, TestRunner};
 use serde_json::Value;
 
-use crate::test_games::{broken_rule, tiles_of};
+use super::test_helpers::state;
+use crate::test_games::{broken_rule, space_rule, tiles_of};
 use crate::tiles::NUMBER_OF_TILE;
 use crate::{
     AiView, Color, Game, GameStatus, Move, Player, RetireError, TantrixAi, TurnEvent, TurnStep,
@@ -100,25 +99,15 @@ struct Model {
 /// How much of the game the cases reached, summed over them.
 #[derive(Debug, Default)]
 struct Coverage {
-    free_moves: Cell<usize>,
-    forced_before_free_move: Cell<usize>,
-    forced_after_free_move: Cell<usize>,
-    moves_from_empty_bag: Cell<usize>,
-    ai_events: Cell<usize>,
-    skips: Cell<usize>,
-    undone: Cell<usize>,
-    retired: Cell<usize>,
-    finished: Cell<usize>,
-}
-
-fn bump(counter: &Cell<usize>, by: usize) {
-    counter.set(counter.get() + by);
-}
-
-/// Everything the game saves: board, bag in draw order, hands, turn, seed
-/// and history.
-fn saved(game: &Game) -> Value {
-    serde_json::to_value(game.to_data()).unwrap()
+    free_moves: usize,
+    forced_before_free_move: usize,
+    forced_after_free_move: usize,
+    moves_from_empty_bag: usize,
+    ai_events: usize,
+    skips: usize,
+    undone: usize,
+    retired: usize,
+    finished: usize,
 }
 
 /// Fixed seed, few cases: the same few seconds every run.
@@ -138,7 +127,7 @@ fn config(cases: u32) -> Config {
 
 #[test]
 fn random_actions_keep_the_game_consistent() {
-    let coverage = Coverage::default();
+    let coverage = RefCell::new(Coverage::default());
     let cases = (
         table(),
         any::<u64>(),
@@ -146,28 +135,32 @@ fn random_actions_keep_the_game_consistent() {
     );
     TestRunner::new(config(16))
         .run(&cases, |(seats, seed, actions)| {
-            play(seats, seed, &actions, &coverage)
+            play(seats, seed, &actions, &mut coverage.borrow_mut())
         })
         .unwrap();
 
-    println!("{coverage:?}");
-    let reached = |counter: &Cell<usize>| counter.get() > 0;
-    assert!(reached(&coverage.free_moves), "{coverage:?}");
-    assert!(reached(&coverage.forced_before_free_move), "{coverage:?}");
-    assert!(reached(&coverage.forced_after_free_move), "{coverage:?}");
-    assert!(reached(&coverage.moves_from_empty_bag), "{coverage:?}");
-    assert!(reached(&coverage.ai_events), "{coverage:?}");
-    assert!(reached(&coverage.skips), "{coverage:?}");
-    assert!(reached(&coverage.undone), "{coverage:?}");
-    assert!(reached(&coverage.retired), "{coverage:?}");
-    assert!(reached(&coverage.finished), "{coverage:?}");
+    let c = coverage.into_inner();
+    println!("{c:?}");
+    for reached in [
+        c.free_moves,
+        c.forced_before_free_move,
+        c.forced_after_free_move,
+        c.moves_from_empty_bag,
+        c.ai_events,
+        c.skips,
+        c.undone,
+        c.retired,
+        c.finished,
+    ] {
+        assert!(reached > 0, "{c:?}");
+    }
 }
 
 fn play(
     seats: [Seat; 4],
     seed: u64,
     actions: &[Action],
-    coverage: &Coverage,
+    coverage: &mut Coverage,
 ) -> Result<(), TestCaseError> {
     let players = EnumMap::from_fn(|color: Color| match seats[color as usize] {
         Seat::Empty => Player::None,
@@ -178,32 +171,33 @@ fn play(
     let mut model = Model {
         seed,
         players,
-        states: vec![Some(saved(&game))],
+        states: vec![Some(state(&game))],
         discarded: 0,
     };
     check(&game, &model)?;
     for action in actions {
-        apply(&mut game, &mut model, action, coverage)?;
-        check(&game, &model)?;
-        if matches!(action, Action::Undo(_)) {
+        if let Action::Undo(count) = *action {
+            undo(&mut game, &mut model, count, coverage)?;
+            check(&game, &model)?;
             check_replay(&game, &model)?;
+        } else {
+            apply(&mut game, &mut model, action, coverage)?;
+            check(&game, &model)?;
         }
     }
     check_replay(&game, &model)?;
-    bump(
-        &coverage.finished,
-        usize::from(game.status() == GameStatus::Finished),
-    );
+    coverage.finished += usize::from(game.status() == GameStatus::Finished);
     Ok(())
 }
 
+/// Any action but an undo.
 fn apply(
     game: &mut Game,
     model: &mut Model,
     action: &Action,
-    coverage: &Coverage,
+    coverage: &mut Coverage,
 ) -> Result<(), TestCaseError> {
-    let before = saved(game);
+    let before = state(game);
     let recorded = game.history().len();
     match *action {
         Action::Play(index) => {
@@ -216,26 +210,25 @@ fn apply(
             let from_empty_bag = game.bag_is_empty();
             let played = game.play_move(m.placement());
             prop_assert_eq!(played.map(|p| p.m), Ok(m));
-            let counter = match (m.forced, step) {
-                (false, _) => &coverage.free_moves,
-                (true, TurnStep::BeforeFreeMove) => &coverage.forced_before_free_move,
-                (true, TurnStep::AfterFreeMove) => &coverage.forced_after_free_move,
-            };
-            bump(counter, 1);
-            bump(&coverage.moves_from_empty_bag, usize::from(from_empty_bag));
+            *match (m.forced, step) {
+                (false, _) => &mut coverage.free_moves,
+                (true, TurnStep::BeforeFreeMove) => &mut coverage.forced_before_free_move,
+                (true, TurnStep::AfterFreeMove) => &mut coverage.forced_after_free_move,
+            } += 1;
+            coverage.moves_from_empty_bag += usize::from(from_empty_bag);
         }
         Action::SkipStuck => {
             game.skip_stuck_players();
-            bump(&coverage.skips, game.history().len() - recorded);
+            coverage.skips += game.history().len() - recorded;
         }
         Action::SkipTurn => {
             game.skip_turn();
-            bump(&coverage.skips, 1);
+            coverage.skips += 1;
         }
         Action::Advance => {
             // The AIs only pick legal moves, which the game never refuses.
             prop_assert_eq!(game.advance(), Ok(()));
-            bump(&coverage.ai_events, game.history().len() - recorded);
+            coverage.ai_events += game.history().len() - recorded;
         }
         Action::Retire(index) => {
             let colors = game.playing_colors();
@@ -244,7 +237,7 @@ fn apply(
             match game.retire_color(color) {
                 Ok(()) => {
                     model.discarded += hand;
-                    bump(&coverage.retired, 1);
+                    coverage.retired += 1;
                 }
                 Err(error) => {
                     prop_assert_eq!(error, RetireError::LastPlayer);
@@ -252,57 +245,59 @@ fn apply(
                 }
             }
         }
-        Action::Undo(count) => {
-            for _ in 0..count {
-                let last = game.history().last().cloned();
-                let unchanged = saved(game);
-                let undone = game.undo();
-                match last {
-                    None | Some(TurnEvent::Retired { .. }) => {
-                        // Nothing to undo: the game stays as it is.
-                        prop_assert_eq!(undone, None);
-                        prop_assert_eq!(saved(game), unchanged);
-                        return Ok(());
-                    }
-                    Some(event) => {
-                        prop_assert_eq!(undone, Some(event));
-                        model.states.pop();
-                        if let Some(Some(earlier)) = model.states.last() {
-                            prop_assert_eq!(&saved(game), earlier, "undo gives back the game");
-                        }
-                        bump(&coverage.undone, 1);
-                    }
-                }
-            }
-            return Ok(());
-        }
+        Action::Undo(_) => unreachable!("undone apart"),
     }
 
     // Every change is recorded: a game that recorded nothing is unchanged.
     let now = game.history().len();
     if now == recorded {
         prop_assert_eq!(
-            saved(game),
+            state(game),
             before,
             "{:?} changed the game silently",
             action
         );
     } else {
         model.states.resize(now, None);
-        model.states.push(Some(saved(game)));
+        model.states.push(Some(state(game)));
+    }
+    Ok(())
+}
+
+/// Undo `count` events, each giving back the game as it was before it, or
+/// stop where nothing can be undone (a retirement, or the deal).
+fn undo(
+    game: &mut Game,
+    model: &mut Model,
+    count: usize,
+    coverage: &mut Coverage,
+) -> Result<(), TestCaseError> {
+    for _ in 0..count {
+        let last = game.history().last().cloned();
+        if matches!(last, None | Some(TurnEvent::Retired { .. })) {
+            let unchanged = state(game);
+            prop_assert_eq!(game.undo(), None);
+            prop_assert_eq!(state(game), unchanged);
+            return Ok(());
+        }
+        prop_assert_eq!(game.undo(), last);
+        model.states.pop();
+        if let Some(Some(earlier)) = model.states.last() {
+            prop_assert_eq!(&state(game), earlier, "undo gives back the game");
+        }
+        coverage.undone += 1;
     }
     Ok(())
 }
 
 /// What a game must keep true after any action.
 fn check(game: &Game, model: &Model) -> Result<(), TestCaseError> {
-    let data = saved(game);
+    let data = state(game);
     prop_assert_eq!(model.states.len(), game.history().len() + 1);
 
     // A saved game loads as the same game.
-    let encoded = serde_json::to_string(&game.to_data()).unwrap();
-    let restored = Game::from_data(serde_json::from_str(&encoded).unwrap());
-    prop_assert_eq!(&saved(&restored), &data, "a saved game loads as it was");
+    let restored = Game::from_data(serde_json::from_str(&data.to_string()).unwrap());
+    prop_assert_eq!(&state(&restored), &data, "a saved game loads as it was");
     prop_assert_eq!(restored.legal_moves(), game.legal_moves());
     prop_assert_eq!(restored.status(), game.status());
 
@@ -319,7 +314,7 @@ fn check(game: &Game, model: &Model) -> Result<(), TestCaseError> {
 fn check_replay(game: &Game, model: &Model) -> Result<(), TestCaseError> {
     let replayed = Game::replay(model.seed, model.players.clone(), game.history());
     let replayed = replayed.map_err(|e| TestCaseError::fail(format!("replay: {e:?}")))?;
-    prop_assert_eq!(saved(&replayed), saved(game), "replay gives the same game");
+    prop_assert_eq!(state(&replayed), state(game), "replay gives the same game");
     prop_assert_eq!(replayed.legal_moves(), game.legal_moves());
     Ok(())
 }
@@ -472,17 +467,8 @@ fn check_board(game: &Game) -> Result<(), TestCaseError> {
             .around()
             .filter_map(|(p, dir)| tiles.get(&p).map(|t| t.color(dir.opposite())))
             .collect();
-        prop_assert!(
-            colors.len() <= 3,
-            "{:?} has {} tiles around it",
-            space,
-            colors.len()
-        );
-        prop_assert!(
-            colors.len() < 3 || colors.iter().any(|&c| c != colors[0]),
-            "{:?} is a same-color triple",
-            space
-        );
+        let rule = space_rule(&colors);
+        prop_assert_eq!(rule, None, "around {:?}", space);
     }
     Ok(())
 }

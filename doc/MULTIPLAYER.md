@@ -275,9 +275,5 @@ optional room to persist and send/broadcast/close effects. Both adapters use
 - **Restarts.** A room loaded from storage forgets members without a seat
   whose sockets are gone; seated players keep their seats.
 
-`tantrix-room/src/engine/model_tests.rs` runs random sequences of these
-events through a fake server, failed saves, restarts and hibernation
-included, and checks the rules above after each: storage holds the committed
-room, each member has at most one joined socket, seats belong to members, no
-message carries a session token, seed or bag tile, and every saved room
-resumes as a consistent one.
+`tantrix-room/src/engine/model_tests.rs` checks these rules after random
+event sequences, failed saves, restarts and hibernation included.

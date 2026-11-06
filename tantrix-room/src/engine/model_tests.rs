@@ -18,12 +18,9 @@
 //!
 //! Events are abstract (the n-th open socket, the current player's n-th
 //! legal move), so any sequence applies to any room, and proptest shrinks a
-//! failure to a short one. Cases come from a fixed seed, and unit tests
-//! deal each match from its number. A failing case is saved under
-//! `tantrix-room/proptest-regressions/` and replayed first on every run:
-//! check the file in with the fix.
+//! failure to a short one. Cases come from a fixed seed.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::future::Future;
 use std::pin::pin;
@@ -55,10 +52,12 @@ enum Name {
     TooLong,
 }
 
+const NAMES: [&str; 7] = ["Ann", "Bo", "Cyd", "Dee", "Émile", "李", "🦊 Fox"];
+
 impl Name {
     fn text(self) -> String {
         match self {
-            Self::Valid(i) => ["Ann", "Bo", "Cyd", "Dee", "Émile", "李", "🦊 Fox"][i % 7].into(),
+            Self::Valid(i) => NAMES[i % NAMES.len()].into(),
             Self::Blank => " \u{200B}\u{202E} ".into(),
             Self::TooLong => "n".repeat(MAX_NICKNAME_CHARS + 1),
         }
@@ -83,14 +82,14 @@ enum Frame {
     PickColor(Option<Color>),
     ReplaceSeat(Color),
     /// `match_id` is the room's plus this.
-    StartGame(i64),
+    StartGame(i32),
     /// The current player's legal move at this index (wrapped), for the
     /// room's match plus the offset, sent by whoever.
-    PlayMove(usize, i64),
+    PlayMove(usize, i32),
     /// A placement no game allows: far from every tile.
     IllegalMove,
-    EndGame(i64),
-    Rematch(i64),
+    EndGame(i32),
+    Rematch(i32),
     RequestSnapshot,
     UpdateNickname(Name),
     Junk(usize),
@@ -167,7 +166,7 @@ fn color() -> impl Strategy<Value = Color> {
 }
 
 /// Mostly this match, sometimes the one before or after.
-fn match_offset() -> impl Strategy<Value = i64> {
+fn match_offset() -> impl Strategy<Value = i32> {
     prop_oneof![6 => Just(0), 1 => Just(-1), 1 => Just(1)]
 }
 
@@ -302,22 +301,16 @@ struct Socket {
 /// How much the cases reached, summed over them.
 #[derive(Debug, Default)]
 struct Coverage {
-    welcomed: Cell<usize>,
-    refused: Cell<usize>,
-    games_started: Cell<usize>,
-    moves: Cell<usize>,
-    games_ended: Cell<usize>,
-    rematches: Cell<usize>,
-    closes: RefCellMap,
-    failed_saves: Cell<usize>,
-    resumed: Cell<usize>,
-}
-
-/// Close reasons, counted.
-type RefCellMap = std::cell::RefCell<BTreeMap<&'static str, usize>>;
-
-fn bump(counter: &Cell<usize>) {
-    counter.set(counter.get() + 1);
+    welcomed: usize,
+    refused: usize,
+    games_started: usize,
+    moves: usize,
+    games_ended: usize,
+    rematches: usize,
+    /// By close reason.
+    closes: BTreeMap<&'static str, usize>,
+    failed_saves: usize,
+    resumed: usize,
 }
 
 struct Harness<'a> {
@@ -327,7 +320,9 @@ struct Harness<'a> {
     sockets: Vec<Socket>,
     clock: u64,
     visitors: usize,
-    coverage: &'a Coverage,
+    /// The room's match when last checked.
+    match_id: u32,
+    coverage: &'a mut Coverage,
 }
 
 /// Fixed seed, few cases: the same few seconds every run.
@@ -347,7 +342,7 @@ fn config(cases: u32) -> Config {
 
 #[test]
 fn random_socket_events_keep_the_room_consistent() {
-    let coverage = Coverage::default();
+    let coverage = RefCell::new(Coverage::default());
     // Half the cases start in a game between two to four people.
     let cases = (
         prop::option::of(2..=4usize),
@@ -355,7 +350,8 @@ fn random_socket_events_keep_the_room_consistent() {
     );
     TestRunner::new(config(64))
         .run(&cases, |(players, events)| {
-            let mut harness = Harness::new(&coverage);
+            let mut coverage = coverage.borrow_mut();
+            let mut harness = Harness::new(&mut coverage);
             harness.check()?;
             let start = players.map(game_start).unwrap_or_default();
             for event in start.iter().chain(&events) {
@@ -366,8 +362,8 @@ fn random_socket_events_keep_the_room_consistent() {
         })
         .unwrap();
 
-    println!("{coverage:?}");
-    let closes = coverage.closes.borrow();
+    let c = coverage.into_inner();
+    println!("{c:?}");
     for reason in [
         OPENED_ELSEWHERE,
         STORAGE_UNAVAILABLE,
@@ -376,33 +372,31 @@ fn random_socket_events_keep_the_room_consistent() {
         TOO_MANY_CONNECTIONS,
         "",
     ] {
-        assert!(
-            closes.contains_key(reason),
-            "no {reason:?} close: {coverage:?}"
-        );
+        assert!(c.closes.contains_key(reason), "no {reason:?} close: {c:?}");
     }
-    for counter in [
-        &coverage.welcomed,
-        &coverage.refused,
-        &coverage.games_started,
-        &coverage.moves,
-        &coverage.games_ended,
-        &coverage.rematches,
-        &coverage.failed_saves,
-        &coverage.resumed,
+    for reached in [
+        c.welcomed,
+        c.refused,
+        c.games_started,
+        c.moves,
+        c.games_ended,
+        c.rematches,
+        c.failed_saves,
+        c.resumed,
     ] {
-        assert!(counter.get() > 0, "{coverage:?}");
+        assert!(reached > 0, "{c:?}");
     }
 }
 
 impl<'a> Harness<'a> {
-    fn new(coverage: &'a Coverage) -> Self {
+    fn new(coverage: &'a mut Coverage) -> Self {
         Self {
             engine: RoomEngine::default(),
             server: Server::default(),
             sockets: Vec::new(),
             clock: 0,
             visitors: 0,
+            match_id: 0,
             coverage,
         }
     }
@@ -414,35 +408,31 @@ impl<'a> Harness<'a> {
             }
             Event::Send { sock, ref frame } => {
                 if let Some(conn) = self.nth_open(sock) {
-                    let text = self.frame_text(frame);
-                    self.frame(conn, |engine, now| engine.on_text(conn, &text, now))?;
+                    self.send(conn, frame)?;
                 }
             }
             Event::Seated { nth, ref frame } => {
                 if let Some(conn) = self.nth_seated(nth) {
-                    let text = self.frame_text(frame);
-                    self.frame(conn, |engine, now| engine.on_text(conn, &text, now))?;
+                    self.send(conn, frame)?;
                 }
             }
             Event::Play(index) => {
                 if let Some(conn) = self.current_player_socket() {
-                    let text = self.frame_text(&Frame::PlayMove(index, 0));
-                    self.frame(conn, |engine, now| engine.on_text(conn, &text, now))?;
+                    self.send(conn, &Frame::PlayMove(index, 0))?;
                 }
             }
             Event::Burst { sock, frames } => {
                 if let Some(conn) = self.nth_open(sock) {
-                    let text = self.frame_text(&Frame::RequestSnapshot);
                     for _ in 0..frames {
                         if self.sockets[conn.0 as usize].open {
-                            self.frame(conn, |engine, now| engine.on_text(conn, &text, now))?;
+                            self.send(conn, &Frame::RequestSnapshot)?;
                         }
                     }
                 }
             }
             Event::Binary { sock } => {
                 if let Some(conn) = self.nth_open(sock) {
-                    self.frame(conn, |engine, now| engine.on_binary(conn, now))?;
+                    self.on_frame(conn, |engine, now| engine.on_binary(conn, now))?;
                 }
             }
             Event::Close { sock } => {
@@ -457,14 +447,12 @@ impl<'a> Harness<'a> {
                 }
             }
             Event::Ghost { nth } => {
-                let closed: Vec<usize> = (0..self.sockets.len())
-                    .filter(|&i| !self.sockets[i].open)
-                    .collect();
-                let conn = ConnId(if closed.is_empty() {
-                    self.sockets.len() as u64 + 1000
+                let closed = self.conns(false);
+                let conn = if closed.is_empty() {
+                    ConnId(self.sockets.len() as u64 + 1000)
                 } else {
-                    closed[nth % closed.len()] as u64
-                });
+                    closed[nth % closed.len()]
+                };
                 let hello = self.frame_text(&Frame::Hello(Name::Valid(nth)));
                 for step in [
                     self.engine.on_text(conn, &hello, self.clock),
@@ -490,8 +478,7 @@ impl<'a> Harness<'a> {
                     self.visitors += 1;
                     let conn = self.open(token(&format!("visitor-{}", self.visitors)))?;
                     if hello && self.sockets[conn.0 as usize].open {
-                        let text = self.frame_text(&Frame::Hello(Name::Valid(self.visitors)));
-                        self.frame(conn, |engine, now| engine.on_text(conn, &text, now))?;
+                        self.send(conn, &Frame::Hello(Name::Valid(self.visitors)))?;
                     }
                 }
             }
@@ -499,12 +486,19 @@ impl<'a> Harness<'a> {
         Ok(())
     }
 
+    /// The sockets the model has open, or those it has closed.
+    fn conns(&self, open: bool) -> Vec<ConnId> {
+        let numbered = self.sockets.iter().zip(0..).map(|(s, n)| (s, ConnId(n)));
+        numbered
+            .filter(|(socket, _)| socket.open == open)
+            .map(|(_, conn)| conn)
+            .collect()
+    }
+
     /// The `n`-th open socket, wrapped.
     fn nth_open(&self, n: usize) -> Option<ConnId> {
-        let open: Vec<usize> = (0..self.sockets.len())
-            .filter(|&i| self.sockets[i].open)
-            .collect();
-        (!open.is_empty()).then(|| ConnId(open[n % open.len()] as u64))
+        let open = self.conns(true);
+        (!open.is_empty()).then(|| open[n % open.len()])
     }
 
     /// The `n`-th joined socket of a seated player, wrapped.
@@ -532,7 +526,7 @@ impl<'a> Harness<'a> {
 
     fn frame_text(&self, frame: &Frame) -> String {
         let room = self.engine.room();
-        let match_id = |offset: i64| room.match_id.wrapping_add_signed(offset as i32);
+        let match_id = |offset: i32| room.match_id.wrapping_add_signed(offset);
         let message = match *frame {
             Frame::Hello(name) => PeerMessage::Hello {
                 nickname: name.text(),
@@ -579,7 +573,7 @@ impl<'a> Harness<'a> {
                 nickname: "n".repeat(MAX_MESSAGE_BYTES),
             },
         };
-        String::from_utf8(tantrix_proto::encode(&message)).unwrap()
+        serde_json::to_string(&message).unwrap()
     }
 
     /// Open a socket for `token`; it may be closed at once if the room
@@ -598,9 +592,15 @@ impl<'a> Harness<'a> {
         Ok(conn)
     }
 
+    /// `frame` from `conn`, as text.
+    fn send(&mut self, conn: ConnId, frame: &Frame) -> Result<(), TestCaseError> {
+        let text = self.frame_text(frame);
+        self.on_frame(conn, |engine, now| engine.on_text(conn, &text, now))
+    }
+
     /// A frame from `conn` at the current time: the model's rate limit says
     /// whether the engine lets it through or closes the socket.
-    fn frame(
+    fn on_frame(
         &mut self,
         conn: ConnId,
         receive: impl FnOnce(&RoomEngine, u64) -> Step,
@@ -626,7 +626,7 @@ impl<'a> Harness<'a> {
         let delivered = std::mem::take(&mut self.server.delivered);
         self.follow(&delivered)?;
         if ran.is_err() {
-            bump(&self.coverage.failed_saves);
+            self.coverage.failed_saves += 1;
             prop_assert!(
                 self.sockets.iter().all(|s| !s.open),
                 "a socket outlived a failed save"
@@ -667,7 +667,12 @@ impl<'a> Harness<'a> {
     /// Follow `effects` in the model: what each socket was sent, and which
     /// closed. Each message is checked for secrets.
     fn follow(&mut self, effects: &[Effect]) -> Result<(), TestCaseError> {
-        let bag = bag_tiles(self.engine.room());
+        let messages = effects.iter().any(|e| !matches!(e, Effect::Close { .. }));
+        let bag = if messages {
+            bag_tiles(self.engine.room())
+        } else {
+            HashSet::new()
+        };
         for effect in effects {
             match effect {
                 Effect::Send { to, message } => {
@@ -684,7 +689,7 @@ impl<'a> Harness<'a> {
                     let socket = &mut self.sockets[conn.0 as usize];
                     prop_assert!(socket.open, "{:?} closed twice", conn);
                     socket.open = false;
-                    *self.coverage.closes.borrow_mut().entry(reason).or_default() += 1;
+                    *self.coverage.closes.entry(reason).or_default() += 1;
                 }
             }
         }
@@ -719,19 +724,20 @@ impl<'a> Harness<'a> {
             match rejected {
                 None => {
                     socket.welcomed = true;
-                    bump(&self.coverage.welcomed);
+                    self.coverage.welcomed += 1;
                 }
-                Some(_) => bump(&self.coverage.refused),
+                Some(_) => self.coverage.refused += 1,
             }
         }
-        match message {
-            HostMessage::GameStarted { .. } if broadcast => bump(&self.coverage.games_started),
+        let reached = match message {
+            HostMessage::GameStarted { .. } if broadcast => &mut self.coverage.games_started,
             HostMessage::StateUpdate {
                 last_move: Some(_), ..
-            } => bump(&self.coverage.moves),
-            HostMessage::GameEnded { .. } if broadcast => bump(&self.coverage.games_ended),
-            _ => {}
-        }
+            } => &mut self.coverage.moves,
+            HostMessage::GameEnded { .. } if broadcast => &mut self.coverage.games_ended,
+            _ => return Ok(()),
+        };
+        *reached += 1;
         Ok(())
     }
 
@@ -751,13 +757,12 @@ impl<'a> Harness<'a> {
             .connections()
             .map(|(conn, c)| (conn, (&c.token, c.joined)))
             .collect();
-        let model: BTreeMap<ConnId, (&SessionToken, bool)> = (0..self.sockets.len())
-            .filter(|&i| self.sockets[i].open)
-            .map(|i| {
-                (
-                    ConnId(i as u64),
-                    (&self.sockets[i].token, self.sockets[i].welcomed),
-                )
+        let model: BTreeMap<ConnId, (&SessionToken, bool)> = self
+            .conns(true)
+            .into_iter()
+            .map(|conn| {
+                let socket = &self.sockets[conn.0 as usize];
+                (conn, (&socket.token, socket.welcomed))
             })
             .collect();
         prop_assert_eq!(&engine, &model);
@@ -786,10 +791,11 @@ impl<'a> Harness<'a> {
         // Every room saved resumes after a restart.
         for saved in std::mem::take(&mut self.server.saves) {
             check_resume(&saved)?;
-            bump(&self.coverage.resumed);
+            self.coverage.resumed += 1;
         }
-        if room.match_id > 0 && room.game.is_none() {
-            bump(&self.coverage.rematches);
+        if room.match_id > self.match_id {
+            self.coverage.rematches += 1;
+            self.match_id = room.match_id;
         }
         Ok(())
     }
@@ -879,9 +885,9 @@ fn check_resume(saved: &RoomData) -> Result<(), TestCaseError> {
     prop_assert!(again.persist().is_none() && again.effects().is_empty());
 
     // Each of them comes back to their seat, without a save.
-    let hello = String::from_utf8(tantrix_proto::encode(&PeerMessage::Hello {
+    let hello = serde_json::to_string(&PeerMessage::Hello {
         nickname: "Back".into(),
-    }))
+    })
     .unwrap();
     for (n, player) in saved.players.iter().enumerate() {
         if saved.color_of(&player.token).is_none() {
@@ -909,8 +915,7 @@ fn check_resume(saved: &RoomData) -> Result<(), TestCaseError> {
 /// No message names a session token, holds a seed, a bag or a history, or
 /// names a tile still in the bag.
 fn check_secrets(message: &HostMessage, bag: &HashSet<String>) -> Result<(), TestCaseError> {
-    let wire = tantrix_proto::encode(message);
-    let text = String::from_utf8(wire).unwrap();
+    let text = serde_json::to_string(message).unwrap();
     prop_assert!(!text.contains(TOKEN_PREFIX), "a session token in {}", text);
     let mut values = vec![serde_json::from_str::<Value>(&text).unwrap()];
     while let Some(value) = values.pop() {

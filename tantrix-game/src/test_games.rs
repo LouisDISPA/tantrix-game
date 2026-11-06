@@ -117,12 +117,19 @@ pub(crate) fn broken_rule(tiles: &HashMap<Position, Move>, m: &Move) -> Option<B
                 tile.map(|t| t.color(dir.opposite()))
             })
             .collect();
-        if colors.len() >= 4 {
-            return Some(BrokenRule::FourthNeighbor);
-        }
-        if colors.len() == 3 && colors.iter().all(|&c| c == colors[0]) {
-            return Some(BrokenRule::SameColorTriple);
+        if let Some(rule) = space_rule(&colors) {
+            return Some(rule);
         }
     }
     None
+}
+
+/// The restriction rule an empty space breaks with tiles showing it
+/// `colors`, if any: four tiles or more, or three of one color.
+pub(crate) fn space_rule(colors: &[Color]) -> Option<BrokenRule> {
+    match colors {
+        [_, _, _, _, ..] => Some(BrokenRule::FourthNeighbor),
+        [a, b, c] if a == b && b == c => Some(BrokenRule::SameColorTriple),
+        _ => None,
+    }
 }
