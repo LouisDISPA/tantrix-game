@@ -590,3 +590,6 @@ fn broadcast(to: Vec<ConnId>, message: HostMessage) -> Vec<Effect> {
         vec![Effect::Broadcast { to, message }]
     }
 }
+
+#[cfg(test)]
+mod model_tests;
