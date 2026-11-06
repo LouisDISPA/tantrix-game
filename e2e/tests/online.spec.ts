@@ -183,6 +183,35 @@ test('joining a missing room shows an error and returns to the online menu', asy
   await expect(page.getByRole('button', { name: 'Create a room' })).toBeVisible();
 });
 
+test('room sockets refuse other sites and tell outdated clients why', async ({ page }) => {
+  await page.goto('/health');
+  const site = new URL(page.url());
+  const otherName = { '127.0.0.1': 'localhost', localhost: '127.0.0.1' }[site.hostname];
+  test.skip(!otherName, 'needs a loopback server reachable under a second name');
+  const room = `ws://${site.host}/room/00000000-0000-4000-8000-000000000000`;
+  const connect = (url: string) => page.evaluate(url => new Promise<{ frames: number; code: number; reason: string }>(resolve => {
+    let frames = 0;
+    const socket = new WebSocket(url);
+    socket.onmessage = () => { frames += 1; };
+    socket.onclose = event => resolve({ frames, code: event.code, reason: event.reason });
+  }), url);
+
+  const { online_version: version } = await (await page.request.get('/api/online-version')).json();
+  // Accepted sockets hear that the game is missing, then close without a reason.
+  const accepted = { frames: 1, reason: '' };
+  const outdated = { frames: 0, reason: 'This app is out of date. Update or reload.' };
+
+  expect(await connect(`${room}?v=${version}`)).toMatchObject(accepted);
+  expect(await connect(`${room}?v=${version - 1}`)).toMatchObject(outdated);
+  // Clients from before the URL carried a version speak version 3.
+  expect(await connect(room)).toMatchObject(version === 3 ? accepted : outdated);
+
+  // The same server under another name is another site to the browser. The
+  // dev proxy accepts the upgrade before the server refuses it, so check that
+  // nothing arrives rather than that the socket never opened.
+  await page.goto(`${site.protocol}//${otherName}:${site.port}/health`);
+  expect(await connect(`${room}?v=${version}`)).toMatchObject({ frames: 0, code: 1006, reason: '' });
+});
 
 test('a lost creation response can be retried after reload without creating another room', async ({ page }) => {
   const createdIds: string[] = [];

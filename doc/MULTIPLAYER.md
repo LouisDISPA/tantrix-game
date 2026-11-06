@@ -41,8 +41,14 @@ browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.
 - `tantrix-proto::ONLINE_VERSION` identifies online compatibility; both
   servers expose it at `/api/online-version`. The online menu checks in the
   background and blocks Create/Join after a mismatch or failed check. Reload
-  a stale browser page; update an incompatible desktop app or server. This
-  preflight is not a version negotiation in the WebSocket handshake.
+  a stale browser page; update an incompatible desktop app or server.
+- Every room socket URL also carries the client's version (`/room/{ID}?v=3`),
+  so direct game links and reconnects are checked too. A different version
+  is accepted, then closed with a reason the client shows: *This app is out
+  of date. Update or reload.* (or that the server needs updating). Clients
+  from before the parameter existed send none; the server treats them as
+  version 3 (`handshake::UNVERSIONED_CLIENT`), so they keep working until
+  `ONLINE_VERSION` changes and are then refused the same way.
 
 ## In-game recovery
 
@@ -100,8 +106,15 @@ reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
 example `https://tantrix.example.com`) so session cookies use the Secure flag.
 It also makes the server take the last `X-Forwarded-For` address as the
 client's for [request limits](#request-limits), so set it only behind a proxy
-that appends that header. Room endpoints do not validate the browser's Origin
-header.
+that appends that header.
+
+Room sockets refuse (HTTP 403) a browser `Origin` from another site, so other
+pages can't join rooms with a visitor's session cookie. The native server
+allows `TANTRIX_PUBLIC_ORIGIN`, or, when it is unset, any page on the host the
+request names (local development); behind a proxy that rewrites `Host`, set
+it. The Worker allows its request URL's origin. Upgrades without `Origin`
+(the desktop and Android apps) are allowed. A web client served from another
+origin than its room server (a `TANTRIX_ROOM_URL` build) is refused.
 
 Rooms deal with the OS-seeded thread RNG and retain no seed. Saves retain
 the bag and history; snapshots expose neither. See
@@ -126,7 +139,8 @@ allocation stops after ten collisions and returns a retryable 503.
 
 `GET /api/rooms/code/{CODE}` resolves an invitation. `GET /api/rooms/{ID}`
 gets the current reference; `WS /room/{ID}` joins that exact game. Both servers
-validate permanent IDs before accepting sockets. The
+check the socket's origin, permanent ID and version (`tantrix_room::handshake`)
+before it reaches the room. The
 socket sends `RoomInfo` with the current code, then the normal Hello/Welcome
 exchange. Missing games reject Welcome with `RoomNotFound`; expired lobbies
 use `RoomExpired` (HTTP APIs return 410).

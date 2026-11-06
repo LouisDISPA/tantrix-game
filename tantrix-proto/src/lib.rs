@@ -23,6 +23,9 @@ pub use room_code::{is_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_
 /// wire-format changes or changes to shared game rules (legal moves/scoring).
 pub const ONLINE_VERSION: u32 = 3;
 pub const ONLINE_VERSION_PATH: &str = "/api/online-version";
+/// Query parameter of the room socket URL carrying the client's
+/// [`ONLINE_VERSION`]; servers refuse other versions.
+pub const ONLINE_VERSION_PARAM: &str = "v";
 
 /// Keep this endpoint's shape stable so incompatible clients can read it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

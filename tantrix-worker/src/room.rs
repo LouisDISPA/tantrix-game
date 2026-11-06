@@ -11,7 +11,7 @@ use futures::lock::Mutex;
 use serde::{Deserialize, Serialize};
 use tantrix_proto::{HostMessage, RejectCode, RoomApiError, RoomReference};
 use tantrix_room::engine::{self, ConnId, Connection, Effect, RoomEngine, RoomHost};
-use tantrix_room::handshake::{self, Refusal};
+use tantrix_room::handshake::{self, Refusal, SiteOrigin, Upgrade};
 use tantrix_room::lifecycle::{self, RoomRecord};
 use tantrix_room::room_logic::RoomData;
 use tantrix_room::session_cookie;
@@ -53,6 +53,14 @@ fn json(message: &HostMessage) -> String {
 
 fn refuse(refusal: Refusal) -> Result<Response> {
     Response::error(refusal.message(), refusal.status())
+}
+
+/// Accept a socket only to close it with a reason the player reads.
+fn closed(reason: &str) -> Result<Response> {
+    let pair = WebSocketPair::new()?;
+    pair.server.accept()?;
+    pair.server.close(Some(1000), Some(reason))?;
+    Response::from_websocket(pair.client)
 }
 
 #[durable_object]
@@ -264,6 +272,23 @@ impl DurableObject for Room {
 
     async fn fetch(&self, req: Request) -> Result<Response> {
         let url = req.url()?;
+        let websocket = req.headers().get("Upgrade")?.as_deref() == Some("websocket");
+        // Refused sockets never touch the room or its storage.
+        if websocket {
+            let origin = req.headers().get("Origin")?;
+            let site = url.origin().ascii_serialization();
+            let checked = handshake::check(&Upgrade {
+                id: url.path().strip_prefix("/room/").unwrap_or_default(),
+                origin: origin.as_deref(),
+                site: SiteOrigin::Exact(&site),
+                query: url.query(),
+            });
+            match checked {
+                Ok(()) => {}
+                Err(refusal) if refusal.closes_socket() => return closed(refusal.message()),
+                Err(refusal) => return refuse(refusal),
+            }
+        }
         let mut cache = self.engine.lock().await;
         if let Err(error) = self.load(&mut cache).await {
             console_error!("room load failed: {error}");
@@ -284,15 +309,8 @@ impl DurableObject for Room {
                 });
             }
         }
-        let websocket = req.headers().get("Upgrade")?.as_deref() == Some("websocket");
         if url.path().starts_with("/room/") && !websocket {
             return Response::error("expected websocket", 426);
-        }
-        if websocket {
-            let id = url.path().strip_prefix("/room/").unwrap_or_default();
-            if let Err(refusal) = handshake::check(id) {
-                return refuse(refusal);
-            }
         }
         let Some(live) = cache.as_mut() else {
             if !websocket {
