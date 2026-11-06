@@ -1,6 +1,6 @@
 # Desktop releases
 
-`.github/workflows/release.yml` builds six native OS/architecture combinations, then publishes a GitHub Release only after every build succeeds. Desktop jobs use stable Rust, Dioxus CLI 0.8.0-alpha.3 and Velopack 1.2.161.
+`.github/workflows/release.yml` runs CI on the tagged commit, builds six native OS/architecture combinations, then publishes a GitHub Release only after every build succeeds. Desktop jobs use the Rust toolchain pinned in `rust-toolchain.toml`, Dioxus CLI 0.8.0-alpha.3 and Velopack 1.2.161.
 
 ## Publish
 
@@ -8,7 +8,7 @@
 2. Push a matching tag, e.g. `tantrix-app-v0.1.3`.
 3. Wait for **Release**. A version containing `-` creates a prerelease; GitHub generates notes.
 
-Use **Actions → Release → Run workflow** to build downloadable artifacts without publishing. Optional macOS-only and Windows-only inputs build x86_64 signing diagnostics.
+Use **Actions → Release → Run workflow** to build downloadable artifacts without publishing or waiting for CI. Optional macOS-only and Windows-only inputs build x86_64 signing diagnostics.
 
 | OS | Architectures | Downloads |
 | --- | --- | --- |

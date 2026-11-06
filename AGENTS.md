@@ -41,7 +41,8 @@ cargo run -p tantrix-tui
 cargo run --release -p tantrix-tournament -- --config tantrix-tournament/configs/championship.toml --headless
 just fmt-check
 just lint
-just test                      # Workspace + app server tests
+just test                      # Workspace + app server/desktop tests
+just ci                        # Everything CI runs, browser tests included
 cargo test -p tantrix-app       # App only; add --features server for server tests
 just test-e2e                  # Native backend browser tests
 just worker-e2e                # Build Worker + browser tests

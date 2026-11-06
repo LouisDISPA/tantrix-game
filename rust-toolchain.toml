@@ -1,5 +1,9 @@
+# A dated nightly keeps CI caches and releases reproducible. Nightly is only
+# needed for the browser client's `-Zbuild-std` (see the justfile); the code
+# uses no `#![feature]`. Bump the date deliberately; release workflows read it
+# from here.
 [toolchain]
-channel = "nightly"
+channel = "nightly-2026-10-18"
 components = ["clippy", "rustfmt", "rust-src"]
 targets = ["wasm32-unknown-unknown"]
 profile = "minimal"

@@ -20,12 +20,7 @@ pub async fn sleep(duration: Duration) {
 /// The native server and renderers run on tokio, which they enable.
 #[cfg(all(
     not(any(feature = "web", feature = "worker")),
-    any(
-        feature = "server",
-        feature = "desktop",
-        feature = "native",
-        feature = "mobile"
-    )
+    any(feature = "server", feature = "desktop", feature = "mobile")
 ))]
 pub async fn sleep(duration: Duration) {
     tokio::time::sleep(duration).await;
@@ -38,7 +33,6 @@ pub async fn sleep(duration: Duration) {
     feature = "worker",
     feature = "server",
     feature = "desktop",
-    feature = "native",
     feature = "mobile"
 )))]
 pub async fn sleep(duration: Duration) {

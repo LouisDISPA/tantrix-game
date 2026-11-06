@@ -13,16 +13,27 @@ fmt-check:
 test-e2e: setup-e2e
     cd e2e && pnpm run test:native
 
+# Desktop checks need webkit2gtk and GTK development packages on Linux. The
+# Worker compiles only for wasm32 and embeds the client's index.html, so its
+# lint uses a stand-in page instead of building the client.
+
 [group('Checks')]
 lint:
-    cargo clippy --workspace --all-targets -- -D warnings
-    cargo clippy -p tantrix-app --features server --all-targets -- -D warnings
-    cargo clippy -p tantrix-app --features web --target wasm32-unknown-unknown -- -D warnings
+    cargo clippy --locked --workspace --all-targets -- -D warnings
+    cargo clippy --locked -p tantrix-app --features server --all-targets -- -D warnings
+    cargo clippy --locked -p tantrix-app --features desktop,bundle --all-targets -- -D warnings
+    cargo clippy --locked -p tantrix-app --features web --target wasm32-unknown-unknown -- -D warnings
+    TANTRIX_INDEX_HTML="{{ justfile_directory() }}/tantrix-worker/stub-index.html" cargo clippy --locked -p tantrix-worker --target wasm32-unknown-unknown -- -D warnings
 
 [group('Checks')]
 test:
-    cargo test --workspace
-    cargo test -p tantrix-app --features server
+    cargo test --locked --workspace
+    cargo test --locked -p tantrix-app --features server
+    cargo test --locked -p tantrix-app --features desktop,bundle
+
+# Everything CI runs, in order.
+[group('Checks')]
+ci: fmt-check lint test test-e2e
 
 [group('Local')]
 dev:
@@ -34,6 +45,7 @@ run:
 
 [group('Local')]
 fmt:
+    cargo fmt --all
     cd tantrix-app && dx fmt
 
 [group('Local')]

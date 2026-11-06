@@ -93,10 +93,8 @@ fullstack = ["dioxus/fullstack"]
 # The app uses browser-style timers and the SSR response status context there;
 # the SSR host lives in the worker crate.
 worker = ["dep:gloo-timers", "dep:dioxus-fullstack-core", "dep:http"]
-liveview = ["dioxus/liveview"]
 desktop = ["dioxus/desktop", "dep:tokio", "tantrix-net/native", "dep:dirs", "dep:arboard", "dep:reqwest", "dep:velopack"]
 bundle = []
-native = ["dioxus/native", "dep:tokio"]
 mobile = ["dioxus/mobile", "dep:tokio"]
 # Android uses the shared mobile WebView UI and native WebSocket transport.
 android = ["tokio/fs", "tokio/io-util", "dep:dirs", "mobile", "tantrix-net/native", "dep:reqwest", "dep:jni", "dep:ndk-context"]

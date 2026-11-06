@@ -24,13 +24,21 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUSTUP_TOOLCHAIN: stable
   DIOXUS_CLI_VERSION: '0.8.0-alpha.3'
   VELOPACK_VERSION: '1.2.161'
 
 jobs:
+  ci:
+    name: CI
+    # Tagged releases build only after CI passes on the tagged commit. Manual
+    # runs publish nothing, so they skip it.
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Bundle ${{ matrix.platform }} ${{ matrix.arch }}
+    needs: ci
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     defaults:
@@ -51,8 +59,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Releases use the toolchain CI checks, pinned in rust-toolchain.toml.
+      - name: Read Rust toolchain
+        id: toolchain
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           targets: ${{ matrix.target }}
 
       - name: Validate release version
@@ -136,20 +150,23 @@ jobs:
 
   android:
     name: Bundle Android ARM64
-    if: ${{ !inputs.macos_only && !inputs.windows_only }}
+    needs: ci
+    if: ${{ !cancelled() && (needs.ci.result == 'success' || needs.ci.result == 'skipped') && !inputs.macos_only && !inputs.windows_only }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
-      RUSTUP_TOOLCHAIN: nightly-2026-10-18
       ANDROID_NDK_VERSION: '28.2.13676358'
       GRADLE_OPTS: -Dorg.gradle.caching=true
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@nightly
+      - name: Read Rust toolchain
+        id: toolchain
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
-          toolchain: nightly-2026-10-18
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           targets: aarch64-linux-android
           components: rust-src
       - uses: actions/setup-java@v5
