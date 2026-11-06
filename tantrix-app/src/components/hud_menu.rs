@@ -4,9 +4,12 @@
 
 use dioxus::prelude::*;
 
+use crate::components::focus_trap::FocusTrap;
+
 /// Any click on an item closes the popover (an item that wants it to stay,
 /// like a zoom step, stops the click); so does a click anywhere else, and
-/// Escape.
+/// Escape. Opening it moves the keyboard's focus to its first item, Tab
+/// goes round its items, and closing gives the focus back to the `⋯`.
 #[component]
 pub fn HudMenu(children: Element) -> Element {
     let mut open = use_signal(|| false);
@@ -39,7 +42,12 @@ pub fn HudMenu(children: Element) -> Element {
             div {
                 class: "surface surface-blur hud-menu-items",
                 onclick: move |_| open.set(false),
-                {children}
+                FocusTrap {
+                    id: "hud-menu-items",
+                    active: open,
+                    fallback: &[".hud-menu-toggle"],
+                    {children}
+                }
             }
         }
     }

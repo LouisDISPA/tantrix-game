@@ -44,6 +44,7 @@ pub fn BoardTile(
             class: if dimmed { "dimmed-tile" },
             style,
             "data-position": "{placement.position.x()},{placement.position.y()}",
+            "data-rotation": "{placement.rotation:?}",
             svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
                 HexSvg {
                     tile: placement.tile,

@@ -197,6 +197,40 @@
     stroke-dasharray: none;
   }
 
+  /* ===== The keyboard on the spots ===== */
+
+  /* The spots' box is the keyboard's one stop on the board: it has no size
+    of its own (the hexes are placed from its corner, the board's middle) and
+    never shows the focus itself — the ring round the active spot does. */
+  .board-spots {
+    position: absolute;
+    left: 0;
+    top: 0;
+    outline: none;
+  }
+
+  .spot-ring {
+    position: absolute;
+    left: var(--hx);
+    top: var(--hy);
+    width: var(--hw);
+    height: var(--hh);
+    z-index: 3;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .spot-ring svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+  }
+
+  .board-spots:focus-visible .spot-ring {
+    visibility: visible;
+  }
+
   /* ===== Tile Preview ===== */
 
   .tile-preview {

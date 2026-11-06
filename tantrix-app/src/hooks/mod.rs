@@ -9,6 +9,7 @@
 //!   positions, preview, orientations (one memo each).
 //! * [`scoring`] — end-of-game scoring path highlights.
 //! * [`derived`] — small memos used across multiple components.
+//! * [`keyboard`] — which focus is the keyboard's, and taking a requested focus.
 
 #[cfg(feature = "android")]
 pub mod android_updates;
@@ -19,6 +20,7 @@ pub mod desktop_updates;
 #[cfg(not(native_client))]
 pub mod downloads;
 pub mod game_ctx;
+pub mod keyboard;
 pub mod online_game;
 pub mod phase_view;
 pub mod scoring;
@@ -26,6 +28,7 @@ pub mod scoring;
 pub use camera::use_board_camera;
 pub use derived::{use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves};
 pub use game_ctx::use_game_ctx;
+pub use keyboard::{use_pointer_press, use_take_focus};
 pub use online_game::use_online_game_ctx;
 pub use phase_view::{use_orientations, use_preview_placement, use_valid_positions};
 pub use scoring::use_highlight_map;

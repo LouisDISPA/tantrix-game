@@ -230,7 +230,13 @@
       var(--surface-elevated) 60%,
       var(--btn-secondary-bg)
     );
-    --focus-ring: var(--color-blue);
+    /* The keyboard's focus ring: neutral — the text's colour over a halo of
+      the page's, so it adds no colour and stands apart from the four
+      players' on either theme. Buttons draw it as an outline, the board's
+      spots and the hand's tiles as a hex round the tile. */
+    --focus-ring: var(--text-primary);
+    --focus-halo: var(--bg-primary);
+    --focus-width: 2.5px;
     /* The last move's tile: the tiles' black lifted towards a neutral
       light, so it stands out with no line or colour over its paths. */
     --last-move-fill: color-mix(

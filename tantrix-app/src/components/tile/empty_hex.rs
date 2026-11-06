@@ -8,8 +8,18 @@ use crate::state::ui_state::{Hovered, UiStateStoreExt};
 use crate::svg::geometry::{hex_position_style, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
 use crate::svg::paths::hex_polygon_points;
 
+/// The element id of the empty hex at `at`: the board's spots name the one
+/// the keys are on by it (`aria-activedescendant`).
+pub fn spot_id(at: Position) -> String {
+    format!("spot{}_{}", at.x(), at.y())
+}
+
 /// An empty hex slot on the board. Positioned at a board coordinate; click and
 /// hover interactions dispatch directly through `GameCtx`.
+///
+/// A spot to choose (not `faint`) is an option of the board's spots, the
+/// `rank`th of `count` as the keys read them; the keys reach it through
+/// the spots (`BoardSpots`), so it is no tab stop of its own.
 #[component]
 pub fn EmptyHex(
     position: Position,
@@ -17,6 +27,8 @@ pub fn EmptyHex(
     forced: bool,
     faint: bool,
     picked: bool,
+    rank: usize,
+    count: usize,
 ) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
@@ -38,22 +50,17 @@ pub fn EmptyHex(
             class: if picked { "picked" },
             class: if snap_target() { "drag-target" },
             style,
+            id: spot_id(position),
             "data-position": "{position.x()},{position.y()}",
-            role: "button",
-            tabindex: "0",
-            aria_label: "Place tile",
+            role: if !faint { "option" },
+            aria_label: if forced { "Forced spot" } else { "Spot" },
+            aria_posinset: if !faint { "{rank}" },
+            aria_setsize: if !faint { "{count}" },
             onclick: move |evt| {
                 // A tap on a spot is not a tap on the board behind it.
                 evt.stop_propagation();
                 // The lift that ends a drag of the board is not a tap on the hex.
                 if !camera.was_drag() {
-                    click_position(ctx, position);
-                }
-            },
-            onkeydown: move |e| {
-                if matches!(e.key(), Key::Named(NamedKey::Enter))
-                    || matches!(e.key(), Key::Character(c) if c == " ")
-                {
                     click_position(ctx, position);
                 }
             },

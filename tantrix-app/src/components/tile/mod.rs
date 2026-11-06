@@ -12,6 +12,6 @@ pub mod hand_tile;
 pub mod hex_svg;
 
 pub use board_tile::{BoardTile, BoardTileVariant};
-pub use empty_hex::EmptyHex;
+pub use empty_hex::{spot_id, EmptyHex};
 pub use hand_tile::HandTile;
 pub use hex_svg::HexSvg;

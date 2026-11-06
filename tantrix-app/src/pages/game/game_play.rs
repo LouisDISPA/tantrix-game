@@ -11,8 +11,9 @@ use crate::components::board::Board;
 use crate::hooks::use_current_player;
 use crate::state::game_state::GameCtx;
 use crate::state::gesture::Pointer;
+use crate::state::keyboard::{enter_turn, is_choice, step_back, Nav};
 use crate::state::tile_drag::{cancel_tile_drag, drop_tile, move_tile};
-use crate::state::ui_state::{set_if_changed, UiStateStoreExt, UiStateStoreImplExt};
+use crate::state::ui_state::{set_if_changed, UiStateStoreExt};
 
 /// The HUD row, the board and the hand panel. One tree for every screen:
 /// the stylesheet lays it out as a column on a phone (HUD, board, panel) and
@@ -21,6 +22,13 @@ use crate::state::ui_state::{set_if_changed, UiStateStoreExt, UiStateStoreImplEx
 /// Start Game (`actions::start_game`), an online one by the room.
 ///
 /// `children` go in the HUD; `banners` join the centered turn announcements.
+///
+/// The screen holds the keyboard's focus when nothing in it does: it takes
+/// it when it mounts, so Escape — one step back, from anywhere on it — works
+/// at once, and an arrow key or Enter there hands the focus to the turn's
+/// step (`state::keyboard`). A focus that lands anywhere drops a focus a
+/// key asked for that is still pending (the next turn's), so it never pulls
+/// the keyboard back from where the player went.
 #[component]
 pub fn GamePlay(
     error: ReadSignal<Option<&'static str>>,
@@ -31,7 +39,7 @@ pub fn GamePlay(
     #[cfg(test)]
     crate::util::render_count::record("GamePlay", ());
     let ctx = use_context::<GameCtx>();
-    let mut ui = ctx.ui_state;
+    let ui = ctx.ui_state;
     let current = use_current_player();
 
     // The seats in turn order — player colors never change during a game,
@@ -53,12 +61,19 @@ pub fn GamePlay(
         current();
         set_if_changed(ui.peeked(), None);
     });
+    // The screen itself has the focus: nothing in it has.
+    let mut bare = use_signal(|| false);
 
     rsx! {
         div {
             class: "game-layout players-{seats.read().len()}",
             tabindex: "0",
-            autofocus: true,
+            onmounted: move |e| async move {
+                let _ = e.data().set_focus(true).await;
+            },
+            onfocus: move |_| bare.set(true),
+            onblur: move |_| bare.set(false),
+            onfocusin: move |_| set_if_changed(ui.focus_request(), None),
             onpointerdown: move |evt| {
                 if ui
                     .tile_drag()
@@ -96,15 +111,20 @@ pub fn GamePlay(
             },
             onpointerleave: move |_| cancel_tile_drag(ctx),
             onkeydown: move |evt: KeyboardEvent| {
-                if evt.key() == Key::Named(NamedKey::Escape) {
+                let key = evt.key();
+                if key == Key::Named(NamedKey::Escape) {
                     if ui.tile_drag().peek().is_some_and(|drag| drag.holds_pointer()) {
                         cancel_tile_drag(ctx);
                     } else {
-                        ui.go_back();
+                        step_back(ctx);
                     }
+                } else if *bare.peek()
+                    && (is_choice(&key) || Nav::of(&key, evt.modifiers()).is_some())
+                {
+                    evt.prevent_default();
+                    enter_turn(ctx);
                 }
             },
-
             GameHud { error, waiting, {children} }
 
             div { class: "game-announcements",
@@ -112,9 +132,7 @@ pub fn GamePlay(
                 TurnBanner {}
             }
 
-            div { class: "board-slot",
-                Board {}
-            }
+            div { class: "board-slot", Board {} }
 
             section {
                 class: "surface surface-blur hand-panel",

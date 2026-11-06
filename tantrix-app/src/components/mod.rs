@@ -4,6 +4,7 @@ pub mod color_chip;
 pub mod color_swatch;
 pub mod confirm_dialog;
 pub mod difficulty_picker;
+pub mod focus_trap;
 pub mod hud_menu;
 pub mod learn_board;
 pub mod menu_button;

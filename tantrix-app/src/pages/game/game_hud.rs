@@ -16,10 +16,11 @@ use crate::components::board::{EndGameButton, ZoomControls};
 use crate::components::confirm_dialog::ConfirmDialog;
 use crate::components::hud_menu::HudMenu;
 use crate::components::theme_toggle::ThemeToggle;
-use crate::hooks::{use_current_player, use_has_forced_move, use_is_game_over};
+use crate::hooks::{use_current_player, use_has_forced_move, use_is_game_over, use_pointer_press};
 use crate::state::actions::end_game;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::GameCtx;
+use crate::state::keyboard::step_back;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::svg::paths::color_name as color_slug;
 
@@ -102,6 +103,7 @@ pub fn GameHud(
     let message = ui.message();
     // Local UI flag: the End Game confirmation is open.
     let mut confirming_end = use_signal(|| false);
+    let back_press = use_pointer_press();
 
     use_effect(move || {
         if !ctx.driver.can_end_game() {
@@ -127,7 +129,9 @@ pub fn GameHud(
                 if waiting() {
                     span { class: "hud-chip-phase hud-chip-error", "Awaiting synchronization" }
                 } else if let Some(text) = error() {
-                    span { class: "hud-chip-phase alert hud-chip-error", role: "status",
+                    span {
+                        class: "hud-chip-phase alert hud-chip-error",
+                        role: "status",
                         "{text}"
                     }
                 } else if message.read().is_empty() {
@@ -160,7 +164,17 @@ pub fn GameHud(
                     class: "button button-icon button-secondary hud-back",
                     title: "Back",
                     aria_label: "Back",
-                    onclick: move |_| ui.go_back(),
+                    onpointerdown: move |_| back_press.down(),
+                    onblur: move |_| back_press.reset(),
+                    // From the keyboard, the focus steps back too: this
+                    // button goes once the tile is put back.
+                    onclick: move |_| {
+                        if back_press.by_pointer() {
+                            ui.go_back();
+                        } else {
+                            step_back(ctx);
+                        }
+                    },
                     "✕"
                 }
             }
@@ -189,6 +203,8 @@ pub fn GameHud(
                         end_game(ctx);
                     },
                     on_cancel: move |_| confirming_end.set(false),
+                    // Its End Game sits in the menu, which closed.
+                    return_to: &[".hud-menu-toggle", ".game-layout"],
                 }
             }
         }

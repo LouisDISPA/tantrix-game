@@ -7,9 +7,11 @@ use dioxus::web::WebEventExt;
 use tantrix_game::{Color, Rotation};
 
 use crate::components::tile::hex_svg::HexSvg;
+use crate::hooks::{use_pointer_press, use_take_focus};
 use crate::state::actions::click_tile;
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::gesture::{Pointer, MOUSE_SLOP, TOUCH_SLOP};
+use crate::state::keyboard::{choose_tile, is_choice, playable_tiles, step_hand, FocusTarget, Nav};
 use crate::state::tile_drag::{press_tile, DragPhase};
 use crate::state::ui_state::{HandTileState, Hovered, UiStateStoreExt};
 use crate::svg::geometry::{Rect, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
@@ -18,6 +20,9 @@ use crate::svg::paths::hex_polygon_points;
 /// Slightly larger hex used for selection/forced outline rings. It spills
 /// outside the tile's tight viewBox, which the stylesheet lets show.
 const OUTLINE_HEX: f64 = TILE_HEX + 3.0;
+
+/// The keyboard's focus ring, round the selection ring so both show.
+const FOCUS_HEX: f64 = TILE_HEX + 6.0;
 
 /// A tile in a player's hand. Takes only `(color, index)` — every piece of
 /// render state (the tile itself, selected/forced/disabled flags, the
@@ -56,6 +61,22 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
         })
     });
     let mut mounted = use_signal(|| None::<Rc<MountedData>>);
+    let press = use_pointer_press();
+    // The keyboard's focus comes here when a key asked for this tile, or
+    // for the first playable one of a turn that has come round.
+    use_take_focus(mounted, move || {
+        let request = ctx.ui_state.focus_request()();
+        let Some(request @ (FocusTarget::Hand(_) | FocusTarget::NextTurn { .. })) = request else {
+            return false;
+        };
+        if !can_play() {
+            return false;
+        }
+        let phase = ctx.ui_state.phase()();
+        let gs = ctx.game_state.read();
+        let playable = playable_tiles(gs.hand_info());
+        request.hand_tile(phase, gs.board().len(), &playable) == Some(index())
+    });
     let mut bounds = use_signal(|| None::<Rect>);
     let measure = move || {
         spawn(async move {
@@ -94,6 +115,7 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                     _ => "hand-hex-ring forced",
                 };
                 let outline_points = hex_polygon_points(TILE_CX, TILE_CY, OUTLINE_HEX);
+                let focus_points = hex_polygon_points(TILE_CX, TILE_CY, FOCUS_HEX);
                 let state_class = state.css_class();
                 let interactive = state.is_interactive() && can_play();
                 rsx! {
@@ -108,6 +130,8 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         role: "button",
                         tabindex: if interactive { "0" } else { "-1" },
                         aria_label: "Select tile",
+                        aria_pressed: "{state == HandTileState::Selected}",
+                        aria_disabled: if !interactive { "true" },
                         onmounted: move |evt| {
                             mounted.set(Some(evt.data()));
                             measure();
@@ -115,6 +139,7 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                         onresize: move |_| measure(),
                         ondragstart: move |evt| evt.prevent_default(),
                         onpointerdown: move |evt| {
+                            press.down();
                             if interactive && evt.data().trigger_button() == Some(MouseButton::Primary) {
                                 if let Some(origin) = *bounds.peek() {
                                     #[cfg(feature = "web")]
@@ -152,12 +177,36 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                                 click_tile(ctx, color, index());
                             }
                         },
+                        // Enter or Space takes the tile; the arrows go
+                        // along the playable ones.
                         onkeydown: move |e| {
-                            if interactive
-                                && (matches!(e.key(), Key::Named(NamedKey::Enter))
-                                    || matches!(e.key(), Key::Character(c) if c == " "))
-                            {
-                                click_tile(ctx, color, index());
+                            if !can_play() {
+                                return;
+                            }
+                            let key = e.key();
+                            if is_choice(&key) {
+                                e.prevent_default();
+                                if interactive {
+                                    choose_tile(ctx, color, index());
+                                }
+                            } else if let Some(nav) = Nav::of(&key, e.modifiers()) {
+                                if !matches!(nav, Nav::Up | Nav::Down) {
+                                    e.prevent_default();
+                                    step_hand(ctx, index(), nav);
+                                }
+                            }
+                        },
+                        // The keyboard's focus previews the tile as a mouse
+                        // hovering it does.
+                        onfocus: move |_| {
+                            if is_active_seat() && !press.by_pointer() {
+                                hovered.set(Hovered::HandTile(index()));
+                            }
+                        },
+                        onblur: move |_| {
+                            press.reset();
+                            if *hovered.peek() == Hovered::HandTile(index()) {
+                                hovered.set(Hovered::None);
                             }
                         },
                         // Only a mouse hovers: a finger's "hover" would stick
@@ -185,6 +234,15 @@ pub fn HandTile(color: Color, index: ReadSignal<usize>) -> Element {
                                 cy: TILE_CY,
                                 hex_size: TILE_HEX,
                             }
+                        }
+                        // The keyboard's ring, shown on `:focus-visible`: its
+                        // own layer, so the tile's shadow does not fall on it.
+                        svg {
+                            class: "hand-hex-focus",
+                            view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
+                            "aria-hidden": "true",
+                            polygon { class: "focus-hex-halo", points: focus_points.clone() }
+                            polygon { class: "focus-hex-line", points: focus_points }
                         }
                     }
                 }

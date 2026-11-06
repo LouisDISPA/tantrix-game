@@ -10,6 +10,7 @@ pub mod downloads;
 pub mod game_driver;
 pub mod game_state;
 pub mod gesture;
+pub mod keyboard;
 pub mod nickname;
 pub mod online_compatibility;
 pub mod online_state;

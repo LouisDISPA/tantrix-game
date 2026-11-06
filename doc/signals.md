@@ -30,6 +30,7 @@ unchanged game/seat snapshots preserve an open selection.
 |---|---|
 | Turn | `phase`, `message`; HUD, phase hooks, actions |
 | Selection | `selected_tile`, `selected_position`, `hovered`; hand/board hooks |
+| Keyboard | `focus_request`; set by `state/keyboard.rs` key actions, taken and cleared by the target (`hooks::use_take_focus`) |
 | Tile drag | `tile_drag`, `suppress_tile_click`; `state/tile_drag.rs`, game pointer handlers/overlay, hand tiles |
 | Hand view | `peeked`; shown-hand/HUD memos; cleared on turn change |
 | Camera | `zoom`, `pan_x`, `pan_y`, `gesture`, `dragged`, `stage`; camera, viewport, open orientation card |
@@ -87,6 +88,10 @@ When local phase becomes `WaitingForAi`, the page-owned effect spawns
 `state/ai_service.rs::run_ai_loop`, then advances again. Keeping the task in the
 page scope survives tile unmounts; navigation cancels it. Tile drags are cancelled
 when the hand, controlled seat or turn phase invalidates them.
+
+Keyboard play takes the same actions (`state/keyboard.rs`): a key choice then
+asks for the next step's focus; Escape is `step_back`. See
+[keyboard](components.md#keyboard).
 
 Tests: pure decisions beside state; reactive actions/hooks on
 `util/test_page.rs::GamePage`; render boundaries in `pages/game/rerender_tests.rs`.
