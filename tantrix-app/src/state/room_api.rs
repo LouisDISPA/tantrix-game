@@ -30,8 +30,7 @@ fn pending_key(server: &str) -> String {
 }
 
 /// The request ID in a stored `"<id> <made at ms>"`, while the server still
-/// remembers what it created. A clock set back before `made at` ends it, and
-/// so does an older bare ID.
+/// remembers what it created. A clock set back before `made at` ends it.
 fn retryable(stored: &str, now: u64) -> Option<&str> {
     let (id, made_at) = stored.split_once(' ')?;
     let age = now.checked_sub(made_at.parse().ok()?)?;
@@ -247,7 +246,7 @@ mod tests {
         );
         assert_eq!(retryable(&stored, 1000 + CREATE_RETRY_WINDOW_MS), None);
         assert_eq!(retryable(&stored, 999), None, "clock set back");
-        assert_eq!(retryable(id, 1000), None, "stored without a time");
+        assert_eq!(retryable(id, 1000), None, "no time");
         assert_eq!(retryable("", 1000), None);
         assert_eq!(retryable("not-an-id 1000", 1000), None);
     }

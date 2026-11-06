@@ -81,9 +81,9 @@ pub fn run() {
             std::env::var("TANTRIX_ROOM_DB").unwrap_or_else(|_| "tantrix-rooms.sqlite3".into());
         let store = store::RoomStore::open(&db_path).expect("failed to open room database");
         store
-            .schedule_unscheduled(room::now_ms())
+            .mark_vacant(room::now_ms())
             .await
-            .expect("failed to schedule room cleanup");
+            .expect("failed to mark rooms vacant");
         let state = Arc::new(ServerState {
             rooms: room::RoomManager::new(store),
             public_origin: std::env::var("TANTRIX_PUBLIC_ORIGIN")
