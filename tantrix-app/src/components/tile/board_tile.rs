@@ -18,8 +18,9 @@ pub enum BoardTileVariant {
 /// [`hex_position_style`] using the tile's axial coordinates.
 ///
 /// `highlight_colors`: the scoring paths through the tile, `just_placed` for
-/// the last move's placement animation, and `dimmed` once the game is over;
-/// the tiles layer works all three out once for every tile. Reads no state.
+/// the last move (its placement animation, then its marker until the next
+/// move), and `dimmed` once the game is over; the tiles layer works all
+/// three out once for every tile. Reads no state.
 #[component]
 pub fn BoardTile(
     placement: Placement,

@@ -158,7 +158,8 @@ pub struct UiState {
     /// The most recently drawn replacement tile: (player color, hand index).
     /// Used to animate only the new tile entering the hand.
     pub new_tile: Option<(Color, usize)>,
-    /// Position of the most recently placed tile on the board (for placement animation).
+    /// Position of the most recently placed tile on the board: it is animated
+    /// in and stays marked until the next move.
     pub last_placed_position: Option<Position>,
 
     // --- Scoring overlay (persistent click-to-lock) ---

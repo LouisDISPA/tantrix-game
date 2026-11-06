@@ -7,8 +7,8 @@ use crate::state::game_state::GameCtx;
 use crate::state::ui_state::UiStateStoreExt;
 use crate::svg::geometry::HEX_SIZE;
 
-/// Renders every placed move on the board with optional just-placed animation
-/// and scoring-path highlighting. The scoring overlay and the last placed
+/// Renders every placed move on the board, the last one animated in and
+/// marked until the next, with scoring-path highlighting. The scoring overlay and the last placed
 /// position are worked out once here for the whole board; each tile gets
 /// only its own colors and just-placed flag, and `dimmed` once the game is
 /// over, so a tile re-renders only when one of those changes.

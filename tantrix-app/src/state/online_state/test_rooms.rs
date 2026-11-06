@@ -4,6 +4,8 @@
 use tantrix_game::{Board, Color, EnumMap, TurnStep};
 use tantrix_proto::{GameSnapshot, LobbyState, Participant, ParticipantRole, PeerId, Seat};
 
+use crate::state::game_state::GameState;
+
 /// A seated player: their color, nickname and whether they are connected.
 pub type Sitter = (Color, &'static str, bool);
 
@@ -63,5 +65,20 @@ pub fn snapshot(seated: &[Sitter], watching: &[&str]) -> GameSnapshot {
         playing_colors: seated.iter().map(|&(color, _, _)| color).collect(),
         seats: seats(seated),
         participants: participants(seated, watching),
+    }
+}
+
+/// What a room would send for `game` (watched: no seats).
+pub fn snapshot_of(game: &GameState) -> GameSnapshot {
+    GameSnapshot {
+        match_id: 0,
+        board: game.board().clone(),
+        hands: EnumMap::from_fn(|color| game.hand(color).clone()),
+        bag_count: game.bag_count(),
+        current_player: game.current_player(),
+        turn_step: game.turn_step(),
+        playing_colors: game.playing_colors().to_vec(),
+        seats: EnumMap::default(),
+        participants: Vec::new(),
     }
 }

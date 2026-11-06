@@ -106,6 +106,15 @@
     cursor: default;
   }
 
+  /* The last move stays marked until the next one lands: its tile is lifted
+    from the others' black. The fill sits under the paths, so none of their
+    colours is covered, and it is no animation: reduced motion keeps it. */
+  .hex-tile.just-placed .hex-tile-fill {
+    fill: var(--last-move-fill);
+    stroke: var(--last-move-edge);
+    stroke-width: 1.2;
+  }
+
   .hex-curve-red {
     stroke: var(--color-red);
   }

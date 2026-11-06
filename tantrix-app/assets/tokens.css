@@ -231,6 +231,18 @@
       var(--btn-secondary-bg)
     );
     --focus-ring: var(--color-blue);
+    /* The last move's tile: the tiles' black lifted towards a neutral
+      light, so it stands out with no line or colour over its paths. */
+    --last-move-fill: color-mix(
+      in oklch,
+      var(--tile-fill),
+      oklch(0.96 0 0) 22%
+    );
+    --last-move-edge: color-mix(
+      in oklch,
+      var(--tile-fill),
+      oklch(0.96 0 0) 50%
+    );
     --brand-gradient: linear-gradient(
       90deg in oklch,
       var(--color-red),

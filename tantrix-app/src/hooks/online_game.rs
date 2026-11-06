@@ -10,7 +10,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-use tantrix_game::{Color, EnumMap};
+use tantrix_game::{Board, Color, EnumMap, Position};
 use tantrix_proto::{GameSnapshot, Seat};
 
 use crate::hooks::camera::BoardCamera;
@@ -71,6 +71,18 @@ fn same_position(a: &GameState, b: &GameState) -> bool {
         && a.bag_count() == b.bag_count()
 }
 
+/// Where the one tile that `next` adds to `prev` is, when that tile is all
+/// that changed between the two boards.
+fn added_tile(prev: &Board, next: &Board) -> Option<Position> {
+    if next.len() != prev.len() + 1 {
+        return None;
+    }
+    // One more tile and only one new position: every other tile stayed.
+    let mut added = next.iter().filter(|m| prev.is_available(&m.position));
+    let tile = added.next()?;
+    added.next().is_none().then_some(tile.position)
+}
+
 /// The Playing/Ended snapshot in `phase`, if any.
 fn snapshot_in(phase: &OnlinePhase) -> Option<&GameSnapshot> {
     match phase {
@@ -103,6 +115,12 @@ fn fan_out_snapshots(
 
         let game = GameState::from_snapshot(snapshot);
         let placed: Vec<_> = game.board().iter().map(|m| m.position).collect();
+        // The tile placed last: the move the room reports, or else the one
+        // tile the snapshot adds (the game-ending move comes with the final
+        // snapshot and no move).
+        let last_placed = last_move
+            .map(|m| m.position)
+            .or_else(|| added_tile(game_state.peek().board(), game.board()));
         // A snapshot that changes nothing about the game (someone joined or
         // left the room) must not close the card the player is choosing from.
         let seat = queries::my_color_of(state);
@@ -120,12 +138,14 @@ fn fan_out_snapshots(
             if !unchanged {
                 ui_state.reset_selection();
             }
-            if let Some(m) = last_move {
-                set_if_changed(ui_state.last_placed_position(), Some(m.position));
+            if last_move.is_some() {
                 // The camera follows a move that arrives, as it does one
                 // played here.
                 BoardCamera::new(ui_state).frame_board(&placed);
             }
+        }
+        if let Some(at) = last_placed {
+            set_if_changed(ui_state.last_placed_position(), Some(at));
         }
     });
 }
@@ -149,10 +169,11 @@ fn names_from_seats(seats: &EnumMap<Color, Option<Seat>>) -> EnumMap<Color, Opti
 #[cfg(test)]
 mod tests {
     use tantrix_game::Color::{self, Blue, Green, Red, Yellow};
+    use tantrix_game::{Board, Direction, Move, Position};
     use tantrix_proto::EndReason;
 
-    use super::{names_from_seats, same_position, snapshot_in};
-    use crate::state::online_state::test_rooms::{lobby, snapshot};
+    use super::{added_tile, names_from_seats, same_position, snapshot_in};
+    use crate::state::online_state::test_rooms::{lobby, snapshot, snapshot_of};
     use crate::state::online_state::{FailureReason, OnlinePhase};
     use crate::state::test_games::seeded;
 
@@ -165,6 +186,125 @@ mod tests {
         let m = after.legal_moves()[0];
         after.play_move(m.placement()).unwrap();
         assert!(!same_position(&before, &after));
+    }
+
+    #[test]
+    fn the_one_tile_a_snapshot_adds_is_the_last_placed() {
+        let mut game = seeded(3);
+        let empty = game.board().clone();
+        let first = game.legal_moves()[0];
+        game.play_move(first.placement()).unwrap();
+        let one = game.board().clone();
+        assert_eq!(added_tile(&empty, &one), Some(first.position));
+
+        // The same board (someone joined), or a tile fewer: nothing added.
+        assert_eq!(added_tile(&one, &one), None);
+        assert_eq!(added_tile(&one, &empty), None);
+        // Two tiles more: no telling which came last.
+        game.skip_stuck_players();
+        let second = game.legal_moves()[0];
+        game.play_move(second.placement()).unwrap();
+        assert_eq!(added_tile(&empty, game.board()), None);
+        // A tile more, but the first one gone (another match): two tiles,
+        // neither in the middle.
+        let far = Position::CENTER
+            .neighbor(Direction::Left)
+            .neighbor(Direction::Left);
+        let mut other = Board::default();
+        for at in [second.position, far] {
+            other
+                .insert_move(Move {
+                    position: at,
+                    ..first
+                })
+                .unwrap();
+        }
+        assert_eq!(added_tile(&one, &other), None);
+    }
+
+    #[test]
+    fn the_rooms_moves_are_marked_up_to_the_game_ending_one() {
+        use dioxus::prelude::*;
+        use tantrix_proto::GameSnapshot;
+
+        use crate::state::game_state::{GameCtx, GameState};
+        use crate::state::online_state::{ConnectionStatus, OnlineState, OnlineStateStoreExt};
+        use crate::state::ui_state::UiStateStoreExt;
+        use crate::util::test_page::settle;
+
+        fn room(snapshot: GameSnapshot) -> Element {
+            let state = use_store(move || {
+                let mut state = OnlineState::new("ABCDEF".into());
+                state.connection = ConnectionStatus::Connected;
+                state.phase = OnlinePhase::Playing {
+                    snapshot,
+                    last_move: None,
+                };
+                state
+            });
+            use_context_provider(|| state);
+            let sender = use_signal(|| None);
+            super::use_online_game_ctx(state, sender);
+            rsx! {}
+        }
+        fn play(game: &mut GameState) -> Move {
+            game.skip_stuck_players();
+            let m = game.legal_moves()[0];
+            game.play_move(m.placement()).unwrap();
+            m
+        }
+        fn receive(dom: &mut VirtualDom, phase: OnlinePhase) {
+            dom.in_scope(ScopeId::APP, || {
+                consume_context::<Store<OnlineState>>().phase().set(phase);
+            });
+            settle(dom);
+        }
+        fn marked(dom: &VirtualDom) -> Option<Position> {
+            dom.in_scope(ScopeId::APP, || {
+                *consume_context::<GameCtx>()
+                    .ui_state
+                    .last_placed_position()
+                    .peek()
+            })
+        }
+
+        let mut game = seeded(3);
+        let mut dom = VirtualDom::new_with_props(room, snapshot_of(&game));
+        dom.rebuild_in_place();
+        settle(&mut dom);
+        assert_eq!(marked(&dom), None);
+
+        let first = play(&mut game);
+        let after_first = snapshot_of(&game);
+        receive(
+            &mut dom,
+            OnlinePhase::Playing {
+                snapshot: after_first.clone(),
+                last_move: Some(first),
+            },
+        );
+        assert_eq!(marked(&dom), Some(first.position));
+
+        // Someone joins: the same game again, with no move. The mark stays.
+        receive(
+            &mut dom,
+            OnlinePhase::Playing {
+                snapshot: after_first,
+                last_move: None,
+            },
+        );
+        assert_eq!(marked(&dom), Some(first.position));
+
+        // The game-ending move comes with the final snapshot alone.
+        let last = play(&mut game);
+        receive(
+            &mut dom,
+            OnlinePhase::Ended {
+                reason: EndReason::Completed { winners: vec![Red] },
+                snapshot: snapshot_of(&game),
+            },
+        );
+        assert_eq!(marked(&dom), Some(last.position));
     }
 
     #[test]
