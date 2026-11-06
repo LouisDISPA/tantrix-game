@@ -39,6 +39,7 @@ impl Bag {
         }
     }
 
+    #[must_use = "a drawn tile leaves the bag"]
     pub fn draw(&mut self) -> Option<Tile> {
         self.tiles.pop()
     }

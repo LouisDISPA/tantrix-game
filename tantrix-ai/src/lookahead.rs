@@ -74,7 +74,9 @@ impl LookaheadAi {
         let pool = TileSet::off(&board);
         let mut hands = view.hands.clone();
         // Played without drawing: the draw is unknown.
-        hands[me].play_tile(m.tile, &mut Bag::with_count(0));
+        hands[me]
+            .play_tile(m.tile, &mut Bag::with_count(0))
+            .expect("a legal move's tile is in hand");
         let hand_sets = {
             let mut sets = hand_sets(view);
             sets[me] = sets[me].without(m.tile);

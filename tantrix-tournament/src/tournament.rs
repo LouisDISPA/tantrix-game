@@ -469,7 +469,7 @@ mod tests {
                 seed,
             )
             .unwrap();
-            game.advance();
+            game.advance().unwrap();
             assert_eq!(played.game.history(), game.history(), "seed {seed}");
         }
     }

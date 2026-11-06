@@ -35,8 +35,11 @@ applies after the bag empties; only the three restrictions lift.
 
 `Game::play_move(Placement)` checks the held tile and legal moves, derives
 `forced`, draws replacements and advances the turn when appropriate. It
-returns `PlayedMove`, or `MoveError::TileNotInHand` / `InvalidMove`.
-`Board::insert_move` only checks occupancy; it is not a legal-play API.
+returns `PlayedMove`, or a `MoveError` (`TileNotInHand`, `NoLegalMoves`,
+`InvalidMove`) and leaves the game unchanged. `Board::insert_move` only
+checks room (`BoardError::PositionTaken` / `Full`); it is not a legal-play
+API. Caller mistakes return these errors rather than panicking, and queries
+such as `status`, `legal_moves` and `possible_moves` are `#[must_use]`.
 
 `Game::status()` is the one answer to whether a game goes on:
 `GameStatus::Playing` (someone can move, perhaps after stuck players pass),
@@ -45,9 +48,10 @@ It is read-only, and skipping stuck players never changes it.
 `Game::skip_stuck_players` passes the turn to the next player who can move,
 recording a `Skipped` event per player passed; on a finished or stalled game
 it does nothing and records nothing. `Game::advance` also plays AI turns
-until a human can move or the game stops playing. The app, TUI, tournament,
-room engine and MonteCarlo playouts skip, then end the game once `status()`
-is not `Playing`; only explicit endings are theirs to handle.
+until a human can move or the game stops playing; an AI move the game
+refuses stops it with that `MoveError`, the AI still to play. The app, TUI,
+tournament, room engine and MonteCarlo playouts skip, then end the game once
+`status()` is not `Playing`; only explicit endings are theirs to handle.
 
 ## Scoring
 
@@ -76,6 +80,9 @@ play hardly reaches.
 | `Played` | Previous player/turn step, legal `Move`, hand index, drawn tiles in order |
 | `Skipped` | Previous player/turn step |
 | `Retired` | Removed color |
+
+`Game::retire_color` removes a seat mid-game; it refuses a color that is not
+playing or is the last one (`RetireError::NotPlaying` / `LastPlayer`).
 
 `Game::undo` reverts one event, including bag, hand and turn state. It
 returns `None` for empty history or a final retirement, whose hand was lost.

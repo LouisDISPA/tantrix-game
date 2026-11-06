@@ -81,7 +81,7 @@ mod tests {
                     7,
                 )
                 .unwrap();
-                game.advance();
+                game.advance().unwrap();
                 game.history().to_vec()
             };
             assert_eq!(play(), play(), "{}", ai.name());

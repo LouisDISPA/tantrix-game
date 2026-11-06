@@ -5,7 +5,7 @@ use std::ops::Deref;
 use arrayvec::ArrayVec;
 use serde::{Deserialize, Serialize};
 
-use crate::{Bag, Tile};
+use crate::{Bag, MoveError, Tile};
 
 pub const TILES_IN_HAND: usize = 6;
 
@@ -21,13 +21,18 @@ pub struct Hand {
 impl Hand {
     /// Remove a tile from hand and draw a replacement from the bag.
     /// Returns the index where the tile was removed, and the tiles drawn in
-    /// draw order (they fill the hand from that index on).
-    pub fn play_tile(&mut self, tile: Tile, bag: &mut Bag) -> (usize, DrawnTiles) {
+    /// draw order (they fill the hand from that index on), or
+    /// [`MoveError::TileNotInHand`], leaving hand and bag as they were.
+    pub fn play_tile(
+        &mut self,
+        tile: Tile,
+        bag: &mut Bag,
+    ) -> Result<(usize, DrawnTiles), MoveError> {
         let index = self
             .tiles
             .iter()
             .position(|t| *t == tile)
-            .expect("Can't play tile not in hand");
+            .ok_or(MoveError::TileNotInHand)?;
         self.tiles.remove(index);
         // Draw replacements to fill back up
         let to_draw = TILES_IN_HAND - self.tiles.len();
@@ -38,7 +43,7 @@ impl Hand {
             self.tiles.insert(idx, new_tile);
             drawn.push(new_tile);
         }
-        (index, drawn)
+        Ok((index, drawn))
     }
 
     /// Undo [`Self::play_tile`]: put the `drawn` tiles back on top of the
@@ -68,5 +73,27 @@ impl Deref for Hand {
 
     fn deref(&self) -> &Self::Target {
         &self.tiles
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Bag, Hand, MoveError, Tile, TILES_IN_HAND};
+
+    #[test]
+    fn play_tile_refuses_a_tile_not_in_hand() {
+        let mut bag = Bag::from_tiles(enum_iterator::all::<Tile>());
+        let mut hand = Hand::default();
+        hand.deal(&mut bag, TILES_IN_HAND);
+        // Still in the bag, so not in the hand.
+        let missing = bag.tiles()[0];
+        let (hand_before, bag_before) = (hand.clone(), bag.tiles().to_vec());
+
+        assert_eq!(
+            hand.play_tile(missing, &mut bag),
+            Err(MoveError::TileNotInHand)
+        );
+        assert_eq!(hand, hand_before);
+        assert_eq!(bag.tiles(), bag_before);
     }
 }
