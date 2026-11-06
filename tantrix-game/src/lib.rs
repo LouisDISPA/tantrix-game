@@ -13,7 +13,7 @@
 //! | `bag`, `hand` | [`Bag`], [`Hand`] |
 //! | `turn` | [`TurnTracker`], [`TurnStep`] |
 //! | `player` | [`Player`], [`TantrixAi`], [`AiView`] |
-//! | `game` | [`Game`], [`GameData`]: the single source of truth for a game |
+//! | `game` | [`Game`], [`GameData`], [`GameStatus`]: the single source of truth for a game |
 //! | `history` | [`TurnEvent`]: the recorded moves and skips, for undo and replay |
 //! | `error` | [`MoveError`], [`SetupError`], [`EventError`], [`ReplayError`] |
 
@@ -41,7 +41,7 @@ pub use coordinate_system::*;
 pub use edges::Edges;
 pub use enum_map::EnumMap;
 pub use error::{EventError, MoveError, ReplayError, SetupError};
-pub use game::{Game, GameData};
+pub use game::{Game, GameData, GameStatus};
 pub use hand::{DrawnTiles, Hand, TILES_IN_HAND};
 pub use history::TurnEvent;
 pub use moves::{Move, Placement, PlayedMove, TileMoveInfo};

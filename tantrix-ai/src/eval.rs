@@ -164,7 +164,7 @@ impl Evaluator<'_> {
 #[cfg(test)]
 mod tests {
     use enum_map::EnumMap;
-    use tantrix_game::{Color, Game, Player};
+    use tantrix_game::{Color, Game, GameStatus, Player};
 
     use super::{Evaluator, Weights};
     use crate::tile_set::TileSet;
@@ -188,9 +188,10 @@ mod tests {
         )
         .unwrap();
         for _ in 0..30 {
-            if game.skip_stuck_players() || game.is_game_over() {
+            if game.status() != GameStatus::Playing {
                 break;
             }
+            game.skip_stuck_players();
             let m = game.legal_moves()[0];
             game.play_move(m.placement()).unwrap();
 

@@ -1,7 +1,7 @@
 use enum_map::EnumMap;
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::{Rng, RngExt, SeedableRng};
-use tantrix_game::{AiView, Color, Game, Move, PlayerScore, TantrixAi};
+use tantrix_game::{AiView, Color, Game, GameStatus, Move, PlayerScore, TantrixAi};
 
 use crate::eval::Weights;
 use crate::heuristic::ranked_moves;
@@ -84,7 +84,8 @@ fn play_out<R: Rng>(
     mut scores: EnumMap<Color, PlayerScore>,
     rng: &mut R,
 ) -> EnumMap<Color, PlayerScore> {
-    while !game.skip_stuck_players() && !game.is_game_over() {
+    while game.status() == GameStatus::Playing {
+        game.skip_stuck_players();
         let (m, after) = greedy_move(game, &scores, rng);
         scores = after;
         game.play_move(m.placement())

@@ -4,7 +4,7 @@
 use rand::rngs::Xoshiro256PlusPlus;
 use rand::{Rng, SeedableRng};
 
-use crate::{Game, Player};
+use crate::{Game, GameStatus, Player};
 
 /// Plays `games` seeded games of two to four players, each move picked at
 /// random (seeded) among the legal ones, and calls `visit` on every state
@@ -22,13 +22,11 @@ pub(crate) fn for_each_seeded_state(games: u64, mut visit: impl FnMut(&Game)) {
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
         loop {
             visit(&game);
-            if game.is_game_over() {
+            if game.status() != GameStatus::Playing {
                 break;
             }
             if game.legal_moves().is_empty() {
-                if game.skip_stuck_players() {
-                    break;
-                }
+                game.skip_stuck_players();
                 continue;
             }
             let moves = game.legal_moves();

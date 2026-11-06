@@ -16,7 +16,7 @@
 //! the AI loop in its own stable scope.
 
 use dioxus::prelude::*;
-use tantrix_game::{Color, Placement, Player, Position, Rotation, TileMoveInfo};
+use tantrix_game::{Color, GameStatus, Placement, Player, Position, Rotation, TileMoveInfo};
 
 use crate::hooks::camera::BoardCamera;
 use crate::state::config::GameConfig;
@@ -269,8 +269,8 @@ pub fn advance_turn(ctx: GameCtx) {
     }
     let mut game_state = ctx.game_state;
 
-    // Only a stuck player changes the game: otherwise leave the signal
-    // (and everything that reads it) alone.
+    // Only a stuck player changes the game: otherwise (someone can move,
+    // or nobody can) leave the signal and everything that reads it alone.
     let stuck = game_state.read().is_stuck();
     if stuck {
         game_state.write().skip_stuck_players();
@@ -296,16 +296,17 @@ fn ai_to_play(gs: &GameState) -> bool {
 fn settle_turn(ctx: GameCtx) {
     let mut ui_state = ctx.ui_state;
 
-    let (is_over, has_forced, has_moves) = {
+    let (status, has_forced) = {
         let gs = ctx.game_state.read();
         (
-            gs.is_game_over(),
+            gs.status(),
             gs.hand_info().iter().any(|info| info.has_forced),
-            gs.hand_info().iter().any(|info| info.has_moves()),
         )
     };
 
-    if is_over || !has_moves {
+    // Finished or stalled; otherwise the stuck players were skipped, so the
+    // current player can move.
+    if status != GameStatus::Playing {
         set_if_changed(ui_state.phase(), TurnPhase::GameOver);
         set_if_changed(ui_state.message(), "Game Over!".to_string());
         set_if_changed(ui_state.new_tile(), None);
