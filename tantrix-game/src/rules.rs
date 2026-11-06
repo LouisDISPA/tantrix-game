@@ -47,10 +47,15 @@ impl Board {
         false
     }
 
-    /// Returns all contour positions that lie on a "controlled side" of a forced space.
-    /// For each forced position, finds boundary directions (empty dirs adjacent to occupied
-    /// dirs) and traces straight-line rays outward. A ray continues while the position is
-    /// on the contour and is not itself forced.
+    /// Returns the contour positions where no tile may go while the bag has
+    /// tiles, because of a forced space:
+    ///
+    /// - Rule 2: every empty neighbor of a forced space, forced spaces
+    ///   included. A tile there would be the forced space's fourth neighbor,
+    ///   even one filling another forced space.
+    /// - Rule 3: the controlled sides. From each empty direction next to an
+    ///   occupied one, a straight ray runs outward while the position is on
+    ///   the contour and is not itself forced.
     pub fn controlled_positions(
         &self,
         contour_positions: &BTreeSet<Position>,
@@ -70,15 +75,23 @@ impl Board {
                 }
             }
 
-            // Find ray directions: empty directions adjacent to an occupied direction
-            for d in 0..6 {
-                if !occupied[d] && (occupied[(d + 5) % 6] || occupied[(d + 1) % 6]) {
-                    let dir = Direction::from(d as i8);
-                    let mut p = pos.neighbor(dir);
-                    while contour_positions.contains(&p) && !self.position_is_forced(&p) {
-                        controlled.insert(p);
-                        p = p.neighbor(dir);
-                    }
+            for d in (0..6).filter(|&d| !occupied[d]) {
+                let dir = Direction::from(d as i8);
+                let neighbor = pos.neighbor(dir);
+                if !contour_positions.contains(&neighbor) {
+                    continue;
+                }
+                controlled.insert(neighbor);
+                // A controlled side: an empty direction next to an occupied one.
+                if self.position_is_forced(&neighbor)
+                    || !(occupied[(d + 5) % 6] || occupied[(d + 1) % 6])
+                {
+                    continue;
+                }
+                let mut p = neighbor.neighbor(dir);
+                while contour_positions.contains(&p) && !self.position_is_forced(&p) {
+                    controlled.insert(p);
+                    p = p.neighbor(dir);
                 }
             }
         }
@@ -88,8 +101,9 @@ impl Board {
 
     /// Compute all valid moves for tiles in the given hand at `step` of the turn.
     /// Forced spaces must be filled first whenever a tile fits, including
-    /// after the bag empties. Restriction rules (controlled sides and
-    /// same-color triples) apply only while the bag has tiles.
+    /// after the bag empties. Restriction rules (no fourth neighbor around a
+    /// forced space, controlled sides and same-color triples) apply only
+    /// while the bag has tiles.
     ///
     /// Moves come tile by tile in hand order, then by position, then by
     /// rotation. The placements are the same as checking every tile, contour
@@ -102,11 +116,13 @@ impl Board {
         let restricted = !bag_is_empty;
         let spaces = self.spaces(restricted);
 
-        let forced = moves_into(hand, &spaces, |space| space.forced);
+        // A forced space next to another one is controlled: filling it would
+        // surround the other with a fourth tile.
+        let forced = moves_into(hand, &spaces, |space| space.forced && !space.controlled);
         if !forced.is_empty() || step == TurnStep::AfterFreeMove {
             return forced;
         }
-        // Forced spaces have no move left to offer, and controlled sides
+        // Forced spaces have no move left to offer, and controlled positions
         // take no tile while the restriction rules apply.
         moves_into(hand, &spaces, |space| !space.forced && !space.controlled)
     }
@@ -239,8 +255,9 @@ struct Space {
     edges: Edges,
     /// Three or more neighbors while the bag has tiles: must be filled first.
     forced: bool,
-    /// On a controlled side of a forced space ([`Board::controlled_positions`]).
-    /// Only worked out while the restriction rules apply.
+    /// Next to a forced space or on one of its controlled sides
+    /// ([`Board::controlled_positions`]): no tile may go here, not even to
+    /// fill it. Only worked out while the restriction rules apply.
     controlled: bool,
     /// By direction, the color a tile placed here must not show that way: the
     /// neighboring space has two or more neighbors already, all showing it
@@ -296,21 +313,27 @@ impl Space {
     }
 }
 
-/// Which `spaces` (numbered in `grid`) lie on a controlled side of a forced
-/// space, by the rays of [`Board::controlled_positions`].
+/// Which `spaces` (numbered in `grid`) are [`Board::controlled_positions`]:
+/// next to a forced space, or on a ray along one of its controlled sides.
 fn controlled_spaces(spaces: &[Space], grid: &Grid) -> Vec<bool> {
     let mut controlled = vec![false; spaces.len()];
     for space in spaces.iter().filter(|space| space.forced) {
         let occupied: [bool; 6] =
             std::array::from_fn(|d| space.edges.get(Direction::from(d as i8)).is_some());
-        for d in 0..6 {
-            if !occupied[d] && (occupied[(d + 5) % 6] || occupied[(d + 1) % 6]) {
-                let dir = Direction::from(d as i8);
-                let mut p = space.position.neighbor(dir);
-                while let Some(i) = grid.space(p).filter(|&i| !spaces[i].forced) {
-                    controlled[i] = true;
-                    p = p.neighbor(dir);
-                }
+        for d in (0..6).filter(|&d| !occupied[d]) {
+            let dir = Direction::from(d as i8);
+            let neighbor = space.position.neighbor(dir);
+            let Some(i) = grid.space(neighbor) else {
+                continue;
+            };
+            controlled[i] = true;
+            if spaces[i].forced || !(occupied[(d + 5) % 6] || occupied[(d + 1) % 6]) {
+                continue;
+            }
+            let mut p = neighbor.neighbor(dir);
+            while let Some(i) = grid.space(p).filter(|&i| !spaces[i].forced) {
+                controlled[i] = true;
+                p = p.neighbor(dir);
             }
         }
     }
@@ -341,12 +364,17 @@ fn moves_into(hand: &Hand, spaces: &[Space], include: impl Fn(&Space) -> bool) -
 
 #[cfg(test)]
 mod tests {
-    use crate::test_games::for_each_seeded_state;
-    use crate::{Board, Color, Direction, Edges, Hand, Move, Position, Rotation, Tile, TurnStep};
+    use std::collections::HashMap;
+
+    use crate::test_games::{for_each_seeded_state, for_each_seeded_state_after};
+    use crate::{
+        Bag, Board, Color, Direction, Edges, Game, Hand, Move, Position, Rotation, Tile, TurnStep,
+    };
 
     /// [`Board::possible_moves`] move by move, straight from the rules:
-    /// every tile, contour position and rotation, then the restriction
-    /// rules, then the forced-move priority.
+    /// every tile, contour position and rotation, minus the positions a
+    /// forced space controls (no fourth neighbor, no controlled sides), then
+    /// no same-color triple, then the forced-move priority.
     fn possible_moves_one_by_one(
         board: &Board,
         hand: &Hand,
@@ -374,6 +402,118 @@ mod tests {
             moves.retain(|m| m.forced);
         }
         moves
+    }
+
+    /// The board's tiles by position.
+    fn tiles_of(board: &Board) -> HashMap<Position, Move> {
+        board.iter().map(|m| (m.position, *m)).collect()
+    }
+
+    /// The rule that playing `m` among `tiles` breaks while the bag has
+    /// tiles, if any, worked out plainly from the tiles around it rather
+    /// than with the move generator's helpers.
+    fn broken_rule(tiles: &HashMap<Position, Move>, m: &Move) -> Option<&'static str> {
+        if tiles.contains_key(&m.position) {
+            return Some("occupied position");
+        }
+        if !tiles.is_empty() && !m.position.around().any(|(p, _)| tiles.contains_key(&p)) {
+            return Some("touches no tile");
+        }
+        for (p, dir) in m.position.around() {
+            if tiles
+                .get(&p)
+                .is_some_and(|t| t.color(dir.opposite()) != m.color(dir))
+            {
+                return Some("golden rule");
+            }
+        }
+        // Only the empty positions around the move gain a neighbor.
+        for (space, _) in m.position.around() {
+            if tiles.contains_key(&space) {
+                continue;
+            }
+            let colors: Vec<Color> = space
+                .around()
+                .filter_map(|(p, dir)| {
+                    let tile = if p == m.position {
+                        Some(m)
+                    } else {
+                        tiles.get(&p)
+                    };
+                    tile.map(|t| t.color(dir.opposite()))
+                })
+                .collect();
+            if colors.len() >= 4 {
+                return Some("fourth neighbor around a forced space");
+            }
+            if colors.len() == 3 && colors.iter().all(|&c| c == colors[0]) {
+                return Some("same-color triple");
+            }
+        }
+        None
+    }
+
+    /// A hand holding only `tile`.
+    fn hand_of(tile: Tile) -> Hand {
+        let mut hand = Hand::default();
+        hand.deal(&mut Bag::from_tiles([tile]), 1);
+        hand
+    }
+
+    /// The tiles not on `board`.
+    fn unplaced(board: &Board) -> impl Iterator<Item = Tile> + '_ {
+        enum_iterator::all::<Tile>().filter(|&tile| board.iter().all(|m| m.tile != tile))
+    }
+
+    /// A board that wraps around a pocket, which random play hardly ever
+    /// does: the restriction rules keep holes from forming.
+    ///
+    /// ```text
+    ///          # #
+    ///         # A
+    ///        # . G
+    ///       # . . #
+    ///      # f . f #
+    ///       # f f #
+    ///        # # #
+    /// ```
+    ///
+    /// A (CENTER) is forced by three tiles in a row: Left, TopLeft and
+    /// TopRight. G, its middle empty side, touches a tile below and lies on
+    /// no controlled side. The four forced spaces `f` at the far end each
+    /// touch another.
+    fn pocket_board() -> Board {
+        let mut board = Board::default();
+        for (x, y, tile, rotation) in [
+            (-1, 0, Tile::RYYBRB, Rotation::None),
+            (-2, -1, Tile::BYYBRR, Rotation::R120),
+            (-3, -2, Tile::YRRBBY, Rotation::R240),
+            (-4, -3, Tile::BYRBRY, Rotation::None),
+            (-4, -4, Tile::RYYRBB, Rotation::R60),
+            (-4, -5, Tile::YRBYBR, Rotation::None),
+            (-3, -5, Tile::RBBYRY, Rotation::R60),
+            (-2, -5, Tile::YBBRYR, Rotation::R240),
+            (-1, -4, Tile::RYBRBY, Rotation::None),
+            (0, -3, Tile::BYYRBR, Rotation::R60),
+            (0, -2, Tile::YRRBYB, Rotation::R60),
+            (0, 1, Tile::BRRYBY, Rotation::None),
+            (1, 1, Tile::YBBYRR, Rotation::None),
+        ] {
+            let m = Move {
+                tile,
+                position: Position::new(x, y),
+                rotation,
+                forced: false,
+            };
+            assert_eq!(broken_rule(&tiles_of(&board), &m), None, "{m:?}");
+            board.insert_move(m).unwrap();
+        }
+        board
+    }
+
+    /// The forced spaces at the pocket's far end ([`pocket_board`]).
+    fn pocket_forced_end() -> [Position; 4] {
+        [(-3, -3), (-3, -4), (-2, -4), (-1, -3)].map(|(x, y)| Position::new(x, y))
     }
 
     #[test]
@@ -407,7 +547,7 @@ mod tests {
     fn possible_moves_match_the_rules_move_by_move() {
         let mut checked = 0;
         let mut forced = 0;
-        for_each_seeded_state(12, |game| {
+        let mut compare = |game: &Game| {
             // Every hand on every board, with and without the restriction
             // rules, at both steps of a turn.
             for &color in game.playing_colors() {
@@ -426,13 +566,46 @@ mod tests {
                     }
                 }
             }
-        });
+        };
+        for_each_seeded_state(12, &mut compare);
+        // A forced space's middle side on the contour, and forced spaces
+        // side by side.
+        for_each_seeded_state_after(&pocket_board(), 4, &mut compare);
         // The games reach forced spaces, not only free moves.
         assert!(
             checked > 5_000 && forced > 500,
             "{checked} checked, {forced} forced"
         );
         println!("{checked} checked, {forced} forced");
+    }
+
+    #[test]
+    fn legal_moves_keep_the_golden_rule_and_restriction_rules() {
+        let mut checked = 0;
+        let mut check = |game: &Game| {
+            if game.bag_is_empty() {
+                return;
+            }
+            let tiles = tiles_of(game.board());
+            // Every hand at both steps of a turn, the legal moves included.
+            for &color in game.playing_colors() {
+                for step in [TurnStep::BeforeFreeMove, TurnStep::AfterFreeMove] {
+                    for m in game.board().possible_moves(game.hand(color), false, step) {
+                        if let Some(rule) = broken_rule(&tiles, &m) {
+                            panic!(
+                                "{rule}: {m:?}, {color:?}, {step:?}, board {:?}",
+                                game.board()
+                            );
+                        }
+                        checked += 1;
+                    }
+                }
+            }
+        };
+        for_each_seeded_state(24, &mut check);
+        // Random play hardly ever wraps around a forced space.
+        for_each_seeded_state_after(&pocket_board(), 8, &mut check);
+        assert!(checked > 50_000, "{checked} checked");
     }
 
     #[test]
@@ -493,52 +666,77 @@ mod tests {
 
     #[test]
     fn rule_no_four_sided_space() {
-        // Place 3 tiles around CENTER, then a 4th that gives CENTER 4 neighbors.
-        let mut board = Board::default();
-        let left = Position::CENTER.neighbor(Direction::Left);
-        let top_left = Position::CENTER.neighbor(Direction::TopLeft);
-        let top_right = Position::CENTER.neighbor(Direction::TopRight);
-        let right = Position::CENTER.neighbor(Direction::Right);
-
-        board
-            .insert_move(Move {
-                tile: Tile::BYYBRR,
-                position: left,
-                rotation: Rotation::None,
-                forced: false,
-            })
-            .unwrap();
-        board
-            .insert_move(Move {
-                tile: Tile::RYYRBB,
-                position: top_left,
-                rotation: Rotation::None,
-                forced: false,
-            })
-            .unwrap();
-        board
-            .insert_move(Move {
-                tile: Tile::RYYBRB,
-                position: top_right,
-                rotation: Rotation::None,
-                forced: false,
-            })
-            .unwrap();
-
+        // Three tiles in a row make CENTER forced; G, its middle empty side,
+        // touches a tile below and lies on no controlled side. A tile there
+        // would still be CENTER's fourth neighbor.
+        let board = pocket_board();
+        let gap = Position::CENTER.neighbor(Direction::BottomRight);
         let contour = board.contour_positions();
-        // Placing at Right would give CENTER a 4th neighbor → illegal (controlled side)
-        let controlled = board.controlled_positions(&contour);
-        assert!(
-            controlled.contains(&right),
-            "right should be on a controlled side (CENTER is forced with 3 neighbors)"
-        );
+        assert!(board.position_is_forced(&Position::CENTER));
+        assert!(contour.contains(&gap) && !board.position_is_forced(&gap));
 
-        // Placing far away from CENTER should be fine
-        let far = left.neighbor(Direction::Left).neighbor(Direction::Left);
-        assert!(
-            !controlled.contains(&far),
-            "far position should not be on a controlled side"
-        );
+        let controlled = board.controlled_positions(&contour);
+        for dir in [
+            Direction::Right,
+            Direction::BottomRight,
+            Direction::BottomLeft,
+        ] {
+            let side = Position::CENTER.neighbor(dir);
+            assert!(
+                controlled.contains(&side),
+                "{dir:?} of CENTER is not controlled"
+            );
+        }
+        for tile in unplaced(&board) {
+            let moves = board.possible_moves(&hand_of(tile), false, TurnStep::BeforeFreeMove);
+            assert!(
+                moves.iter().all(|m| m.position != gap),
+                "{tile:?} may surround CENTER with a fourth tile"
+            );
+        }
+        // Once the bag is empty, a tile may go there.
+        assert!(unplaced(&board).any(|tile| board
+            .possible_moves(&hand_of(tile), true, TurnStep::BeforeFreeMove)
+            .iter()
+            .any(|m| m.position == gap)));
+    }
+
+    #[test]
+    fn rule_no_four_sided_space_when_filling() {
+        // Filling a forced space next to another one would surround the
+        // other with a fourth tile, so neither may be filled while the bag
+        // has tiles. CENTER, next to no other forced space, may.
+        let board = pocket_board();
+        let contour = board.contour_positions();
+        let controlled = board.controlled_positions(&contour);
+        for space in pocket_forced_end() {
+            assert!(board.position_is_forced(&space), "{space:?}");
+            assert!(controlled.contains(&space), "{space:?} is not controlled");
+        }
+        assert!(!controlled.contains(&Position::CENTER));
+
+        let mut fills_center = 0;
+        for tile in unplaced(&board) {
+            let moves = board.possible_moves(&hand_of(tile), false, TurnStep::BeforeFreeMove);
+            assert!(
+                moves
+                    .iter()
+                    .all(|m| !pocket_forced_end().contains(&m.position)),
+                "{tile:?} may surround a forced space with a fourth tile"
+            );
+            if moves.iter().any(|m| m.position == Position::CENTER) {
+                assert!(moves
+                    .iter()
+                    .all(|m| m.forced && m.position == Position::CENTER));
+                fills_center += 1;
+            }
+        }
+        assert!(fills_center > 0);
+        // Once the bag is empty, they must be filled first.
+        assert!(unplaced(&board).any(|tile| board
+            .possible_moves(&hand_of(tile), true, TurnStep::BeforeFreeMove)
+            .iter()
+            .any(|m| m.forced && pocket_forced_end().contains(&m.position))));
     }
 
     #[test]
@@ -590,6 +788,13 @@ mod tests {
         assert!(
             !controlled.contains(&Position::CENTER),
             "filling the forced space itself should be allowed"
+        );
+
+        // Placing far away from CENTER should be fine
+        let far = left.neighbor(Direction::Left).neighbor(Direction::Left);
+        assert!(
+            !controlled.contains(&far),
+            "far position should not be on a controlled side"
         );
     }
 }

@@ -26,7 +26,8 @@ All paths below are under `tantrix-game/src/`.
 - **Golden rule:** touching edges match colors.
 - **Forced priority:** fill a space with 3+ neighbors whenever possible.
 - **While the bag has tiles:** no same-color triples, fourth neighbor around
-  a forced space, or controlled-side plays.
+  a forced space (not even by filling a forced space beside it), or
+  controlled-side plays.
 
 A turn fills forced spaces, plays one free move, then fills forced spaces
 again (`TurnStep::BeforeFreeMove` / `AfterFreeMove`). Forced priority still
@@ -63,7 +64,10 @@ best line or loop. `Game::winners` returns all active colors tied for first;
 
 Legal-move generation also builds one `Grid` per pass and matches rotations
 with packed `Edges` (two bits per direction). Reference move-by-move rules
-remain tested against the optimized pass, including move order.
+remain tested against the optimized pass, including move order. A plain
+check over seeded games confirms every legal move keeps the golden rule and
+the restrictions; some games start from a hand-built pocket, a layout random
+play hardly reaches.
 
 ## History, seeds and persistence
 

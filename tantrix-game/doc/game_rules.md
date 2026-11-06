@@ -33,7 +33,7 @@ A forced space is any empty hex surrounded by 3+ tiles. If a player has a tile t
 These restrictions apply **only while tiles remain in the bag**. All three are lifted the moment the last tile is drawn.
 
 1. **No same-color triple**: Cannot create a forced space where all 3 surrounding links are the same color (no tile could ever fit). Also, if filling a forced space would create an adjacent forced space with 3 same-color links, the original must not be filled.
-2. **No 4-sided spaces**: Cannot surround a forced space with a 4th tile (creating a space bounded by 4 tiles).
+2. **No 4-sided spaces**: Cannot surround a forced space with a 4th tile (creating a space bounded by 4 tiles). No tile may go next to a forced space, not even one filling another forced space beside it.
 3. **No playing along controlled sides**: The two edges adjacent to a forced space are "controlled sides". No tile may be played along a controlled side until the forced space is filled first. Controlled sides are filled in order, outward from the forced space.
 
 ## Endgame

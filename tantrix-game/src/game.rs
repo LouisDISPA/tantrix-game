@@ -603,6 +603,31 @@ impl Game {
     fn clear_legal_moves(&mut self) {
         self.legal_moves = OnceLock::new();
     }
+
+    /// This game with `opening` on the board instead of an empty one, for
+    /// tests that play on from a hand-built position. The opening's tiles
+    /// leave the bag and the hands, which refill from the bag. The seed no
+    /// longer replays the deal, so the game forgets it.
+    #[cfg(test)]
+    pub(crate) fn with_opening(mut self, opening: Board) -> Self {
+        let placed = |tile: &Tile| opening.iter().any(|m| m.tile == *tile);
+        self.bag = Bag::from_tiles(self.bag.tiles().iter().copied().filter(|t| !placed(t)));
+        for &color in self.turn_tracker.playing_colors() {
+            let kept: Vec<Tile> = self.hands[color]
+                .iter()
+                .copied()
+                .filter(|t| !placed(t))
+                .collect();
+            let mut hand = Hand::default();
+            hand.deal(&mut Bag::from_tiles(kept.iter().rev().copied()), kept.len());
+            hand.deal(&mut self.bag, TILES_IN_HAND - kept.len());
+            self.hands[color] = hand;
+        }
+        self.board = opening;
+        self.seed = None;
+        self.clear_legal_moves();
+        self
+    }
 }
 
 impl AiView<'_> {
