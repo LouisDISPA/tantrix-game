@@ -78,18 +78,34 @@ just adds noise.
 
 `UiState` has ~10 fields that change independently: phase, hovered,
 zoom, pan_x, selected_tile, new_tile, highlighted_color, … A pan drag
-writes 3 camera fields. GameHud reads only `phase` and `message`. HandTile
-reads only `selected_tile`/`new_tile`. Field-level subscription saves ~8
-re-renders per drag frame.
+writes 3 camera fields (`pan_x`, `pan_y`, `gesture`) — one at a time, never
+through `ui_state.write()`, which would mark all ten dirty. GameHud
+reads phase and message, HandTile `selected_tile`/`new_tile`: none of them
+wakes during a drag; only the viewport (its transform) re-renders. Writes
+to several fields go through `#[store]` methods that write each field —
+and only when its value changes (`set_if_changed`):
+
+```rust
+#[store(pub)]
+impl<Lens> Store<UiState, Lens> {
+    fn after_move(&mut self, player: Color, tile_idx: usize, at: Position) {
+        set_if_changed(self.pan_x(), 0.0);
+        set_if_changed(self.pan_y(), 0.0);
+        set_if_changed(self.new_tile(), Some((player, tile_idx)));
+        set_if_changed(self.last_placed_position(), Some(at));
+    }
+}
+```
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Store)]
 pub struct UiState { pub phase: TurnPhase, pub zoom: f64, /* … */ }
 ```
 
-`GameState` holds `board`, `bag`, `hands`, `turn_tracker`, `hand_info`.
-Every `play_move` updates nearly all of them. There's no "subscribe to
-just the bag" use case — changes always arrive together.
+`GameState` wraps the core `Game` (board, bag, hands, turn, legal moves)
+plus a `hand_info` cache. Every `play_move` updates nearly all of them.
+There's no "subscribe to just the bag" use case — changes always arrive
+together.
 
 ```rust
 #[derive(Debug, Clone)]    // ← no Store derive
@@ -100,8 +116,8 @@ pub game_state: Signal<GameState>,
 pub ui_state:   Store<UiState>,
 
 // Reads naturally:
-let gs = ctx.game_state.read();    // plain struct field access
-gs.board.len();
+let gs = ctx.game_state.read();    // derefs to the core `Game`
+gs.board().len();
 ctx.ui_state.phase()();            // field-level subscription
 ```
 
@@ -129,40 +145,39 @@ let phase = ui.phase;
 let phase = ui_state.phase()();
 ```
 
-### Lift derived state **into** children, not out to parents
+### Per-child derived state: in the child, or once in the list owner
 
 If a piece of derived state is only used by one child, let that child
-compute it. Don't calculate it in the parent's render loop and drill it
-as a prop.
+memoize it from context — don't drill it through parents that don't care.
+`HandTile` memos its own selected/forced state and just-drawn flag.
+
+For a **list** whose owner already re-renders when the list changes, work
+the per-item values out **once** in the owner and pass them as plain
+props: each child's props are compared, and only the children whose
+values changed re-render. That beats 50+ per-child memos all waking on
+the same change.
 
 ```rust
-// NO — parent computes per-child state
-for m in placed_moves() {
-    let colors = highlight_map.get(&m.position).cloned().unwrap_or_default();
-    let just_placed = last_placed() == Some(m.position);
-    rsx! { BoardTile { m, highlight_colors: colors, just_placed } }
-}
-
-// YES — child memoizes its own state from context
-for m in placed_moves() {
-    rsx! { BoardTile { m } }
-}
-
-#[component]
-fn BoardTile(m: Move) -> Element {
-    let highlights = use_memo(move || {
-        use_highlight_map().read().get(&m.position).cloned().unwrap_or_default()
-    });
-    // …
+// The tiles layer: one highlight map, one last-placed memo, for every tile
+let highlight_map = use_highlight_map();
+let last_placed = use_memo(move || ctx.ui_state.last_placed_position()());
+rsx! {
+    for m in placed_moves.iter() {
+        BoardTile {
+            key: "{m.position.x()},{m.position.y()}",
+            placement: m.placement(),
+            highlight_colors: highlight_map.read().get(&m.position).cloned().unwrap_or_default(),
+            just_placed: last_placed() == Some(m.position),
+            // …
+        }
+    }
 }
 ```
 
-Two wins: smaller parent, and only the affected child re-renders when
-`highlight_map` changes — not the whole loop.
-
-**Don't lift when** the parent already uses the value itself, or when the
-value is cheaper to take from a loop variable than to re-read from context
-in each of 50+ children.
+Keep the keyed component the loop's **direct** child: a
+`{ let …; rsx! { BoardTile { key, … } } }` body wraps each item in an
+unkeyed node, the list is diffed by index, and inserting one tile
+remounts every tile after it.
 
 ### Prop types: plain `T` is the default
 

@@ -65,7 +65,16 @@ the common ancestor; single-consumer derivations stay local.
   Multi-field UI changes use the `#[store]` methods in `state/ui_state.rs`.
 - Never `ui.write()`; whole-store `set(UiState::default())` is for full resets.
 - No state writes during rendering. Release read guards before writes/awaits.
-- No mutable signal props; send callbacks upward.
+- No mutable signal props; send callbacks upward. Organisms may take the backbone
+  (`state: Store<OnlineState>`) as a read-only prop.
+- Don't bind signal values with `let` at the top of a component for later RSX;
+  interpolate inline or memoize.
+- Store field accessors are temporaries: bind in two steps
+  (`let phase = state.phase(); let phase = phase.read();`).
+- A derivation used by several components is a `*_of(Store<T>) -> T` helper
+  beside its state (`state/online_state/queries.rs`); callers wrap it in `use_memo`.
+- Keep one memo per derivation; don't bundle memos into a view struct and hook.
+- An event loop writing shared state writes only the fields its event changes.
 
 ## Turn flow
 

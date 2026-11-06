@@ -14,6 +14,10 @@ pub struct Bag {
 }
 
 impl Bag {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an unseeded bag is shuffled from OS entropy"
+    )]
     pub fn new() -> Self {
         Self::new_with_rng(&mut rand::rng())
     }

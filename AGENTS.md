@@ -80,8 +80,9 @@ Paths below are relative to `tantrix-app/src/`.
 
 ## Required conventions
 
+- Randomness is seeded. `clippy.toml` disallows `rand::rng`/`rand::random*`; the few OS-seeded sites (fresh bags, online deals, unseeded AIs) carry `#[expect(clippy::disallowed_methods, reason)]`.
 - Keep rules in `tantrix-game`; edge matching in `rules.rs`. Touching colors must match. Forced spaces (3+ neighbors) take priority when a hand tile fits. Bag-dependent restrictions: no same-color triples, four-sided spaces or controlled-side plays.
-- Component dependency order: page → organism → molecule → atom. Pages/organisms belong in `pages/`; reusable molecules/atoms in `components/`. Lower tiers never import upper tiers.
+- Component dependency order: page → organism → molecule → atom ([tiers](doc/components.md#tiers)). Pages/organisms belong in `pages/`; reusable molecules/atoms in `components/`, which may read `GameCtx` but never `crate::pages`, `state::online_state` or `SessionCommand` (`components/tier_tests.rs` fails otherwise).
 - Props: plain `T` by default, `ReadSignal<T>` for narrow subscriptions, `EventHandler<T>` for callbacks. No mutable `Signal<T>` props.
 - Read reactive state in the smallest RSX scope or a memo, not at component top. Use `Store` for independently changing fields, `Signal` for atomic data. Write store fields individually or through `#[store]` methods; never `ui_state.write()` or writes during rendering. Use `set_if_changed` for potentially unchanged fields.
 - Put `key` on each RSX loop's direct child; a block returning `rsx!` leaves the list unkeyed. Split components by subscriptions; memoize expensive derivations; avoid cloning large state. Profile before optimizing.
@@ -99,7 +100,7 @@ Keep tests beside code and deterministic: seeded games/fixed data, no timers. Ex
 
 ## Skills
 
-Read the matching `.codex/skills/<name>/SKILL.md` before the work below.
+Read the matching `.codex/skills/<name>/SKILL.md` before the work below. `.claude/skills` links to the same folder; `CLAUDE.md` imports this file.
 
 | Skill | Trigger |
 | --- | --- |

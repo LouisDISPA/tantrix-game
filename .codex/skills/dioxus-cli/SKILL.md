@@ -1,188 +1,142 @@
 ---
 name: dioxus-cli
-description: Dioxus CLI commands, configuration (Dioxus.toml), hot-reload, bundling, and testing. Use when configuring builds, running dev server, or debugging CLI issues.
+description: Dioxus CLI (dx 0.8.0-alpha.3) commands, this project's Dioxus.toml, features, hot-reload, web/Worker builds and desktop/Android packaging with Velopack. Use when configuring builds, running the dev server, packaging, or debugging CLI issues.
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
 # Dioxus CLI & Configuration
 
-## Quick Reference — CLI Commands
+The app crate is `tantrix-app`; its binary is `tantrix`. CI pins
+`DIOXUS_CLI_VERSION: '0.8.0-alpha.3'` (`.github/workflows/release.yml`); keep
+the local `dx` on the same version as the `dioxus` dependency. Run recipes from
+the workspace root; `dx` itself runs from `tantrix-app/` (or with `--package tantrix-app`).
 
-| Command | Description |
+## Quick Reference — Project Commands
+
+| Command | What it runs |
 |---------|-------------|
-| `dx new <path>` | Create new Dioxus project from template |
-| `dx init` | Initialize Dioxus in existing project |
-| `dx serve` | Dev server with hot-reload and file watching |
-| `dx serve --hot-reload` | Explicit hot-reload (usually default) |
-| `dx serve --open` | Open browser automatically |
-| `dx serve --port 3000` | Custom port (default: 8080) |
-| `dx serve --platform web` | Target specific platform |
-| `dx build` | Production build |
-| `dx build --release` | Optimized release build |
-| `dx bundle` | Create platform-specific package |
-| `dx bundle --package-types dmg` | macOS DMG bundle |
-| `dx check` | Check for errors without building |
-| `dx fmt` | Format RSX macros |
-| `dx fmt --check` | Check RSX formatting (CI) |
-| `dx translate` | Convert HTML to RSX syntax |
-| `dx doctor` | Diagnose system setup |
-| `dx self-update` | Update CLI to latest version |
-| `dx run` | Build and run without dev features (CI/CD) |
+| `just dev` | `dx serve --web --fullstack true --features fullstack,devtools --hot-reload true` (port 8080) |
+| `just run` | `dx run --web --fullstack true --features fullstack --release` |
+| `just desktop` | `dx serve --desktop --features desktop,bundle` |
+| `just desktop-bundle-macos` | `dx bundle --release --macos --features desktop,bundle --package-types macos` |
+| `just fmt` | `dx fmt` (RSX formatting) |
+| `just fmt-check` | `cargo fmt --all --check` (what CI checks) |
+| `just lint` / `just test` | Clippy (workspace, `server`, wasm32 `web`) / workspace + server tests |
+| `just worker-e2e` / `just worker-deploy` | Client build + Worker SSR build, then browser tests or `wrangler deploy` |
 
-### `dx serve` Interactive Shortcuts
+Useful raw `dx` commands: `dx check`, `dx doctor`, `dx build --keep-names`
+(for `twiggy top` size work), `dx tools assets` (used by `scripts/build-worker-ssr.sh`).
 
-| Key | Action |
-|-----|--------|
-| `r` | Force rebuild |
-| `p` | Toggle auto-rebuild on file changes |
-| `v` | Toggle verbose output |
-| `/` | Show all available commands |
-| `Ctrl+C` | Exit |
+## Features (`tantrix-app/Cargo.toml`)
 
-## Configuration (`Dioxus.toml`)
+| Feature | Use |
+|---------|-----|
+| `web` | Browser client (`dioxus/web`, timers, fetch) |
+| `server` | Axum + SQLite backend, room sockets |
+| `fullstack` | `dioxus/fullstack`; combine with `web`/`server` through `dx --fullstack` |
+| `devtools` | Hot reload + Dioxus logger for `dx serve`; never in release builds |
+| `desktop` | Native desktop (WebView), native sockets, Velopack updates |
+| `bundle` | Release/desktop packaging switches |
+| `worker` | SSR inside the Cloudflare Worker (`tantrix-worker`) |
+| `android` | Android build: `mobile` WebView UI + native sockets and installer updates |
+| `mobile`, `native`, `liveview` | Renderers (`android` pulls in `mobile`) |
 
-### Application section
+## Configuration (`tantrix-app/Dioxus.toml`)
 
 ```toml
 [application]
-name = "Tantrix"          # App name (required)
-out_dir = "dist"           # Build output directory
-asset_dir = "assets"       # Static assets directory
-```
+name = "Tantrix"
+android_min_sdk_version = 34
+android_main_activity = "android/MainActivity.kt"
 
-### Web configuration
-
-```toml
-[web.app]
-title = "Tantrix"          # HTML <title>
+[android]                  # min 34, target/compile 36
+[web]
+pre_compress = true
 
 [web.watcher]
-watch_path = ["src", "assets"]   # Directories to watch for changes
+reload_html = true
+watch_path = ["src", "assets", "public"]
 
-[web.wasm_opt]
-level = "z"                # WASM optimization: z (size), s (size), 0 (none), 1-4 (speed)
-```
-
-### Dev proxy (avoid CORS in development)
-
-```toml
-[[web.proxy]]
-backend = "http://localhost:3001/api"
-```
-
-### Bundle configuration
-
-```toml
 [bundle]
-identifier = "com.example.tantrix"
-publisher = "Your Name"
-icon = ["icons/icon.png"]
-version = "0.1.0"
+identifier = "io.github.louisdispa.tantrix"
+icon = ["icons/…png", "icons/icon.icns", "icons/icon.ico"]
+
+[bundle.macos]
+bundle_name = "Tantrix"
+
+[bundle.deb]
+depends = ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
 ```
 
-### Platform features
+There is no `out_dir`: release web output lands in
+`target/dx/tantrix/release/web/public` (named after the binary, not
+`target/dx/tantrix-app/...`). Desktop bundles go to `--out-dir bundles`.
 
-In `Cargo.toml`, Dioxus uses feature flags for platform targeting:
+## Production Web Client
 
-```toml
-[features]
-default = []
-web = ["dioxus/web"]
-desktop = ["dioxus/desktop"]
-mobile = ["dioxus/mobile"]
-native = ["dioxus/native"]
-```
+`worker-client-build` (justfile) builds the browser client with `@client` /
+`@server` argument groups: the client rebuilds std (`-Zbuild-std`) with
+`-Cpanic=immediate-abort` and `-Zlocation-detail=none`; the server half uses the
+stock toolchain. Panics abort silently in the browser.
 
-Build for specific platform: `dx build --features web`
+- Keep dx symbols: hydration needs them. Don't strip symbols or debug info.
+- Never add `-Zfmt-debug=none` — `Color`'s `Display`, keys and `data-*`
+  attributes go through `Debug`.
+- Measure Wasm with `twiggy top` on a `dx build --keep-names` copy.
 
 ## Hot-Reload
 
-Hot-reload updates the UI without full rebuilds:
-- **RSX changes** — instant update (no recompile)
-- **Rust logic changes** — triggers recompile + reload
-- **CSS changes** — instant if watched
+`just dev` serves with `--hot-reload true` and the `devtools` feature. RSX and
+CSS changes patch in place; Rust logic changes rebuild. `public/` is watched, so
+manifest/icon edits reload too.
 
-Ensure `Dioxus.toml` watches the right paths:
-```toml
-[web.watcher]
-watch_path = ["src", "assets"]
-```
+## Packaging
 
-Enable with `dx serve --hot-reload` (usually on by default).
+Dioxus produces the payloads; Velopack (`vpk` 1.2.161) produces the downloads,
+feeds and update packages. Dioxus does not cross-build native desktop bundles:
+build on the target OS.
 
-**Hot-patching** (`--hot-patch`) — experimental, patches Rust logic without full rebuild.
+| Target | dx step | Packager | Downloads |
+|--------|---------|----------|-----------|
+| macOS | `dx bundle --platform macos --package-types macos --features desktop,bundle --out-dir bundles` | `scripts/pack-desktop.py macos <arch> <version>` | DMG |
+| Linux | `dx bundle --platform linux --package-types deb --features desktop,bundle --out-dir bundles` | `pack-desktop.py` (+ `scripts/bundle-appimage.sh`) | AppImage, `.deb` |
+| Windows | `dx build --platform windows --features desktop,bundle` | `pack-desktop.py` (+ `pack-windows.ps1`) | Setup EXE, portable ZIP |
+| Android | `dx build --platform android --features android` (inside the script) | `scripts/pack-android.py` | Signed ARM64 APK |
 
-## Bundling
-
-Create distributable packages:
-
-```bash
-# macOS
-dx bundle --platform macos --package-types dmg
-
-# Windows
-dx bundle --platform windows --package-types msi
-
-# Linux
-dx bundle --platform linux --package-types appimage
-dx bundle --platform linux --package-types deb
-
-# iOS
-dx bundle --platform ios --package-types ios-bundle
-
-# Android
-dx bundle --platform android --package-types apk
-```
+Packagers write to `artifacts/`. Release builds pass `--locked`. Tags
+`tantrix-app-v<version>` publish through `.github/workflows/release.yml`. See
+[desktop releases](../../../doc/desktop-release.md),
+[updates and signing](../../../doc/desktop-updates.md) and
+[Android releases](../../../doc/android-release.md).
 
 ## Testing
 
-### Unit tests (core logic)
 ```bash
-cargo test -p tantrix-game
+just test                                  # workspace + server tests
+cargo test -p tantrix-app                  # app only
+cargo test -p tantrix-app --features server
+just test-e2e                              # Playwright, native backend
 ```
 
-### Component tests
-Dioxus provides a testing framework for component rendering:
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use dioxus::prelude::*;
-
-    #[test]
-    fn test_component_renders() {
-        let mut dom = VirtualDom::new(MyComponent);
-        dom.rebuild_in_place();
-        // Assert on the rendered output
-    }
-}
-```
-
-### RSX formatting check (CI)
-```bash
-dx fmt --check
-```
+App tests mount components through `util::test_page::GamePage`; no `dx`
+needed. Prove changes with tests rather than launching the app.
 
 ## Common Mistakes
 
 | Mistake | Fix |
 |---------|-----|
-| `cargo run` for web app | Use `dx serve` (handles WASM compilation) |
-| Missing `Dioxus.toml` | Run `dx config init` or create manually |
-| Wrong `watch_path` | Ensure `src` and `assets` are included |
-| Port already in use | `dx serve --port 3001` (different port) |
-| WASM build fails | Run `dx doctor` to check toolchain setup |
-| `dx serve` not finding assets | Check `asset_dir` in `Dioxus.toml` matches actual path |
-| Slow dev builds | Use `dx serve` (incremental), not `dx build` |
-| Release build too large | Set `wasm_opt.level = "z"` for size optimization |
+| `cargo run` for the web app | `just dev` / `just run` (dx handles Wasm and fullstack) |
+| Looking for output in `target/dx/tantrix-app/` | It's `target/dx/tantrix/…` (binary name) |
+| `dx` version differs from `dioxus` | Install the pinned `0.8.0-alpha.3` CLI |
+| `--package-types dmg` / `msi` | Bundle `macos` / `deb` (or `dx build` on Windows), then `pack-desktop.py` |
+| Cross-building a desktop bundle | Build on the target OS (CI matrix) |
+| `devtools` in a release build | Only `just dev` enables it |
+| Stripping symbols to shrink Wasm | Breaks hydration; find size elsewhere |
 
 ## Checklist
 
-- [ ] `Dioxus.toml` exists with correct `name` and `asset_dir`
-- [ ] `watch_path` includes all source and asset directories
-- [ ] Platform features configured in `Cargo.toml`
-- [ ] `dx doctor` passes (toolchain setup correct)
-- [ ] `dx fmt --check` passes (RSX formatting)
-- [ ] Production build uses `--release` flag
-- [ ] Bundle config has correct `identifier` for distribution
+- [ ] Local `dx --version` matches `DIOXUS_CLI_VERSION`
+- [ ] Features match the target (`fullstack`, `desktop,bundle`, …)
+- [ ] `just fmt-check`, `just lint`, `just test` pass
+- [ ] Release/package commands use `--locked`
+- [ ] No `-Zfmt-debug=none`, no symbol stripping
