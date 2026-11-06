@@ -159,6 +159,17 @@ impl Room {
     fn close_failed_sockets(&self) {
         self.close_sockets(engine::STORAGE_UNAVAILABLE);
     }
+    /// After `settle` failed: failed storage, or a room the retention rule
+    /// deleted (`NotFound`), leaves nothing to cache or serve.
+    fn forget(&self, cache: &mut Option<LiveRoom>, error: RoomApiError) {
+        let reason = match error {
+            RoomApiError::StorageUnavailable => engine::STORAGE_UNAVAILABLE,
+            RoomApiError::NotFound => "Room deleted.",
+            _ => return,
+        };
+        self.close_sockets(reason);
+        *cache = None;
+    }
     async fn load(&self, cache: &mut Option<LiveRoom>) -> Result<()> {
         if cache.is_some() {
             return Ok(());
@@ -200,12 +211,7 @@ impl Room {
             storage: self.state.storage(),
             env: self.env.clone(),
         };
-        // Deleted storage is empty: callers drop the cached room on NotFound.
-        if lifecycle::cleanup(&mut live.record, &mut catalog, catalog::now_ms()).await? {
-            live.engine = None;
-            self.close_sockets("Room deleted.");
-            return Err(RoomApiError::NotFound);
-        }
+        lifecycle::cleanup(&mut live.record, &mut catalog, catalog::now_ms()).await?;
         if live.record.room.is_none() {
             live.engine = None;
             self.close_sockets("Lobby expired.");
@@ -326,21 +332,12 @@ impl DurableObject for Room {
         let reference = match self.settle(live, allocate).await {
             Ok(reference) => reference,
             Err(error) => {
-                if error == RoomApiError::StorageUnavailable {
-                    self.close_failed_sockets();
-                    *cache = None;
-                }
-                if error == RoomApiError::NotFound {
-                    *cache = None;
-                }
-                if websocket {
-                    match error {
-                        RoomApiError::Expired => return rejected(RejectCode::RoomExpired),
-                        RoomApiError::NotFound => return rejected(RejectCode::RoomNotFound),
-                        _ => {}
-                    }
-                }
-                return crate::rooms_api::error(error);
+                self.forget(&mut cache, error);
+                return match (websocket, error) {
+                    (true, RoomApiError::Expired) => rejected(RejectCode::RoomExpired),
+                    (true, RoomApiError::NotFound) => rejected(RejectCode::RoomNotFound),
+                    _ => crate::rooms_api::error(error),
+                };
             }
         };
         if !websocket {
@@ -383,14 +380,13 @@ impl DurableObject for Room {
             return Err(error);
         }
         if let Some(live) = cache.as_mut() {
-            let result = self.settle(live, false).await;
-            match result {
+            match self.settle(live, false).await {
                 Ok(_) | Err(RoomApiError::Expired) => {}
-                Err(RoomApiError::NotFound) => *cache = None,
                 Err(error) => {
-                    self.close_failed_sockets();
-                    *cache = None;
-                    return Err(worker::Error::RustError(error.to_string()));
+                    self.forget(&mut cache, error);
+                    if error != RoomApiError::NotFound {
+                        return Err(worker::Error::RustError(error.to_string()));
+                    }
                 }
             }
         }

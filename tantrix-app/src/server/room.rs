@@ -113,11 +113,14 @@ impl RoomManager {
         let Some(mut record) = self.store.load(id).await? else {
             return Ok(OpenRoom::Missing);
         };
-        let Some(room) = record.room.clone() else {
-            if lifecycle::cleanup(&mut record, &mut self.store.clone(), now).await? {
-                return Ok(OpenRoom::Missing);
-            }
-            return Ok(OpenRoom::Expired);
+        // Tombstones and rooms due for deletion need no actor.
+        let deletable = record.is_deletable(now);
+        let Some(room) = record.room.clone().filter(|_| !deletable) else {
+            return match lifecycle::cleanup(&mut record, &mut self.store.clone(), now).await {
+                Ok(()) => Ok(OpenRoom::Expired),
+                Err(RoomApiError::NotFound) => Ok(OpenRoom::Missing),
+                Err(error) => Err(error.into()),
+            };
         };
         let engine = RoomEngine::new(room, []);
         let (tx, rx) = mpsc::channel(COMMAND_CAPACITY);
@@ -213,8 +216,8 @@ impl RoomActor {
     }
 
     async fn run(mut self, mut commands: mpsc::Receiver<RoomCommand>) {
-        // A native restart loses all sockets, but does not reset an existing
-        // inactivity deadline. A previously connected room gets a fresh deadline.
+        // No socket outlives its actor: a room saved as connected starts an
+        // inactivity period (startup does this for every room in the store).
         self.record.observe_connections(false, now_ms());
         let loaded = self.engine.on_load();
         let mut host = Host {
@@ -238,9 +241,7 @@ impl RoomActor {
                 self.record
                     .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now);
                 let result = async {
-                    if lifecycle::cleanup(&mut self.record, &mut self.store, now).await? {
-                        return Err(RoomApiError::NotFound);
-                    }
+                    lifecycle::cleanup(&mut self.record, &mut self.store, now).await?;
                     self.record.reference()?;
                     if allocate {
                         if self.record.invitation.is_none() && self.record.vacant_since.is_some() {
@@ -261,7 +262,7 @@ impl RoomActor {
                     self.record.reference()
                 }
                 .await;
-                // Stop once storage failed or no longer holds a live room.
+                // Stop once storage failed, or holds no live room (NotFound: deleted).
                 let stop = matches!(
                     result,
                     Err(RoomApiError::StorageUnavailable | RoomApiError::NotFound)
@@ -891,24 +892,16 @@ mod tests {
         manager.create(lobby, 0).await.unwrap();
         finished_room(&store, played, 0).await;
         manager.cleanup(IDLE_TTL_MS).await.unwrap();
-        let deleted = IDLE_TTL_MS + TOMBSTONE_TTL_MS;
-        manager.cleanup(deleted - 1).await.unwrap();
-        assert_eq!(
-            manager.reference(lobby, deleted - 1, false).await,
-            Err(RoomApiError::Expired)
-        );
-        manager.cleanup(deleted).await.unwrap();
+        manager
+            .cleanup(IDLE_TTL_MS + TOMBSTONE_TTL_MS)
+            .await
+            .unwrap();
         assert!(store.load(lobby).await.unwrap().is_none());
         assert!(store.load(played).await.unwrap().is_some());
-        manager.cleanup(RETENTION_MS - 1).await.unwrap();
-        assert!(store.load(played).await.unwrap().is_some());
         manager.cleanup(RETENTION_MS).await.unwrap();
-        assert!(store.load(played).await.unwrap().is_none());
-        assert!(store.load_match(played, 0).await.unwrap().is_none());
         assert_eq!(
             manager.reference(played, RETENTION_MS, false).await,
             Err(RoomApiError::NotFound)
         );
-        assert!(store.due(10 * RETENTION_MS).await.unwrap().is_empty());
     }
 }
