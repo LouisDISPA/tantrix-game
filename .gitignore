@@ -2,6 +2,7 @@
 /bundles
 /artifacts
 .claude/settings.local.json
+.claude/launch.json
 .claude/worktrees/
 cloudflare/node_modules/
 cloudflare/.wrangler/
