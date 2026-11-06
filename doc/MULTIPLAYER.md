@@ -85,7 +85,8 @@ The existing **Start game** button deals a fresh game with at least two players.
 The finished match's full `GameData`, seats and result are archived atomically
 with the new lobby. Native SQLite uses `online_matches(room_id, match_id)`;
 Worker storage uses `match:{match_id}` keys in the same Room object. Old histories
-remain stored separately from the active room. There is no history browser yet.
+remain stored separately from the active room until the room is
+[deleted](#retention). There is no history browser yet.
 Match IDs on Start, Play, End and Rematch reject commands from an earlier match;
 repeated rematch clicks do not restart the next game. Online API version: **3**.
 
@@ -133,8 +134,9 @@ adapters provide sockets, keepalives and storage:
 
 Creation uses `POST /api/rooms` with a random request UUID. The server derives
 one permanent ID from the private session identity and that request, making
-retries safe after lost responses. The client retains pending requests per
-server across reloads. Codes are generated on the server with rejection sampling;
+retries safe after lost responses. The client retains a pending request per
+server across reloads for 24 hours (`tantrix_proto::CREATE_RETRY_WINDOW_MS`),
+then makes a new one. Codes are generated on the server with rejection sampling;
 allocation stops after ten collisions and returns a retryable 503.
 
 `GET /api/rooms/code/{CODE}` resolves an invitation. `GET /api/rooms/{ID}`
@@ -158,7 +160,7 @@ requests per client IP address:
 A client can spend a whole minute's allowance at once. Further requests get
 HTTP 429 with `RateLimited`, and the online menu shows *Too many room
 requests. Wait a minute and try again.* A pending creation keeps its request
-ID, so a later retry still makes one room. IPv6 clients count per /64
+ID, so a retry within the day still makes one room. IPv6 clients count per /64
 network. Loopback clients (local development, browser tests) are not limited.
 Permanent-ID requests are not counted; each socket has its own frame limit.
 
@@ -175,22 +177,46 @@ Permanent-ID requests are not counted; each socket has its own frame limit.
 `tantrix_room::lifecycle` owns the shared policy and recoverable allocation steps.
 After 24 hours with no joined connection, an unstarted lobby drops its contents
 and retains an expired tombstone; rooms that have started a match preserve their
-state and archives, including between matches, and release only their short code. A later visit to a saved
+state and archives, including between matches, and release only their short
+code until [retention](#retention) deletes them. A later visit to a saved
 game allocates a fresh code when needed. Allocation failure does not prevent
 resuming a started game by its permanent link. Disconnected seats do not keep
 invitations alive; joined spectators do. Native restarts begin an inactivity
 period for rooms previously marked connected, while retaining existing deadlines.
 
 Native SQLite stores records and uniquely claimed codes in `online_games` and
-`online_codes`; a one-minute sweep cleans due records. The Worker keeps one Room
-object per permanent ID and one RoomCodes object per invitation code, with room
-alarms for cleanup. Hibernating socket attachments preserve joined presence.
+`online_codes`; a one-minute sweep cleans due records, and startup gives every
+record without a deadline one. The Worker keeps one Room object per permanent ID
+and one RoomCodes object per invitation code, with room alarms for cleanup.
+Hibernating socket attachments preserve joined presence.
 Access also checks expiry, so delayed cleanup never makes an expired code valid.
 Code reservations are persisted before being published, and releases compare
 both game ID and a unique claim nonce. Pending reservations and releases survive
 storage failures and are safe to repeat.
 
 This is a breaking storage/protocol change: old code-only rooms are not migrated.
+
+### Retention
+
+Room storage is bounded by inactivity. `RoomRecord::is_deletable` decides;
+the periods are constants in `tantrix_room::lifecycle`:
+
+| Record | Deleted |
+| --- | --- |
+| Expired lobby tombstone | 30 days after the lobby expired (`TOMBSTONE_TTL_MS`) |
+| Room that started a match, with its match archives | After 90 days with no joined connection (`RETENTION_MS`) |
+
+A joined connection resets the period. A tombstone outlives every creation
+retry: the lobby expires no sooner than 24 hours after its request, when
+clients have stopped retrying it, and the 30 days cover client clocks set back.
+Desktop and Android v0.2.0 keep a pending request without a time limit; a retry
+after its tombstone is gone makes a new empty lobby under the old ID.
+
+Deletion first releases any invitation code, then removes the record. Native
+deletes the `online_games` row and its `online_matches` rows in one transaction.
+The Worker's room alarm calls `storage.deleteAll()`, which also clears the
+alarm (compatibility date 2026-02-24 or later). A Room object saved before
+retention existed is scheduled the next time it is loaded.
 
 Events (`on_open`, `on_text`, `on_binary`, `on_close`) produce a `Step`: an
 optional room to persist and send/broadcast/close effects. Both adapters use

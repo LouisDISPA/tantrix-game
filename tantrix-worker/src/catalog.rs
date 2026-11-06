@@ -150,4 +150,8 @@ impl Catalog for WorkerCatalog {
             .map(|_| ())
             .map_err(unavailable)
     }
+    /// The object holds one room: drop its record, archives and alarm.
+    async fn delete(&mut self, _id: &str) -> std::result::Result<(), RoomApiError> {
+        self.storage.delete_all().await.map_err(unavailable)
+    }
 }

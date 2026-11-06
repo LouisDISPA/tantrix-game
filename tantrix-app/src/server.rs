@@ -80,6 +80,10 @@ pub fn run() {
         let db_path =
             std::env::var("TANTRIX_ROOM_DB").unwrap_or_else(|_| "tantrix-rooms.sqlite3".into());
         let store = store::RoomStore::open(&db_path).expect("failed to open room database");
+        store
+            .schedule_unscheduled(room::now_ms())
+            .await
+            .expect("failed to schedule room cleanup");
         let state = Arc::new(ServerState {
             rooms: room::RoomManager::new(store),
             public_origin: std::env::var("TANTRIX_PUBLIC_ORIGIN")
@@ -282,12 +286,14 @@ async fn room_socket(
         .max_message_size(tantrix_room::engine::MAX_FRAME_BYTES)
         .max_frame_size(tantrix_room::engine::MAX_FRAME_BYTES);
 
-    match state.rooms.open(&code).await {
-        Ok(room::OpenRoom::Ready(handle)) => match handle.inspect(room::now_ms(), true).await {
+    let now = room::now_ms();
+    match state.rooms.open(&code, now).await {
+        Ok(room::OpenRoom::Ready(handle)) => match handle.inspect(now, true).await {
             Ok(_) => upgrade.on_upgrade(move |socket| room::socket_session(socket, handle, token)),
             Err(RoomApiError::Expired) => upgrade.on_upgrade(|socket| {
                 room::rejected_room(socket, tantrix_proto::RejectCode::RoomExpired)
             }),
+            Err(RoomApiError::NotFound) => upgrade.on_upgrade(room::missing_room),
             Err(error) => api_error(error),
         },
         Ok(room::OpenRoom::Missing) => upgrade.on_upgrade(room::missing_room),

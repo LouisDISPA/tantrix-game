@@ -15,7 +15,7 @@ use tantrix_game::{Board, Color, Hand, Move, Placement, TurnStep};
 
 pub mod room_code;
 pub mod rooms;
-pub use rooms::{is_game_id, CreateRoom, RoomApiError, RoomReference};
+pub use rooms::{is_game_id, CreateRoom, RoomApiError, RoomReference, CREATE_RETRY_WINDOW_MS};
 
 pub use room_code::{is_room_code, normalize_room_code, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
 
