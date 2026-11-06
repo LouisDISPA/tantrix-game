@@ -1,7 +1,7 @@
 //! HTTP allocation and one pending creation request per server. Only permanent
 //! IDs reach the WebSocket; reconnects never resolve invitation codes again.
 
-use tantrix_proto::{CreateRoom, RoomApiError, RoomReference};
+use tantrix_proto::{CreateRoom, RoomApiError, RoomReference, CREATE_RETRY_WINDOW_MS};
 
 fn new_request_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
@@ -29,13 +29,29 @@ fn pending_key(server: &str) -> String {
     )
 }
 
+/// The request ID in a stored `"<id> <made at ms>"`, while the server still
+/// remembers what it created. A clock set back before `made at` ends it, and
+/// so does an older bare ID.
+fn retryable(stored: &str, now: u64) -> Option<&str> {
+    let (id, made_at) = stored.split_once(' ')?;
+    let age = now.checked_sub(made_at.parse().ok()?)?;
+    (tantrix_proto::is_game_id(id) && age < CREATE_RETRY_WINDOW_MS).then_some(id)
+}
+
 fn pending_request(server: &str) -> Result<String, String> {
     let key = pending_key(server);
-    if let Some(id) = load(&key).filter(|id| tantrix_proto::is_game_id(id)) {
-        return Ok(id);
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    if let Some(id) = load(&key)
+        .as_deref()
+        .and_then(|stored| retryable(stored, now))
+    {
+        return Ok(id.to_owned());
     }
     let id = new_request_id()?;
-    save(&key, &id)?;
+    save(&key, &format!("{id} {now}"))?;
     Ok(id)
 }
 
@@ -218,6 +234,22 @@ mod tests {
             decode_response((410, "\"Expired\"".into())),
             Err(RoomApiError::Expired)
         );
+    }
+
+    #[test]
+    fn a_pending_request_is_retried_only_within_the_window() {
+        let id = "01234567-89ab-4def-8123-456789abcdef";
+        let stored = format!("{id} 1000");
+        assert_eq!(retryable(&stored, 1000), Some(id));
+        assert_eq!(
+            retryable(&stored, 1000 + CREATE_RETRY_WINDOW_MS - 1),
+            Some(id)
+        );
+        assert_eq!(retryable(&stored, 1000 + CREATE_RETRY_WINDOW_MS), None);
+        assert_eq!(retryable(&stored, 999), None, "clock set back");
+        assert_eq!(retryable(id, 1000), None, "stored without a time");
+        assert_eq!(retryable("", 1000), None);
+        assert_eq!(retryable("not-an-id 1000", 1000), None);
     }
 
     #[test]

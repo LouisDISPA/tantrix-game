@@ -148,6 +148,29 @@ impl RoomStore {
         .await
     }
 
+    /// No socket survives a restart. Give rooms saved as connected, and rows
+    /// saved before retention applied to them, a deadline counted from `now`.
+    pub async fn schedule_unscheduled(&self, now: u64) -> StoreResult<()> {
+        self.with(move |conn| {
+            let transaction = conn.unchecked_transaction()?;
+            let rows: Vec<(String, String)> = transaction
+                .prepare("SELECT id, record_json FROM online_games WHERE deadline IS NULL")?
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<Result<_, _>>()?;
+            for (id, json) in rows {
+                let mut record: RoomRecord = serde_json::from_str(&json)?;
+                record.observe_connections(false, now);
+                transaction.execute(
+                    "UPDATE online_games SET record_json = ?2, deadline = ?3 WHERE id = ?1",
+                    (&id, serde_json::to_string(&record)?, record.deadline()),
+                )?;
+            }
+            transaction.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn due(&self, now: u64) -> StoreResult<Vec<String>> {
         self.with(move |conn| {
             let mut query = conn.prepare("SELECT id FROM online_games WHERE deadline <= ?1")?;
@@ -204,34 +227,69 @@ impl Catalog for RoomStore {
             .await,
         )
     }
+    async fn delete(&mut self, id: &str) -> Result<(), RoomApiError> {
+        let id = id.to_owned();
+        unavailable(
+            self.with(move |conn| {
+                let transaction = conn.unchecked_transaction()?;
+                transaction.execute("DELETE FROM online_matches WHERE room_id = ?1", [&id])?;
+                transaction.execute("DELETE FROM online_games WHERE id = ?1", [&id])?;
+                transaction.commit()?;
+                Ok(())
+            })
+            .await,
+        )
+    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
-    use tantrix_room::lifecycle::{self, IDLE_TTL_MS};
+    use tantrix_game::{Color, Game, Player};
+    use tantrix_proto::EndReason;
+    use tantrix_room::lifecycle::{self, IDLE_TTL_MS, RETENTION_MS};
 
-    #[tokio::test]
-    async fn a_failed_room_update_rolls_back_the_archive_too() {
-        use tantrix_game::{Color, Game, Player};
-        use tantrix_proto::EndReason;
-        let store = RoomStore::open(":memory:").unwrap();
-        let game = Game::new_seeded(
+    pub fn game() -> tantrix_game::GameData {
+        Game::new_seeded(
             Player::Someone,
             Player::Someone,
             Player::None,
             Player::None,
             42,
         )
-        .unwrap();
-        let archive = CompletedMatch {
-            id: 0,
-            game: game.to_data(),
+        .unwrap()
+        .to_data()
+    }
+
+    pub fn archive(id: u32) -> CompletedMatch {
+        CompletedMatch {
+            id,
+            game: game(),
             seats: Default::default(),
             reason: EndReason::Completed {
                 winners: vec![Color::Red],
             },
-        };
+        }
+    }
+
+    /// A stored room whose first match ended and was archived.
+    pub async fn finished_room(store: &RoomStore, id: &str, now: u64) -> RoomRecord {
+        store.insert(id, now).await.unwrap();
+        let mut record = store.load(id).await.unwrap().unwrap();
+        let room = record.room.as_mut().unwrap();
+        room.match_id = 1;
+        room.game = Some(game());
+        store
+            .save_with_archive(&record, Some(archive(0)))
+            .await
+            .unwrap();
+        record
+    }
+
+    #[tokio::test]
+    async fn a_failed_room_update_rolls_back_the_archive_too() {
+        let store = RoomStore::open(":memory:").unwrap();
+        let archive = archive(0);
         let missing = RoomRecord::new("missing".into(), 0);
         assert!(store
             .save_with_archive(&missing, Some(archive))
@@ -296,5 +354,44 @@ mod tests {
             store.find_code("ABCDEF").await.unwrap().as_deref(),
             Some("next")
         );
+    }
+
+    #[tokio::test]
+    async fn retention_deletes_the_room_row_and_its_match_archives() {
+        let mut store = RoomStore::open(":memory:").unwrap();
+        let mut record = finished_room(&store, "game", 0).await;
+        finished_room(&store, "other", 1).await;
+        assert_eq!(
+            store.due(RETENTION_MS - 1).await.unwrap(),
+            Vec::<String>::new()
+        );
+        assert_eq!(store.due(RETENTION_MS).await.unwrap(), ["game"]);
+        assert!(lifecycle::cleanup(&mut record, &mut store, RETENTION_MS)
+            .await
+            .unwrap());
+        assert!(store.load("game").await.unwrap().is_none());
+        assert!(store.load_match("game", 0).await.unwrap().is_none());
+        assert_eq!(store.due(10 * RETENTION_MS).await.unwrap(), ["other"]);
+        assert!(store.load_match("other", 0).await.unwrap().is_some());
+        assert!(
+            store.save_record(&record).await.is_err(),
+            "never resurrected"
+        );
+    }
+
+    #[tokio::test]
+    async fn rooms_left_connected_or_saved_before_retention_get_a_deadline_at_startup() {
+        let store = RoomStore::open(":memory:").unwrap();
+        let mut record = finished_room(&store, "game", 0).await;
+        record.observe_connections(true, 5);
+        store.save_record(&record).await.unwrap();
+        assert!(store.due(10 * RETENTION_MS).await.unwrap().is_empty());
+        store.schedule_unscheduled(1_000).await.unwrap();
+        assert!(store
+            .due(1_000 + RETENTION_MS - 1)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(store.due(1_000 + RETENTION_MS).await.unwrap(), ["game"]);
     }
 }

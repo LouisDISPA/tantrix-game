@@ -13,6 +13,11 @@ pub fn is_game_id(id: &str) -> bool {
         })
 }
 
+/// Clients retry an unanswered `CreateRoom` with the same `request_id` for
+/// at most this long after making it. By then the lobby it may have created
+/// has expired, and servers keep that lobby's tombstone longer than this.
+pub const CREATE_RETRY_WINDOW_MS: u64 = 24 * 60 * 60 * 1000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateRoom {
     pub request_id: String,

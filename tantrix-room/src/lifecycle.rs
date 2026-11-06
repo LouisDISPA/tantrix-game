@@ -1,5 +1,6 @@
-//! Persistent room identity, invitation allocation and inactivity policy.
-//! Both adapters serialize access to one record; all time is supplied by the host.
+//! Persistent room identity, invitation allocation, inactivity and retention
+//! policy. Both adapters serialize access to one record; all time is supplied
+//! by the host.
 
 use crate::{
     room_logic::{CompletedMatch, RoomData},
@@ -7,10 +8,24 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::future::Future;
-use tantrix_proto::{RoomApiError, RoomReference, ROOM_CODE_ALPHABET, ROOM_CODE_LEN};
+use tantrix_proto::{
+    RoomApiError, RoomReference, CREATE_RETRY_WINDOW_MS, ROOM_CODE_ALPHABET, ROOM_CODE_LEN,
+};
 
-pub const IDLE_TTL_MS: u64 = 24 * 60 * 60 * 1000;
+const DAY_MS: u64 = 24 * 60 * 60 * 1000;
+/// A lobby, or an invitation code, with nobody connected for this long expires.
+pub const IDLE_TTL_MS: u64 = DAY_MS;
+/// An expired lobby's tombstone is deleted this long after the lobby expired.
+pub const TOMBSTONE_TTL_MS: u64 = 30 * DAY_MS;
+/// A room whose game started is deleted, with its match history, after
+/// nobody has been connected for this long.
+pub const RETENTION_MS: u64 = 90 * DAY_MS;
 pub const ALLOCATION_ATTEMPTS: usize = 10;
+
+// A lobby's inactivity starts no earlier than the request that created it,
+// so clients stop retrying that request before the lobby can expire. The
+// tombstone TTL is then a margin for client clocks set back.
+const _: () = assert!(CREATE_RETRY_WINDOW_MS <= IDLE_TTL_MS);
 
 /// Deterministic server allocation makes a lost response safe to retry, without
 /// another directory or exposing the private session token.
@@ -49,7 +64,8 @@ pub fn new_invitation() -> Result<Invitation, RoomApiError> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomRecord {
     pub id: String,
-    /// None is an expired-lobby tombstone. Creation retries must not revive it.
+    /// None is an expired-lobby tombstone. Creation retries must not revive
+    /// it, so it outlives every retry a client still sends.
     pub room: Option<RoomData>,
     pub invitation: Option<Invitation>,
     /// Persisted before reserving a code, so a crash can resume the same claim.
@@ -102,7 +118,14 @@ impl RoomRecord {
         self.vacant_since != before
     }
 
+    /// When the host must next run [`cleanup`], unless someone connects.
     pub fn deadline(&self) -> Option<u64> {
+        self.expiry().into_iter().chain(self.deletion()).min()
+    }
+
+    /// When the invitation code is released and an unstarted lobby becomes
+    /// a tombstone.
+    fn expiry(&self) -> Option<u64> {
         let needs_expiry = self.invitation.is_some()
             || self.pending.is_some()
             || self.room.as_ref().is_some_and(|r| !r.has_started());
@@ -112,8 +135,26 @@ impl RoomRecord {
             .map(|t| t.saturating_add(IDLE_TTL_MS))
     }
 
+    /// When storage deletes this record and its match archives: a tombstone
+    /// [`TOMBSTONE_TTL_MS`] after its lobby expired, a started room after
+    /// [`RETENTION_MS`] with nobody connected. An unstarted lobby first
+    /// expires into a tombstone.
+    fn deletion(&self) -> Option<u64> {
+        let kept = match &self.room {
+            None => IDLE_TTL_MS + TOMBSTONE_TTL_MS,
+            Some(room) if room.has_started() => RETENTION_MS,
+            Some(_) => return None,
+        };
+        self.vacant_since.map(|t| t.saturating_add(kept))
+    }
+
+    /// Whether the retention rule deletes this record at `now`.
+    pub fn is_deletable(&self, now: u64) -> bool {
+        self.deletion().is_some_and(|deletion| now >= deletion)
+    }
+
     pub fn expire(&mut self, now: u64) -> bool {
-        if !self.deadline().is_some_and(|deadline| now >= deadline) {
+        if !self.expiry().is_some_and(|expiry| now >= expiry) {
             return false;
         }
         self.retired.extend(self.invitation.take());
@@ -139,13 +180,17 @@ pub trait Catalog {
         id: &str,
         invitation: &Invitation,
     ) -> impl Future<Output = Result<(), RoomApiError>>;
+    /// Remove the room record and its match archives.
+    fn delete(&mut self, id: &str) -> impl Future<Output = Result<(), RoomApiError>>;
 }
 
+/// Expire, release retired codes, then apply the retention rule. Returns
+/// whether the record was deleted; the caller must then drop it unsaved.
 pub async fn cleanup(
     record: &mut RoomRecord,
     catalog: &mut impl Catalog,
     now: u64,
-) -> Result<(), RoomApiError> {
+) -> Result<bool, RoomApiError> {
     if record.expire(now) {
         catalog.save(record).await?;
     }
@@ -154,7 +199,11 @@ pub async fn cleanup(
         record.retired.pop();
         catalog.save(record).await?;
     }
-    Ok(())
+    let delete = record.is_deletable(now);
+    if delete {
+        catalog.delete(&record.id).await?;
+    }
+    Ok(delete)
 }
 
 pub async fn allocate(
@@ -201,13 +250,14 @@ mod tests {
         assert!(record.expire(IDLE_TTL_MS));
         assert!(record.room.is_some());
         assert!(record.invitation.is_none());
-        assert_eq!(record.deadline(), None);
+        assert_eq!(record.deadline(), Some(RETENTION_MS));
         assert!(record.reference().is_ok());
     }
 
     #[derive(Default)]
     struct Memory {
         saved: Option<RoomRecord>,
+        deleted: Vec<String>,
         claims: HashMap<String, (String, String)>,
         fail_save: bool,
         fail_after_claim: bool,
@@ -242,6 +292,11 @@ mod tests {
             if self.claims.get(&i.code) == Some(&(id.into(), i.claim.clone())) {
                 self.claims.remove(&i.code);
             }
+            Ok(())
+        }
+        async fn delete(&mut self, id: &str) -> Result<(), RoomApiError> {
+            self.saved = None;
+            self.deleted.push(id.into());
             Ok(())
         }
     }
@@ -406,7 +461,7 @@ mod tests {
                     before
                 );
                 assert!(record.reference().unwrap().code.is_none());
-                assert!(record.deadline().is_none());
+                assert_eq!(record.deadline(), Some(RETENTION_MS));
                 assert!(catalog.claims.is_empty());
                 record.observe_connections(true, IDLE_TTL_MS + 1);
                 allocate(&mut record, &mut catalog, || {
@@ -475,5 +530,118 @@ mod tests {
             assert!(catalog.claims.is_empty());
             assert!(recovered.retired.is_empty());
         });
+    }
+
+    fn started(record: &mut RoomRecord) {
+        use tantrix_game::{Game, Player};
+        let game = Game::new_seeded(
+            Player::Someone,
+            Player::Someone,
+            Player::None,
+            Player::None,
+            42,
+        )
+        .unwrap();
+        record.room.as_mut().unwrap().game = Some(game.to_data());
+    }
+
+    #[test]
+    fn a_tombstone_is_deleted_once_no_creation_retry_can_reach_it() {
+        block_on(async {
+            let mut catalog = Memory::default();
+            let mut record = RoomRecord::new("game".into(), 100);
+            allocate(&mut record, &mut catalog, || {
+                Ok(invitation("ABCDEF", "claim"))
+            })
+            .await
+            .unwrap();
+            let expired = 100 + IDLE_TTL_MS;
+            assert!(!cleanup(&mut record, &mut catalog, expired).await.unwrap());
+            assert_eq!(record.reference(), Err(RoomApiError::Expired));
+            let deletion = expired + TOMBSTONE_TTL_MS;
+            assert_eq!(record.deadline(), Some(deletion));
+            // The last retry a client sends comes well before deletion.
+            assert!(100 + CREATE_RETRY_WINDOW_MS < deletion);
+            assert!(!cleanup(&mut record, &mut catalog, deletion - 1)
+                .await
+                .unwrap());
+            assert!(catalog.saved.is_some());
+            assert!(cleanup(&mut record, &mut catalog, deletion).await.unwrap());
+            assert!(catalog.saved.is_none());
+            assert_eq!(catalog.deleted, ["game"]);
+        });
+    }
+
+    #[test]
+    fn a_started_room_is_deleted_after_long_inactivity_and_presence_resets_the_clock() {
+        block_on(async {
+            let mut catalog = Memory::default();
+            let mut record = RoomRecord::new("game".into(), 0);
+            started(&mut record);
+            allocate(&mut record, &mut catalog, || {
+                Ok(invitation("ABCDEF", "claim"))
+            })
+            .await
+            .unwrap();
+            assert_eq!(record.deadline(), Some(IDLE_TTL_MS), "code expires first");
+            assert!(!cleanup(&mut record, &mut catalog, IDLE_TTL_MS)
+                .await
+                .unwrap());
+            assert!(catalog.claims.is_empty());
+            assert_eq!(record.deadline(), Some(RETENTION_MS));
+            assert!(record.observe_connections(true, RETENTION_MS - 1));
+            assert_eq!(record.deadline(), None);
+            assert!(!record.is_deletable(u64::MAX), "never while connected");
+            let left = RETENTION_MS + 5;
+            assert!(record.observe_connections(false, left));
+            assert_eq!(record.deadline(), Some(left + RETENTION_MS));
+            assert!(!cleanup(&mut record, &mut catalog, left + RETENTION_MS - 1)
+                .await
+                .unwrap());
+            assert!(cleanup(&mut record, &mut catalog, left + RETENTION_MS)
+                .await
+                .unwrap());
+            assert_eq!(catalog.deleted, ["game"]);
+        });
+    }
+
+    #[test]
+    fn a_late_sweep_releases_codes_before_deleting() {
+        block_on(async {
+            for start in [false, true] {
+                let mut catalog = Memory::default();
+                let mut record = RoomRecord::new("game".into(), 0);
+                if start {
+                    started(&mut record);
+                }
+                allocate(&mut record, &mut catalog, || {
+                    Ok(invitation("ABCDEF", "claim"))
+                })
+                .await
+                .unwrap();
+                let late = IDLE_TTL_MS + TOMBSTONE_TTL_MS + RETENTION_MS;
+                catalog.fail_release = true;
+                assert_eq!(
+                    cleanup(&mut record, &mut catalog, late).await,
+                    Err(RoomApiError::StorageUnavailable)
+                );
+                assert!(
+                    catalog.deleted.is_empty(),
+                    "a claimed code is never orphaned"
+                );
+                assert!(cleanup(&mut record, &mut catalog, late).await.unwrap());
+                assert!(catalog.claims.is_empty());
+                assert_eq!(catalog.deleted, ["game"]);
+            }
+        });
+    }
+
+    #[test]
+    fn an_unstarted_lobby_is_only_deleted_as_a_tombstone() {
+        let mut record = RoomRecord::new("game".into(), 0);
+        assert!(!record.is_deletable(u64::MAX));
+        assert_eq!(record.deadline(), Some(IDLE_TTL_MS));
+        record.room.as_mut().unwrap().match_id = 1;
+        assert!(record.is_deletable(RETENTION_MS), "between matches");
     }
 }

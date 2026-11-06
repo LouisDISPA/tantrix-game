@@ -75,7 +75,7 @@ impl RoomManager {
         now: u64,
         allocate: bool,
     ) -> Result<RoomReference, RoomApiError> {
-        match super::store::unavailable(self.open(id).await)? {
+        match super::store::unavailable(self.open(id, now).await)? {
             OpenRoom::Ready(handle) => handle.inspect(now, allocate).await,
             OpenRoom::Missing => Err(RoomApiError::NotFound),
             OpenRoom::Expired => Err(RoomApiError::Expired),
@@ -102,7 +102,7 @@ impl RoomManager {
         Ok(())
     }
 
-    pub async fn open(&self, id: &str) -> StoreResult<OpenRoom> {
+    pub async fn open(&self, id: &str, now: u64) -> StoreResult<OpenRoom> {
         let mut rooms = self.rooms.lock().await;
         rooms.retain(|_, handle| handle.strong_count() > 0);
         if let Some(handle) = rooms.get(id).and_then(Weak::upgrade) {
@@ -114,7 +114,9 @@ impl RoomManager {
             return Ok(OpenRoom::Missing);
         };
         let Some(room) = record.room.clone() else {
-            lifecycle::cleanup(&mut record, &mut self.store.clone(), now_ms()).await?;
+            if lifecycle::cleanup(&mut record, &mut self.store.clone(), now).await? {
+                return Ok(OpenRoom::Missing);
+            }
             return Ok(OpenRoom::Expired);
         };
         let engine = RoomEngine::new(room, []);
@@ -236,7 +238,9 @@ impl RoomActor {
                 self.record
                     .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now);
                 let result = async {
-                    lifecycle::cleanup(&mut self.record, &mut self.store, now).await?;
+                    if lifecycle::cleanup(&mut self.record, &mut self.store, now).await? {
+                        return Err(RoomApiError::NotFound);
+                    }
                     self.record.reference()?;
                     if allocate {
                         if self.record.invitation.is_none() && self.record.vacant_since.is_some() {
@@ -257,8 +261,11 @@ impl RoomActor {
                     self.record.reference()
                 }
                 .await;
-                let stop = matches!(result, Err(RoomApiError::StorageUnavailable))
-                    || self.record.room.is_none();
+                // Stop once storage failed or no longer holds a live room.
+                let stop = matches!(
+                    result,
+                    Err(RoomApiError::StorageUnavailable | RoomApiError::NotFound)
+                ) || self.record.room.is_none();
                 let _ = reply.send(result);
                 if stop {
                     break;
@@ -620,7 +627,7 @@ mod tests {
         record.room = Some(room);
         store.save_record(&record).await.unwrap();
 
-        let OpenRoom::Ready(handle) = manager.open(id).await.unwrap() else {
+        let OpenRoom::Ready(handle) = manager.open(id, 0).await.unwrap() else {
             panic!("room exists")
         };
         let mut receivers = Vec::new();
@@ -744,7 +751,7 @@ mod tests {
             .await
             .unwrap();
         let OpenRoom::Ready(handle) = manager
-            .open("01234567-89ab-4def-8123-456789abcdef")
+            .open("01234567-89ab-4def-8123-456789abcdef", 0)
             .await
             .unwrap()
         else {
@@ -780,7 +787,7 @@ mod tests {
 
         let restarted = RoomManager::new(store);
         let OpenRoom::Ready(handle) = restarted
-            .open("01234567-89ab-4def-8123-456789abcdef")
+            .open("01234567-89ab-4def-8123-456789abcdef", 0)
             .await
             .unwrap()
         else {
@@ -866,5 +873,37 @@ mod tests {
                 .await,
             Err(RoomApiError::NotFound)
         );
+    }
+
+    #[tokio::test]
+    async fn the_sweep_deletes_old_tombstones_and_long_inactive_rooms() {
+        use super::super::store::tests::finished_room;
+        use tantrix_room::lifecycle::{IDLE_TTL_MS, RETENTION_MS, TOMBSTONE_TTL_MS};
+        let store = RoomStore::open(":memory:").unwrap();
+        let manager = RoomManager::new(store.clone());
+        let lobby = "01234567-89ab-4def-8123-456789abcdef";
+        let played = "11234567-89ab-4def-8123-456789abcdef";
+        manager.create(lobby, 0).await.unwrap();
+        finished_room(&store, played, 0).await;
+        manager.cleanup(IDLE_TTL_MS).await.unwrap();
+        let deleted = IDLE_TTL_MS + TOMBSTONE_TTL_MS;
+        manager.cleanup(deleted - 1).await.unwrap();
+        assert_eq!(
+            manager.reference(lobby, deleted - 1, false).await,
+            Err(RoomApiError::Expired)
+        );
+        manager.cleanup(deleted).await.unwrap();
+        assert!(store.load(lobby).await.unwrap().is_none());
+        assert!(store.load(played).await.unwrap().is_some());
+        manager.cleanup(RETENTION_MS - 1).await.unwrap();
+        assert!(store.load(played).await.unwrap().is_some());
+        manager.cleanup(RETENTION_MS).await.unwrap();
+        assert!(store.load(played).await.unwrap().is_none());
+        assert!(store.load_match(played, 0).await.unwrap().is_none());
+        assert_eq!(
+            manager.reference(played, RETENTION_MS, false).await,
+            Err(RoomApiError::NotFound)
+        );
+        assert!(store.due(10 * RETENTION_MS).await.unwrap().is_empty());
     }
 }
