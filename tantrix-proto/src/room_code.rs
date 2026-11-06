@@ -8,7 +8,7 @@
 //! stay legible when shared verbally. 23⁶ ≈ 148 M values — plenty for the
 //! concurrent-room scales we care about.
 
-/// The 23 letters a room code may contain: `A`–`Z` without `I`, `O` and `Q`.
+/// The letters a room code may contain.
 pub const ROOM_CODE_ALPHABET: &[u8] = b"ABCDEFGHJKLMNPRSTUVWXYZ";
 /// Number of letters in a room code.
 pub const ROOM_CODE_LEN: usize = 6;

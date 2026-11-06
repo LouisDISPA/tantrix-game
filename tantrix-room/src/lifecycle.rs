@@ -51,7 +51,7 @@ pub struct Invitation {
 }
 
 /// A random code with a fresh claim, not reserved yet. Fails with
-/// `StorageUnavailable` if the platform RNG does.
+/// `StorageUnavailable` if the platform RNG cannot draw the code.
 pub fn new_invitation() -> Result<Invitation, RoomApiError> {
     let mut code = String::with_capacity(ROOM_CODE_LEN);
     while code.len() < ROOM_CODE_LEN {

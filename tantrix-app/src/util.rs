@@ -27,7 +27,8 @@ pub(crate) async fn sleep(duration: Duration) {
 }
 
 /// A build without a platform feature (`cargo test -p tantrix-app`) has no
-/// runtime of its own: a thread waits, then wakes the task.
+/// runtime of its own: a thread waits, then wakes the task. Native only in
+/// practice: wasm32 builds always have `web` or `worker`.
 #[cfg(not(any(
     feature = "web",
     feature = "worker",
@@ -36,7 +37,7 @@ pub(crate) async fn sleep(duration: Duration) {
     feature = "mobile"
 )))]
 pub(crate) async fn sleep(duration: Duration) {
-    let (done, wait) = futures_channel::oneshot::channel::<()>();
+    let (done, wait) = futures_channel::oneshot::channel();
     std::thread::spawn(move || {
         std::thread::sleep(duration);
         // The task may be gone: then nobody waits.

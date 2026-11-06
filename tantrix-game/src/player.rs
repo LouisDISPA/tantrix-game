@@ -31,7 +31,7 @@ pub struct AiView<'a> {
 
 /// A computer player: picks one of the legal moves on its turn.
 pub trait TantrixAi: Send + Sync {
-    /// A short name for this AI, for display.
+    /// A short name for this AI; tournament configs pick AIs by it.
     fn name(&self) -> &str;
     /// A boxed copy of this AI.
     fn clone_box(&self) -> Box<dyn TantrixAi>;

@@ -251,7 +251,7 @@ pub enum PeerMessage {
     /// Change my display name and publish the updated roster.
     UpdateNickname {
         /// The new display name; the room trims it and refuses one that
-        /// shows nothing or exceeds 24 characters.
+        /// shows nothing or is too long.
         nickname: String,
     },
 }

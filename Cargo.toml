@@ -19,8 +19,9 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/LouisDISPA/tantrix-game"
 
-# Dependencies of two or more members. Entries pin the version and, where a
-# member needs them off, default features; members list their own features.
+# Dependencies of two or more members, which list their own features. Default
+# features are off here when a member needs them off: members can only turn
+# them back on.
 [workspace.dependencies]
 tantrix-ai = { path = "tantrix-ai" }
 tantrix-game = { path = "tantrix-game" }
@@ -47,8 +48,9 @@ wasm-bindgen = "0.2.129"
 web-sys = "0.3.106"
 web-time = "1"
 
-# Every member sets `[lints] workspace = true`. Clippy keeps its default lints
-# (plus clippy.toml). The library crates also `#![warn(missing_docs)]`.
+# Clippy keeps its default lints (plus clippy.toml). Members that inherit these
+# lints can't add their own, so tantrix-game, tantrix-proto and tantrix-room
+# set `#![warn(missing_docs)]` in lib.rs.
 [workspace.lints.rust]
 # `pub` only on items other crates can reach; everything else is `pub(crate)`
 # or narrower, so unused items surface as dead code.

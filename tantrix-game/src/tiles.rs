@@ -28,8 +28,7 @@ impl fmt::Display for Color {
 }
 
 /// One of the 56 tiles. A variant spells the tile's edge colors (Red, Yellow,
-/// Blue, Green) clockwise from [`Direction::Left`]; its comment gives the
-/// tile's number.
+/// Blue, Green) clockwise from [`Direction::Left`].
 #[derive(Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[expect(missing_docs, reason = "a variant's name spells its edge colors")]
 pub enum Tile {
