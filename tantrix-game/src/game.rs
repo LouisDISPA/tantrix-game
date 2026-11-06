@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::tiles::NUMBER_OF_TILE;
 use crate::{
     AiView, Bag, Board, Color, EventError, Hand, Move, MoveError, Placement, PlayedMove, Player,
-    PlayerScore, ReplayError, ScoringPath, SetupError, Tile, TileMoveInfo, TurnEvent, TurnStep,
-    TurnTracker, TILES_IN_HAND,
+    PlayerScore, ReplayError, RetireError, ScoringPath, SetupError, Tile, TileMoveInfo, TurnEvent,
+    TurnStep, TurnTracker, TILES_IN_HAND,
 };
 
 #[derive(Debug, Clone)]
@@ -171,6 +171,7 @@ impl Game {
     /// Capture everything needed to resume an authoritative game after a
     /// server restart, its seed and history included. Legal-move caches and
     /// AI implementations are runtime details and are deliberately excluded.
+    #[must_use]
     pub fn to_data(&self) -> GameData {
         GameData {
             board: self.board.clone(),
@@ -301,6 +302,7 @@ impl Game {
 
     /// Whether the bag and every hand are empty: [`GameStatus::Finished`].
     /// A game can also end by stalling; see [`Self::status`].
+    #[must_use]
     pub fn is_game_over(&self) -> bool {
         self.bag.is_empty() && self.hands.values().all(|h| h.is_empty())
     }
@@ -308,6 +310,7 @@ impl Game {
     /// Whether the game goes on, is finished, or has stalled. Skipping
     /// stuck players never changes it. Cheap while the current player can
     /// move; otherwise it works out the other players' moves.
+    #[must_use]
     pub fn status(&self) -> GameStatus {
         if self.is_game_over() {
             GameStatus::Finished
@@ -333,6 +336,7 @@ impl Game {
 
     /// The current player's legal moves at their step of the turn: only
     /// forced moves while one is possible, even after the bag is empty.
+    #[must_use]
     pub fn legal_moves(&self) -> &[Move] {
         self.legal_moves.get_or_init(|| {
             self.board.possible_moves(
@@ -345,6 +349,7 @@ impl Game {
 
     /// Whether the current player has no legal move but a player after
     /// them has: [`Self::skip_stuck_players`] would pass their turn.
+    #[must_use]
     pub fn is_stuck(&self) -> bool {
         self.turns_to_next_mover().is_some_and(|turns| turns > 0)
     }
@@ -371,6 +376,7 @@ impl Game {
 
     /// [`Self::legal_moves`] grouped per tile of the current player's hand,
     /// in hand order.
+    #[must_use]
     pub fn moves_by_tile(&self) -> Vec<TileMoveInfo> {
         let moves = self.legal_moves();
         self.hand(self.current_player())
@@ -379,22 +385,26 @@ impl Game {
             .collect()
     }
 
+    #[must_use]
     pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
         self.board.scores()
     }
 
+    #[must_use]
     pub fn scoring_paths(&self) -> EnumMap<Color, ScoringPath> {
         self.board.scoring_paths()
     }
 
     /// The playing colors tied for the top score on the board as it stands:
     /// the winners once the game is over, or when it is ended early.
+    #[must_use]
     pub fn winners(&self) -> Vec<Color> {
         self.winners_from(&self.scores())
     }
 
     /// [`Self::winners`] from the board's [`Self::scores`], for a caller
     /// that has them already.
+    #[must_use]
     pub fn winners_from(&self, scores: &EnumMap<Color, PlayerScore>) -> Vec<Color> {
         let colors = self.playing_colors();
         let top = colors.iter().map(|&c| scores[c].score).max().unwrap_or(0);
@@ -406,6 +416,7 @@ impl Game {
     }
 
     /// What the current player sees of the game, as an AI is shown it.
+    #[must_use]
     pub fn ai_view(&self) -> AiView<'_> {
         AiView {
             board: &self.board,
@@ -420,6 +431,7 @@ impl Game {
 
     /// If the current player is AI, compute and return its chosen move without playing it.
     /// Returns None if the current player is human, has no moves, or the game is over.
+    #[must_use]
     pub fn ai_choose(&self) -> Option<Move> {
         if self.is_game_over() || self.legal_moves().is_empty() {
             return None;
@@ -459,8 +471,9 @@ impl Game {
 
         self.board
             .insert_move(canonical)
-            .map_err(|_| MoveError::BoardFull)?;
-        let (hand_index, drawn) = self.hands[current].play_tile(canonical.tile, &mut self.bag);
+            .map_err(MoveError::Board)?;
+        // The tile is in hand (checked above), so this does not fail.
+        let (hand_index, drawn) = self.hands[current].play_tile(canonical.tile, &mut self.bag)?;
         self.history.push(TurnEvent::Played {
             player: current,
             step,
@@ -509,24 +522,28 @@ impl Game {
     /// Play all AI turns and skip players with no legal move. Returns when
     /// it is a human player's turn or the game is no longer
     /// [`GameStatus::Playing`]; [`Self::status`] tells which.
-    pub fn advance(&mut self) {
+    ///
+    /// Stops at an AI move that [`Self::play_move`] refuses and returns its
+    /// error: the moves before it stay played, and that AI is still to play.
+    pub fn advance(&mut self) -> Result<(), MoveError> {
         while self.status() == GameStatus::Playing {
             self.skip_stuck_players();
             let Some(m) = self.ai_choose() else {
-                return; // A human player with moves
+                return Ok(()); // A human player with moves
             };
-            self.play_move(m.placement())
-                .expect("AI chose invalid move");
+            self.play_move(m.placement())?;
         }
+        Ok(())
     }
 
     /// Remove `color` from the turn cycle mid-game. Used when a seated
     /// participant is kicked: their seat and hand go away, and the cycle
     /// rotates past them cleanly.
     ///
-    /// Returns `Err` if the color wasn't currently playing, or if removing
-    /// it would leave fewer than one player in the cycle.
-    pub fn retire_color(&mut self, color: Color) -> Result<(), &'static str> {
+    /// Fails, leaving the game as it was, if the color isn't playing
+    /// ([`RetireError::NotPlaying`]) or is the last one playing
+    /// ([`RetireError::LastPlayer`]).
+    pub fn retire_color(&mut self, color: Color) -> Result<(), RetireError> {
         self.turn_tracker.retire(color)?;
         self.players[color] = Player::None;
         self.hands[color] = Hand::default();
@@ -633,6 +650,7 @@ impl Game {
 impl AiView<'_> {
     /// The tiles neither on the board nor in a hand: the bag's, as far as
     /// the AI can tell (a retired player's tiles are out of the game too).
+    #[must_use]
     pub fn unseen_tiles(&self) -> Vec<Tile> {
         let mut seen = [false; NUMBER_OF_TILE];
         let held = self.hands.values().flat_map(|hand| hand.iter());
@@ -649,6 +667,7 @@ impl AiView<'_> {
     /// go, for an AI to play ahead. Every playing color is
     /// [`Player::Someone`], so the caller plays each move; the game keeps no
     /// seed, and its history starts here.
+    #[must_use]
     pub fn determinize<R: Rng + ?Sized>(&self, rng: &mut R) -> Game {
         let mut unseen = self.unseen_tiles();
         unseen.shuffle(rng);
@@ -677,8 +696,8 @@ mod tests {
     use crate::test_games::for_each_seeded_state;
     use crate::{
         AiView, Bag, Board, Color, Direction, EventError, Game, GameStatus, Hand, Move, MoveError,
-        Placement, Player, Position, ReplayError, Rotation, SetupError, TantrixAi, Tile, TurnEvent,
-        TurnStep,
+        Placement, Player, Position, ReplayError, RetireError, Rotation, SetupError, TantrixAi,
+        Tile, TurnEvent, TurnStep,
     };
 
     /// The legal moves of `game` worked out from scratch.
@@ -919,7 +938,9 @@ mod tests {
         let first = game.playing_colors()[0];
         game.retire_color(first).unwrap();
         let last = game.playing_colors()[0];
-        assert!(game.retire_color(last).is_err());
+        let before = state(&game);
+        assert_eq!(game.retire_color(last), Err(RetireError::LastPlayer));
+        assert_eq!(state(&game), before);
     }
 
     #[test]
@@ -931,7 +952,9 @@ mod tests {
             .into_iter()
             .find(|c| !game.playing_colors().contains(c))
             .expect("2-player game always has two absent colors");
-        assert!(game.retire_color(absent).is_err());
+        let before = state(&game);
+        assert_eq!(game.retire_color(absent), Err(RetireError::NotPlaying));
+        assert_eq!(state(&game), before);
     }
 
     // --- Legal moves per hand tile ---
@@ -1068,7 +1091,7 @@ mod tests {
             assert_eq!(game.status(), GameStatus::Stalled);
         }
         // `advance` gives up too instead of looping.
-        game.advance();
+        game.advance().unwrap();
         assert_eq!(game.current_player(), Color::Red);
         assert!(game.history().is_empty());
     }
@@ -1197,12 +1220,55 @@ mod tests {
             )
             .unwrap();
             // An all-AI game only stops once it is over or nobody can move.
-            game.advance();
+            game.advance().unwrap();
             assert_ne!(game.status(), GameStatus::Playing, "seed {seed}");
             let history = game.history().len();
             game.skip_stuck_players();
             assert_eq!(game.history().len(), history, "seed {seed}");
         }
+    }
+
+    /// Plays its first legal move with another player's tile.
+    #[derive(Clone)]
+    struct OtherTileAi;
+
+    impl TantrixAi for OtherTileAi {
+        fn name(&self) -> &str {
+            "other tile"
+        }
+
+        fn clone_box(&self) -> Box<dyn TantrixAi> {
+            Box::new(self.clone())
+        }
+
+        fn choose_move(&self, view: &AiView) -> Move {
+            let other = view
+                .playing_colors
+                .iter()
+                .find(|&&c| c != view.current_player)
+                .unwrap();
+            Move {
+                tile: view.hands[*other][0],
+                ..view.legal_moves[0]
+            }
+        }
+    }
+
+    #[test]
+    fn advance_stops_at_an_ai_move_the_game_refuses() {
+        let mut game = Game::new_seeded(
+            Player::Ai(Box::new(OtherTileAi)),
+            Player::Ai(Box::new(OtherTileAi)),
+            Player::None,
+            Player::None,
+            0,
+        )
+        .unwrap();
+        let (first, before) = (game.current_player(), state(&game));
+
+        assert_eq!(game.advance(), Err(MoveError::TileNotInHand));
+        assert_eq!(game.current_player(), first, "the AI is still to play");
+        assert_eq!(state(&game), before);
     }
 
     // --- Turn structure: forced spaces, one free move, forced spaces again ---
@@ -1697,6 +1763,20 @@ mod tests {
             step: TurnStep::BeforeFreeMove,
         };
         assert_eq!(game.replay_event(&skip), Err(EventError::WrongTurn));
+        assert_eq!(state(&game), before);
+    }
+
+    #[test]
+    fn a_recorded_retirement_of_a_color_not_playing_is_refused() {
+        let mut game = Game::from_players_seeded(players(2), 0).unwrap();
+        let absent = enum_iterator::all::<Color>()
+            .find(|c| !game.playing_colors().contains(c))
+            .unwrap();
+        let before = state(&game);
+        assert_eq!(
+            game.replay_event(&TurnEvent::Retired { color: absent }),
+            Err(EventError::Retire(RetireError::NotPlaying))
+        );
         assert_eq!(state(&game), before);
     }
 

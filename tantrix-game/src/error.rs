@@ -2,12 +2,15 @@
 
 use std::fmt;
 
+/// Why a move was refused ([`Game::play_move`](crate::Game::play_move),
+/// [`Hand::play_tile`](crate::Hand::play_tile)). The game is left as it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MoveError {
     NoLegalMoves,
     TileNotInHand,
     InvalidMove,
-    BoardFull,
+    /// The board refused the tile.
+    Board(BoardError),
 }
 
 impl fmt::Display for MoveError {
@@ -16,7 +19,45 @@ impl fmt::Display for MoveError {
             MoveError::NoLegalMoves => write!(f, "No legal moves available"),
             MoveError::TileNotInHand => write!(f, "Tile not in hand"),
             MoveError::InvalidMove => write!(f, "Invalid move"),
-            MoveError::BoardFull => write!(f, "Board is full"),
+            MoveError::Board(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// Why [`Board::insert_move`](crate::Board::insert_move) refused a move.
+/// The board only checks room for it, not the rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoardError {
+    /// A tile is already at the move's position.
+    PositionTaken,
+    /// The board holds a tile for every one in the game.
+    Full,
+}
+
+impl fmt::Display for BoardError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BoardError::PositionTaken => write!(f, "Position is taken"),
+            BoardError::Full => write!(f, "Board is full"),
+        }
+    }
+}
+
+/// Why [`Game::retire_color`](crate::Game::retire_color) refused to retire
+/// a color. The game is left as it was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetireError {
+    /// The color is not in the turn cycle.
+    NotPlaying,
+    /// The color is the last one playing.
+    LastPlayer,
+}
+
+impl fmt::Display for RetireError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RetireError::NotPlaying => write!(f, "Color is not playing"),
+            RetireError::LastPlayer => write!(f, "Cannot retire the last remaining player"),
         }
     }
 }
@@ -51,7 +92,7 @@ pub enum EventError {
     /// other tiles drawn): the event comes from another deal.
     Diverged,
     /// The retired color is not playing, or is the last one left.
-    Retire(&'static str),
+    Retire(RetireError),
 }
 
 impl fmt::Display for EventError {

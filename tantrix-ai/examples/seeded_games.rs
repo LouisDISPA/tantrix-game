@@ -49,7 +49,7 @@ fn main() {
                     seed,
                 )
                 .unwrap();
-                game.advance();
+                game.advance().expect("AIs choose among the legal moves");
                 format!("{:?}", game.history()).hash(&mut checksum);
                 let scores = game.scores();
                 (scores[Color::Red].score, scores[Color::Blue].score).hash(&mut checksum);

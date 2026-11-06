@@ -220,6 +220,7 @@ impl Board {
 
     /// Every line and loop on the board, of every color, each once: tile by
     /// tile in board order, each color of the tile not already on one.
+    #[must_use]
     pub fn lines(&self) -> Vec<Line> {
         let mut lines = Vec::new();
         self.for_each_path(|trace| {
@@ -235,6 +236,7 @@ impl Board {
 
     /// Compute the best scoring path for each color, including positions:
     /// the first path found with the color's top score.
+    #[must_use]
     pub fn scoring_paths(&self) -> EnumMap<Color, ScoringPath> {
         let mut best: EnumMap<Color, ScoringPath> = enum_map! { _ => ScoringPath::default() };
         self.for_each_path(|trace| {
@@ -251,6 +253,7 @@ impl Board {
     }
 
     /// Compute scores for all 4 colors in a single pass over the board.
+    #[must_use]
     pub fn scores(&self) -> EnumMap<Color, PlayerScore> {
         let mut best_line: EnumMap<Color, usize> = enum_map! { _ => 0 };
         let mut best_loop: EnumMap<Color, usize> = enum_map! { _ => 0 };
@@ -277,6 +280,7 @@ impl Board {
     /// from `color`'s path through `m` alone. A loop `m` closes outscores the
     /// line it closes (twice the tiles, and one more), so the color's score
     /// is the larger of its score now and the path through `m`.
+    #[must_use]
     pub fn score_after(&self, score: usize, m: &Move, color: Color) -> usize {
         self.score_after_by(|pos| self.index_of(&pos), score, m, color)
     }
@@ -315,6 +319,7 @@ impl Board {
     /// tile is added, so each color's longest line is the longer of the old
     /// one and the new line through `m`. Only a move that closes a loop is
     /// scored on a copy, since the line it closes may have been the longest.
+    #[must_use]
     pub fn scores_after(
         &self,
         scores: &EnumMap<Color, PlayerScore>,
@@ -361,6 +366,7 @@ impl Board {
 
     /// This board with its tiles indexed by position, to score many moves
     /// on it in a row.
+    #[must_use]
     pub fn indexed(&self) -> IndexedBoard<'_> {
         IndexedBoard {
             board: self,
@@ -385,11 +391,13 @@ impl IndexedBoard<'_> {
     }
 
     /// [`Board::score_after`].
+    #[must_use]
     pub fn score_after(&self, score: usize, m: &Move, color: Color) -> usize {
         self.board.score_after_by(self.tile_at(), score, m, color)
     }
 
     /// [`Board::scores_after`].
+    #[must_use]
     pub fn scores_after(
         &self,
         scores: &EnumMap<Color, PlayerScore>,

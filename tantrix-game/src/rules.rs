@@ -11,12 +11,14 @@ use crate::grid::{Cell, Grid};
 use crate::{Board, Color, Direction, Edges, Hand, Move, Position, Rotation, Tile, TurnStep};
 
 impl Board {
+    #[must_use]
     pub fn position_is_forced(&self, pos: &Position) -> bool {
         self.neighbor_count(pos) >= 3
     }
 
     /// Rule 1: Would placing `m` create a forced space where all surrounding
     /// links are the same color (making it impossible to fill)?
+    #[must_use]
     pub fn creates_same_color_triple(&self, m: &Move) -> bool {
         // Check each empty neighbor of the move's position
         for (neighbor_pos, _) in m.position.around() {
@@ -56,6 +58,7 @@ impl Board {
     /// - Rule 3: the controlled sides. From each empty direction next to an
     ///   occupied one, a straight ray runs outward while the position is on
     ///   the contour and is not itself forced.
+    #[must_use]
     pub fn controlled_positions(
         &self,
         contour_positions: &BTreeSet<Position>,
@@ -112,6 +115,7 @@ impl Board {
     /// (the tests compare them), but what those look up about a position is
     /// worked out once per position, and forced spaces are tried first: other
     /// moves are only generated when no forced move is possible.
+    #[must_use]
     pub fn possible_moves(&self, hand: &Hand, bag_is_empty: bool, step: TurnStep) -> Vec<Move> {
         let restricted = !bag_is_empty;
         let spaces = self.spaces(restricted);
@@ -175,6 +179,7 @@ impl Board {
 
     /// The colors the tiles around `pos` show it, by direction: what a tile
     /// placed there must match ([`Edges::matches`]).
+    #[must_use]
     pub fn edges_toward(&self, pos: Position) -> Edges {
         let mut edges = Edges::default();
         for (neighbor, dir) in pos.around() {
@@ -222,12 +227,14 @@ impl Board {
 impl Edges {
     /// Whether `tile` (a tile's edges, all set) shows the same color on
     /// every edge set here: the golden rule, for a space's edges.
+    #[must_use]
     pub fn matches(self, tile: Edges) -> bool {
         (self.colors ^ tile.colors) & self.known == 0
     }
 
     /// Whether `tile` (a tile's edges, all set) shows another color on every
     /// edge set here.
+    #[must_use]
     pub fn avoids(self, tile: Edges) -> bool {
         let differ = self.colors ^ tile.colors;
         // The low bit of each direction whose two bits differ somewhere.
@@ -243,6 +250,7 @@ impl Edges {
     }
 
     /// Whether some rotation of `tile` [`Self::matches`] these edges.
+    #[must_use]
     pub fn accepts(self, tile: Tile) -> bool {
         tile.all_edges().iter().any(|&turned| self.matches(turned))
     }

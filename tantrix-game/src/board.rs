@@ -11,7 +11,7 @@ use arrayvec::ArrayVec;
 use serde::{Deserialize, Serialize};
 
 use crate::tiles::NUMBER_OF_TILE;
-use crate::{Move, Position};
+use crate::{BoardError, Move, Position};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Board {
@@ -27,18 +27,23 @@ impl Deref for Board {
 }
 
 impl Board {
+    #[must_use]
     pub fn is_available(&self, pos: &Position) -> bool {
         self.moves
             .binary_search_by(|m| m.position.cmp(pos))
             .is_err()
     }
 
-    pub fn insert_move(&mut self, m: Move) -> Result<(), String> {
+    /// Put `m` on the board if its position is free. Only room is checked,
+    /// not the rules: [`Game::play_move`](crate::Game::play_move) plays by them.
+    pub fn insert_move(&mut self, m: Move) -> Result<(), BoardError> {
         let index = match self.moves.binary_search_by(|i| i.position.cmp(&m.position)) {
-            Ok(_) => return Err("Position unavailable".to_string()),
+            Ok(_) => return Err(BoardError::PositionTaken),
             Err(i) => i,
         };
-        self.moves.try_insert(index, m).map_err(|e| e.to_string())
+        self.moves
+            .try_insert(index, m)
+            .map_err(|_| BoardError::Full)
     }
 
     /// Take the tile at `pos` off the board: undoes [`Self::insert_move`].
@@ -60,6 +65,7 @@ impl Board {
         self.moves.binary_search_by(|m| m.position.cmp(pos)).ok()
     }
 
+    #[must_use]
     pub fn contour_positions(&self) -> BTreeSet<Position> {
         if self.is_empty() {
             BTreeSet::from([Position::CENTER])
@@ -71,5 +77,44 @@ impl Board {
                 .map(|(pos, _)| pos)
                 .collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tiles::NUMBER_OF_TILE;
+    use crate::{Board, BoardError, Move, Position, Rotation, Tile};
+
+    /// A move at `position`; the board checks room, not the rules.
+    fn at(position: Position) -> Move {
+        Move {
+            tile: Tile::GBBYGY,
+            position,
+            rotation: Rotation::None,
+            forced: false,
+        }
+    }
+
+    #[test]
+    fn insert_move_refuses_a_taken_position() {
+        let mut board = Board::default();
+        board.insert_move(at(Position::CENTER)).unwrap();
+        assert_eq!(
+            board.insert_move(at(Position::CENTER)),
+            Err(BoardError::PositionTaken)
+        );
+        assert_eq!(board.len(), 1);
+    }
+
+    #[test]
+    fn insert_move_refuses_a_move_once_every_tile_is_placed() {
+        let mut board = Board::default();
+        let mut positions = (0..8).flat_map(|x| (0..8).map(move |y| Position::new(x, y)));
+        for position in positions.by_ref().take(NUMBER_OF_TILE) {
+            board.insert_move(at(position)).unwrap();
+        }
+        let free = positions.next().unwrap();
+        assert_eq!(board.insert_move(at(free)), Err(BoardError::Full));
+        assert_eq!(board.len(), NUMBER_OF_TILE);
     }
 }

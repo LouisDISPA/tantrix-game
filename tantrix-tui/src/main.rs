@@ -259,8 +259,8 @@ impl App {
 
     fn run(mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
         self.running = true;
-        self.game.advance();
-        self.refresh_hand_info();
+        // An AI seated first plays before the human's first turn.
+        self.after_move();
         while self.running {
             terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
             self.handle_events()?;
@@ -449,7 +449,12 @@ impl App {
     }
 
     fn after_move(&mut self) {
-        self.game.advance();
+        // The game cannot go on past an AI's refused move.
+        if let Err(e) = self.game.advance() {
+            self.phase = TurnPhase::GameOver;
+            self.message = format!("AI error: {e}");
+            return;
+        }
 
         // A stalled game, with tiles left that fit nowhere, is over too.
         if self.game.status() != GameStatus::Playing {
@@ -851,7 +856,9 @@ impl Widget for &App {
 
 #[cfg(test)]
 mod tests {
-    use tantrix_game::{Board, Color, EnumMap, Game, GameStatus, Player, TurnStep};
+    use tantrix_game::{
+        AiView, Board, Color, EnumMap, Game, GameStatus, Move, Player, TantrixAi, TurnStep,
+    };
 
     use super::{App, TurnPhase};
 
@@ -904,5 +911,50 @@ mod tests {
         assert!(app.game.history().is_empty(), "nobody is skipped");
         assert_eq!(app.phase, TurnPhase::GameOver);
         assert_eq!(app.message, "Game Over!");
+    }
+
+    /// Plays its first legal move with another player's tile.
+    #[derive(Clone)]
+    struct OtherTileAi;
+
+    impl TantrixAi for OtherTileAi {
+        fn name(&self) -> &str {
+            "other tile"
+        }
+
+        fn clone_box(&self) -> Box<dyn TantrixAi> {
+            Box::new(self.clone())
+        }
+
+        fn choose_move(&self, view: &AiView) -> Move {
+            let other = view
+                .playing_colors
+                .iter()
+                .find(|&&c| c != view.current_player)
+                .unwrap();
+            Move {
+                tile: view.hands[*other][0],
+                ..view.legal_moves[0]
+            }
+        }
+    }
+
+    #[test]
+    fn an_ai_move_the_game_refuses_ends_the_game() {
+        let game = Game::new_seeded(
+            Player::Ai(Box::new(OtherTileAi)),
+            Player::Ai(Box::new(OtherTileAi)),
+            Player::None,
+            Player::None,
+            0,
+        )
+        .unwrap();
+        let mut app = App::new(game);
+
+        app.after_move();
+
+        assert!(app.game.history().is_empty(), "the move is not played");
+        assert_eq!(app.phase, TurnPhase::GameOver);
+        assert_eq!(app.message, "AI error: Tile not in hand");
     }
 }

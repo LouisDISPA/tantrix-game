@@ -7,7 +7,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 use crate::tiles::NUMBER_OF_COLOR;
-use crate::{Color, Player, SetupError};
+use crate::{Color, Player, RetireError, SetupError};
 
 /// Where the current player is within their turn: fill forced spaces, make
 /// one free move, then fill forced spaces again.
@@ -111,12 +111,12 @@ impl TurnTracker {
     /// Drop `color` from the cycle, keeping the turn with the same player,
     /// or passing it to the next one (at the start of their turn) if it was
     /// `color`'s.
-    pub(crate) fn retire(&mut self, color: Color) -> Result<(), &'static str> {
+    pub(crate) fn retire(&mut self, color: Color) -> Result<(), RetireError> {
         let Some(idx) = self.color_cycle.iter().position(|&c| c == color) else {
-            return Err("color is not in the turn cycle");
+            return Err(RetireError::NotPlaying);
         };
         if self.color_cycle.len() <= 1 {
-            return Err("cannot retire the last remaining player");
+            return Err(RetireError::LastPlayer);
         }
         self.color_cycle.remove(idx);
         if self.currently_playing > idx {
