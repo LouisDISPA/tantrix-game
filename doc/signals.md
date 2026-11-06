@@ -33,7 +33,7 @@ unchanged game/seat snapshots preserve an open selection.
 | Tile drag | `tile_drag`, `suppress_tile_click`; `state/tile_drag.rs`, game pointer handlers/overlay, hand tiles |
 | Hand view | `peeked`; shown-hand/HUD memos; cleared on turn change |
 | Camera | `zoom`, `pan_x`, `pan_y`, `gesture`, `dragged`, `stage`; camera, viewport, open orientation card |
-| Animation | `new_tile`, `last_placed_position`; hands, placed tiles |
+| Animation | `new_tile`, `last_placed_position`; hands, placed tiles (the last move stays marked until the next) |
 | Scoring | `highlighted_color`; scoring paths/rows |
 
 `Hovered` names one target: none, hand index, board position, rotation or score

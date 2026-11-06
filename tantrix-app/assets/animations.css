@@ -87,6 +87,7 @@
 
   /* ===== Tile Placement ===== */
 
+  /* The tile lands; board.css keeps it marked until the next move. */
   .hex-tile.just-placed {
     animation: tile-place 0.3s ease;
   }

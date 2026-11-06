@@ -72,32 +72,18 @@ pub fn OnlineGameView(
 #[cfg(test)]
 mod tests {
     use dioxus::prelude::*;
-    use tantrix_game::{Color, EnumMap};
+    use tantrix_game::Color;
     use tantrix_proto::{GameSnapshot, RejectCode};
 
     use super::OnlineGameView;
     use crate::state::config::GameConfig;
     use crate::state::game_state::GameState;
+    use crate::state::online_state::test_rooms::snapshot_of;
     use crate::state::online_state::{
         ConnectionStatus, OnlinePhase, OnlineState, OnlineStateStoreExt,
     };
     use crate::util::render_count;
     use crate::util::test_page::settle;
-
-    /// What a room would send for `game` (watched: no seats).
-    fn snapshot_of(game: &GameState) -> GameSnapshot {
-        GameSnapshot {
-            match_id: 0,
-            board: game.board().clone(),
-            hands: EnumMap::from_fn(|color| game.hand(color).clone()),
-            bag_count: game.bag_count(),
-            current_player: game.current_player(),
-            turn_step: game.turn_step(),
-            playing_colors: game.playing_colors().to_vec(),
-            seats: EnumMap::default(),
-            participants: Vec::new(),
-        }
-    }
 
     fn online_game(snapshot: GameSnapshot) -> Element {
         let state = use_store(move || OnlineState {

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use dioxus::prelude::*;
-use tantrix_game::{Player, Position};
+use tantrix_game::{Color, Move, MoveError, Player, Position};
 
 use crate::state::actions::frame_board;
 use crate::state::game_state::GameCtx;
@@ -19,7 +19,7 @@ use crate::util::sleep;
 /// Designed to be `spawn`ed — scalar signal reads happen before any `.await`
 /// to avoid holding guards across suspend points.
 pub async fn run_ai_loop(ctx: GameCtx) {
-    let mut game_state = ctx.game_state;
+    let game_state = ctx.game_state;
     let ui_state = ctx.ui_state;
 
     loop {
@@ -62,15 +62,10 @@ pub async fn run_ai_loop(ctx: GameCtx) {
             break;
         }
 
-        let result = game_state.write().play_move(chosen.placement());
-        let played = match result {
-            Ok(played) => played,
-            Err(err) => {
-                ui_state.message().set(format!("AI move failed: {err}"));
-                break;
-            }
-        };
-        after_ai_move(ctx, ai_color, played.hand_index, chosen.position);
+        if let Err(err) = play_ai_move(ctx, ai_color, chosen) {
+            ui_state.message().set(format!("AI move failed: {err}"));
+            break;
+        }
 
         sleep(Duration::from_millis(300)).await;
         if !ai_can_continue(ctx, game_state.read().current_player()) {
@@ -79,9 +74,17 @@ pub async fn run_ai_loop(ctx: GameCtx) {
     }
 }
 
+/// Play `color`'s `chosen` move on the board, then [`after_ai_move`].
+fn play_ai_move(ctx: GameCtx, color: Color, chosen: Move) -> Result<(), MoveError> {
+    let mut game_state = ctx.game_state;
+    let played = game_state.write().play_move(chosen.placement())?;
+    after_ai_move(ctx, color, played.hand_index, chosen.position);
+    Ok(())
+}
+
 /// An AI's move has landed: mark it, put the board back in the camera as
 /// after a move played here, and drop the AI's selection.
-fn after_ai_move(ctx: GameCtx, color: tantrix_game::Color, hand_index: usize, at: Position) {
+fn after_ai_move(ctx: GameCtx, color: Color, hand_index: usize, at: Position) {
     let ui_state = ctx.ui_state;
     let mut ui = ui_state;
     ui.after_move(color, hand_index, at);
@@ -90,7 +93,7 @@ fn after_ai_move(ctx: GameCtx, color: tantrix_game::Color, hand_index: usize, at
     set_if_changed(ui_state.selected_position(), None);
 }
 
-fn ai_can_continue(ctx: GameCtx, expected_color: tantrix_game::Color) -> bool {
+fn ai_can_continue(ctx: GameCtx, expected_color: Color) -> bool {
     let phase_is_ai = *ctx.ui_state.phase().read() == TurnPhase::WaitingForAi;
     if !phase_is_ai {
         return false;
@@ -105,8 +108,13 @@ fn ai_can_continue(ctx: GameCtx, expected_color: tantrix_game::Color) -> bool {
 mod tests {
     use dioxus::prelude::*;
 
-    use super::after_ai_move;
+    use tantrix_game::{Color, Position};
+
+    use super::{after_ai_move, play_ai_move};
     use crate::hooks::camera::BoardCamera;
+    use crate::state::actions::execute_move;
+    use crate::state::config::GameConfig;
+    use crate::state::game_state::GameState;
     use crate::state::test_games::seeded;
     use crate::state::ui_state::UiStateStoreExt;
     use crate::svg::geometry::Rect;
@@ -142,5 +150,41 @@ mod tests {
         });
         assert!(pose.zoom < 1.0, "{pose:?}");
         assert_eq!(selected, None);
+    }
+
+    /// Where the page marks the last move.
+    fn marked(page: &GamePage) -> Option<Position> {
+        page.with(|ctx| *ctx.ui_state.last_placed_position().peek())
+    }
+
+    #[test]
+    fn an_ais_move_stays_marked_until_the_next_move() {
+        // Red plays here, Blue is an AI; Red has opened, so Blue is to move.
+        let mut config = GameConfig::new(Some(0));
+        config.cycle_player(Color::Blue);
+        let mut game = GameState::new(&config);
+        if game.current_player() == Color::Red {
+            game.play_move(game.legal_moves()[0].placement()).unwrap();
+        }
+        assert_eq!(game.current_player(), Color::Blue);
+        let mut page = GamePage::local(game);
+        assert_eq!(marked(&page), None);
+
+        // The AI loop's commit step, without its pauses.
+        let chosen = page.game(|game| game.ai_choose()).unwrap();
+        page.act(|ctx| play_ai_move(ctx, Color::Blue, chosen).unwrap());
+        assert_eq!(marked(&page), Some(chosen.position));
+
+        // Red answers: the mark moves to Red's tile. (`with`, not `act`: the
+        // AI's next turn, and its timers, would start.)
+        let (m, idx) = page.game(|game| {
+            assert_eq!(game.current_player(), Color::Red);
+            let m = game.legal_moves()[0];
+            let idx = game.hand(Color::Red).iter().position(|&t| t == m.tile);
+            (m, idx.unwrap())
+        });
+        page.with(|ctx| execute_move(ctx, idx, m.position, m.rotation));
+        assert_ne!(m.position, chosen.position);
+        assert_eq!(marked(&page), Some(m.position));
     }
 }

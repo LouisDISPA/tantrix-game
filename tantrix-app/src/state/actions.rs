@@ -586,6 +586,37 @@ mod tests {
         assert_eq!((pose.pan_x, pose.pan_y), (0.0, 0.0));
     }
 
+    /// Play the first legal move of whoever is to move, as their click
+    /// would; where it went.
+    fn play_first_legal_move(page: &mut GamePage) -> Position {
+        let (m, idx) = page.game(|game| {
+            let m = game.legal_moves()[0];
+            let hand = game.hand(game.current_player());
+            (m, hand.iter().position(|&t| t == m.tile).unwrap())
+        });
+        page.act(|ctx| execute_move(ctx, idx, m.position, m.rotation));
+        m.position
+    }
+
+    #[test]
+    fn the_last_move_stays_marked_until_the_next_one() {
+        let mut page = GamePage::local(seeded(3));
+        let marked = |page: &GamePage| page.with(|ctx| *ctx.ui_state.last_placed_position().peek());
+        assert_eq!(marked(&page), None);
+
+        let first = play_first_legal_move(&mut page);
+        assert_eq!(marked(&page), Some(first));
+
+        // Choosing the next tile, and going back on it, leave the mark.
+        page.act(|mut ctx| ctx.ui_state.select_tile(0));
+        page.act(|mut ctx| ctx.ui_state.go_back());
+        assert_eq!(marked(&page), Some(first));
+
+        let second = play_first_legal_move(&mut page);
+        assert_ne!(second, first);
+        assert_eq!(marked(&page), Some(second));
+    }
+
     #[test]
     fn clicking_another_tile_moves_the_selection() {
         // Two tiles of the hand to move that fit at several positions.
