@@ -1,13 +1,35 @@
 //! Public room endpoints. Internal object operations are never public routes.
+use std::net::IpAddr;
+
 use crate::catalog::Owner;
 use tantrix_proto::{is_game_id, CreateRoom, RoomApiError, RoomReference};
-use tantrix_room::{lifecycle, session_cookie};
+use tantrix_room::{lifecycle, rate_limit, session_cookie};
 use worker::{Env, Method, Request, Response, Result};
+
+/// Rate-limit bindings in `wrangler.toml`, configured to
+/// [`rate_limit::ROOM_CREATION`] and [`rate_limit::CODE_LOOKUP`].
+const CREATION_LIMIT: &str = "ROOM_CREATION_LIMIT";
+const LOOKUP_LIMIT: &str = "CODE_LOOKUP_LIMIT";
 
 pub fn error(error: RoomApiError) -> Result<Response> {
     let mut response = Response::from_json(&error)?.with_status(error.status());
     response.headers_mut().set("Cache-Control", "no-store")?;
     Ok(response)
+}
+
+/// Whether the client may make one more request counted by `binding`.
+async fn allowed(req: &Request, env: &Env, binding: &str) -> Result<bool> {
+    let ip = req
+        .headers()
+        .get("CF-Connecting-IP")?
+        .and_then(|ip| ip.parse::<IpAddr>().ok());
+    // Cloudflare always sets the header; without it everyone shares one count.
+    let key = match ip.map(rate_limit::client_key) {
+        Some(None) => return Ok(true),
+        Some(Some(key)) => key.to_string(),
+        None => "unknown".to_owned(),
+    };
+    Ok(env.rate_limiter(binding)?.limit(key).await?.success)
 }
 
 pub async fn handle(mut req: Request, env: &Env) -> Result<Response> {
@@ -26,6 +48,9 @@ pub async fn handle(mut req: Request, env: &Env) -> Result<Response> {
     let cookie = req.headers().get("Cookie")?;
     let (token, set_cookie) = session_cookie::identify(cookie.as_deref(), url.scheme() == "https");
     let result = if path == "/api/rooms" && req.method() == Method::Post {
+        if !allowed(&req, env, CREATION_LIMIT).await? {
+            return error(RoomApiError::RateLimited);
+        }
         // Small JSON request only; reject oversized declared bodies early.
         if req
             .headers()
@@ -54,6 +79,9 @@ pub async fn handle(mut req: Request, env: &Env) -> Result<Response> {
         .strip_prefix("/api/rooms/code/")
         .filter(|_| req.method() == Method::Get)
     {
+        if !allowed(&req, env, LOOKUP_LIMIT).await? {
+            return error(RoomApiError::RateLimited);
+        }
         if !tantrix_proto::is_room_code(code) {
             return error(RoomApiError::InvalidRequest);
         }

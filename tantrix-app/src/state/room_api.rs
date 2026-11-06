@@ -68,7 +68,13 @@ fn decode_response((status, body): (u16, String)) -> Result<RoomReference, RoomA
     if (200..300).contains(&status) {
         serde_json::from_str(&body).map_err(|_| RoomApiError::StorageUnavailable)
     } else {
-        Err(serde_json::from_str(&body).unwrap_or(RoomApiError::StorageUnavailable))
+        // A proxy in front of the server may answer 429 with its own body.
+        let fallback = if status == 429 {
+            RoomApiError::RateLimited
+        } else {
+            RoomApiError::StorageUnavailable
+        };
+        Err(serde_json::from_str(&body).unwrap_or(fallback))
     }
 }
 
@@ -211,6 +217,20 @@ mod tests {
         assert_eq!(
             decode_response((410, "\"Expired\"".into())),
             Err(RoomApiError::Expired)
+        );
+    }
+
+    #[test]
+    fn rate_limited_requests_show_a_short_retry_message() {
+        for body in ["\"RateLimited\"", "Too Many Requests"] {
+            assert_eq!(
+                decode_response((429, body.into())),
+                Err(RoomApiError::RateLimited)
+            );
+        }
+        assert_eq!(
+            RoomApiError::RateLimited.message(),
+            "Too many room requests. Wait a minute and try again."
         );
     }
 }

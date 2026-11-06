@@ -18,6 +18,8 @@ The Worker serves Dioxus SSR and static assets; one Durable Object per room owns
 
 Canonical `Link` headers cover `/`, `/learn`, `/about` and `/online`; other rendered pages receive `X-Robots-Tag: noindex`. Keep `SITE_ORIGIN` in `src/index.js` aligned with the custom domain in `wrangler.toml`.
 
+Room creation and code lookups are limited per client IP by the `ROOM_CREATION_LIMIT` and `CODE_LOOKUP_LIMIT` rate-limit bindings; see [request limits](../doc/MULTIPLAYER.md#request-limits).
+
 Each game has a permanent-ID Room object; each short code has a RoomCodes object owning its reservation. Room alarms release invitations after 24 hours without joined sockets. Unstarted lobbies expire; started games and results remain available by permanent link.
 
 Room sockets hibernate; 30-second client pings receive automatic pongs without waking the object. State changes and reconnects send full snapshots; clients never poll. Storage succeeds before state is committed and broadcast. A failed save closes every socket and forces a reload from storage on the next event.

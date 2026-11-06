@@ -31,6 +31,8 @@ pub enum RoomApiError {
     Expired,
     AllocationBusy,
     StorageUnavailable,
+    /// This client created or looked up too many rooms lately; retry later.
+    RateLimited,
 }
 
 impl RoomApiError {
@@ -39,6 +41,7 @@ impl RoomApiError {
             Self::InvalidRequest => 400,
             Self::NotFound => 404,
             Self::Expired => 410,
+            Self::RateLimited => 429,
             Self::AllocationBusy | Self::StorageUnavailable => 503,
         }
     }
@@ -52,6 +55,7 @@ impl RoomApiError {
             }
             Self::AllocationBusy => "Couldn't find an available room code. Please try again.",
             Self::StorageUnavailable => "Room storage is unavailable. Please try again.",
+            Self::RateLimited => "Too many room requests. Wait a minute and try again.",
         }
     }
 }
