@@ -6174,6 +6174,7 @@ dependencies = [
  "tantrix-room",
  "tempfile",
  "tokio",
+ "tokio-tungstenite 0.29.0",
  "tower-http",
  "tracing-subscriber",
  "url",

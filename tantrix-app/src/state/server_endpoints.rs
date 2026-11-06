@@ -35,23 +35,26 @@ pub fn server_origin() -> String {
 }
 
 /// `server` is the HTTP(S) origin used by the compatibility check and invites.
+/// The URL carries this client's online version, which the server checks.
 pub fn room_url(server: &str, game_id: &str) -> String {
+    use tantrix_proto::{ONLINE_VERSION, ONLINE_VERSION_PARAM};
     let socket_origin = server.trim_end_matches('/').replacen("http", "ws", 1);
-    format!("{socket_origin}/room/{game_id}")
+    format!("{socket_origin}/room/{game_id}?{ONLINE_VERSION_PARAM}={ONLINE_VERSION}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn room_endpoints_use_the_permanent_id() {
+    fn room_endpoints_use_the_permanent_id_and_online_version() {
+        let version = tantrix_proto::ONLINE_VERSION;
         assert_eq!(
             room_url("https://example.com/", "game-id"),
-            "wss://example.com/room/game-id"
+            format!("wss://example.com/room/game-id?v={version}")
         );
         assert_eq!(
             room_url("http://[::1]:8080", "game-id"),
-            "ws://[::1]:8080/room/game-id"
+            format!("ws://[::1]:8080/room/game-id?v={version}")
         );
     }
 }
