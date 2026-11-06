@@ -9,8 +9,9 @@ use std::task::{Context, Poll, Waker};
 use tantrix_game::Color;
 use tantrix_proto::{HostMessage, PeerMessage, RejectCode};
 use tantrix_room::engine::{
-    ConnId, Connection, Effect, RoomEngine, RoomHost, Step, MAX_MESSAGE_BYTES, OPENED_ELSEWHERE,
-    STORAGE_UNAVAILABLE, TOO_SLOW,
+    ConnId, Connection, Effect, RoomEngine, RoomHost, Step, MAX_CONNECTIONS, MAX_MESSAGE_BYTES,
+    MESSAGE_BURST, OPENED_ELSEWHERE, STORAGE_UNAVAILABLE, TOO_MANY_CONNECTIONS, TOO_MANY_MESSAGES,
+    TOO_SLOW,
 };
 use tantrix_room::room_logic::{RoomData, MAX_MEMBERS};
 use tantrix_room::session_cookie::SessionToken;
@@ -71,6 +72,9 @@ fn now<F: Future>(future: F) -> F::Output {
 struct Room {
     engine: RoomEngine,
     host: FakeHost,
+    /// Milliseconds. The helpers send each frame a second after the last,
+    /// well within the rate limit; [`Room::text_at`] picks its own time.
+    clock: u64,
 }
 
 impl Room {
@@ -82,6 +86,7 @@ impl Room {
         Self {
             engine: RoomEngine::new(room, connections),
             host: FakeHost::default(),
+            clock: 0,
         }
     }
 
@@ -109,7 +114,12 @@ impl Room {
     }
 
     fn text(&mut self, conn: u64, text: &str) -> Vec<Effect> {
-        let step = self.engine.on_text(ConnId(conn), text);
+        self.clock += 1000;
+        self.text_at(conn, text, self.clock)
+    }
+
+    fn text_at(&mut self, conn: u64, text: &str, now: u64) -> Vec<Effect> {
+        let step = self.engine.on_text(ConnId(conn), text, now);
         self.run(step).unwrap()
     }
 
@@ -220,6 +230,7 @@ fn a_step_changes_nothing_until_it_runs() {
             color: Some(Color::Red),
         })
         .unwrap(),
+        room.clock,
     );
     assert!(step
         .persist()
@@ -348,7 +359,7 @@ fn bad_frames_are_answered_before_they_reach_the_room() {
         text.to_owned()
     };
 
-    let step = room.engine.on_binary(ConnId(1));
+    let step = room.engine.on_binary(ConnId(1), room.clock);
     assert_eq!(only_error(room.run(step).unwrap()), "text messages only");
     let oversize = format!("\"{}\"", "x".repeat(MAX_MESSAGE_BYTES));
     assert_eq!(only_error(room.text(1, &oversize)), "message too large");
@@ -366,7 +377,7 @@ fn bad_frames_are_answered_before_they_reach_the_room() {
     // Sockets the room doesn't know (closed, or never opened) are ignored.
     assert!(room.text(7, "{not json").is_empty());
     assert!(room.send(7, &hello("Nobody")).is_empty());
-    let step = room.engine.on_binary(ConnId(7));
+    let step = room.engine.on_binary(ConnId(7), room.clock);
     assert!(room.run(step).unwrap().is_empty());
     assert!(room.close(7).is_empty());
 }
@@ -494,6 +505,7 @@ fn a_failed_save_commits_nothing_and_closes_every_socket() {
             color: Some(Color::Blue),
         })
         .unwrap(),
+        room.clock,
     );
     let (error, delivered) = room.run_failing(step);
     assert_eq!(error, "storage is down");
@@ -521,7 +533,7 @@ fn a_new_member_is_not_welcomed_if_their_arrival_cannot_be_saved() {
     room.open(1, &newcomer);
     let step = room
         .engine
-        .on_text(ConnId(1), &serde_json::to_string(&hello("New")).unwrap());
+        .on_text(ConnId(1), &serde_json::to_string(&hello("New")).unwrap(), 0);
     let (_, delivered) = room.run_failing(step);
     assert_eq!(closes(&delivered), [(1, STORAGE_UNAVAILABLE)]);
     assert_eq!(delivered.len(), 1, "no welcome: {delivered:?}");
@@ -599,6 +611,7 @@ fn rematch_is_saved_before_broadcast_and_a_failed_save_keeps_results() {
     let step = room.engine.on_text(
         ConnId(1),
         &serde_json::to_string(&PeerMessage::Rematch { match_id: 0 }).unwrap(),
+        room.clock,
     );
     let (_, delivered) = room.run_failing(step);
     assert_eq!(
@@ -617,4 +630,77 @@ fn rematch_is_saved_before_broadcast_and_a_failed_save_keeps_results() {
     assert!(
         matches!(received(&effects, 1)[0], HostMessage::LobbyUpdate { lobby } if lobby.match_id == 1)
     );
+}
+
+#[test]
+fn a_socket_that_sends_too_fast_is_closed_and_leaves() {
+    let mut room = Room::new();
+    room.join(1, "Red");
+    room.join(2, "Blue");
+    room.saves();
+    let snapshot = serde_json::to_string(&PeerMessage::RequestSnapshot).unwrap();
+
+    // A burst is fine; so is one more frame once half a second refilled it.
+    let at = room.clock + 60_000;
+    for _ in 0..MESSAGE_BURST {
+        let effects = room.text_at(1, &snapshot, at);
+        assert_eq!(received(&effects, 1).len(), 1, "answered: {effects:?}");
+    }
+    let effects = room.text_at(1, &snapshot, at + 500);
+    assert!(closes(&effects).is_empty(), "refilled: {effects:?}");
+
+    // One frame too many closes the socket, as a disconnect would.
+    let effects = room.text_at(1, &snapshot, at + 500);
+    assert_eq!(closes(&effects), [(1, TOO_MANY_MESSAGES)]);
+    assert!(received(&effects, 1).is_empty(), "no answer: {effects:?}");
+    let [HostMessage::LobbyUpdate { lobby }] = received(&effects, 2)[..] else {
+        panic!("Blue hears the roster: {effects:?}");
+    };
+    assert_eq!(lobby.participants.len(), 1, "Red, unseated, left");
+    assert!(room.engine.connection(ConnId(1)).is_none());
+    assert!(room.text_at(1, &snapshot, at + 60_000).is_empty());
+
+    // Other sockets keep their own allowance; bad frames count too.
+    let effects = room.text_at(2, "{not json", at + 500);
+    assert!(closes(&effects).is_empty());
+    for _ in 1..MESSAGE_BURST {
+        let step = room.engine.on_binary(ConnId(2), at + 500);
+        assert!(closes(&room.run(step).unwrap()).is_empty());
+    }
+    let step = room.engine.on_binary(ConnId(2), at + 500);
+    assert_eq!(closes(&room.run(step).unwrap()), [(2, TOO_MANY_MESSAGES)]);
+}
+
+#[test]
+fn a_full_room_closes_its_oldest_silent_socket_for_a_new_one() {
+    let mut room = Room::new();
+    room.join(1, "Red");
+    for conn in 2..=MAX_CONNECTIONS as u64 {
+        room.open(conn, &token(&format!("lurker-{conn}")));
+    }
+    assert_eq!(room.engine.connections().count(), MAX_CONNECTIONS);
+
+    // The joined player stays; the oldest socket that never said hello goes.
+    let effects = room.open(100, &token("late"));
+    assert_eq!(closes(&effects), [(2, TOO_MANY_CONNECTIONS)]);
+    assert_eq!(room.engine.connections().count(), MAX_CONNECTIONS);
+    assert!(room.engine.connection(ConnId(1)).is_some());
+    assert!(room.engine.connection(ConnId(2)).is_none());
+    let effects = room.send(100, &hello("Late"));
+    assert!(!welcome_id(received(&effects, 100)[0]).is_empty());
+
+    // With every socket joined, the new one is turned away instead.
+    let joined = (1..=MAX_CONNECTIONS as u64).map(|conn| {
+        let connection = Connection {
+            token: token(&format!("player-{conn}")),
+            joined: true,
+        };
+        (ConnId(conn), connection)
+    });
+    let mut room = Room::loaded(RoomData::default(), joined);
+    let effects = room.open(1000, &token("late"));
+    assert_eq!(closes(&effects), [(1000, TOO_MANY_CONNECTIONS)]);
+    assert_eq!(effects.len(), 1);
+    assert!(room.engine.connection(ConnId(1000)).is_none());
+    assert_eq!(room.engine.connections().count(), MAX_CONNECTIONS);
 }

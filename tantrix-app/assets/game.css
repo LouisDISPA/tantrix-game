@@ -646,7 +646,7 @@
     --button-padding: 4px 10px;
   }
 
-  .seat-takeover-btn:hover {
+  .seat-takeover-btn:hover:not(:disabled) {
     background: color-mix(in oklch, var(--seat-color), transparent 70%);
   }
 

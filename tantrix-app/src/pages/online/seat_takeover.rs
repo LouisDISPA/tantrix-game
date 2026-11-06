@@ -1,6 +1,7 @@
 //! In-game panel for members without a seat: they watch, and can take over
-//! any playing seat (e.g. from someone who disconnected) after confirming.
-//! The newcomer inherits that seat's hand and turn.
+//! the seat of a player who disconnected after confirming, inheriting its
+//! hand and turn. Seats of connected players are listed but can't be taken
+//! (the server refuses it too).
 
 use dioxus::prelude::*;
 use tantrix_game::Color;
@@ -55,6 +56,8 @@ pub fn OnlineSeatTakeover(
                     key: "{seat.color:?}",
                     class: "button button-small button-ghost seat-takeover-btn color-{color_slug(seat.color)}",
                     class: if !seat.online { "offline" },
+                    disabled: seat.online,
+                    title: if seat.online { "Available if {seat.nickname} disconnects" },
                     onclick: {
                         let seat = seat.clone();
                         move |_| confirming.set(Some(seat.clone()))
@@ -71,8 +74,7 @@ pub fn OnlineSeatTakeover(
             ConfirmDialog {
                 title: format!("Take over {}?", seat.color),
                 message: format!(
-                    "You'll play {}'s tiles and turns from now on. {} will watch.",
-                    seat.nickname,
+                    "{} is offline. You'll play their tiles and turns from now on.",
                     seat.nickname,
                 ),
                 confirm_label: "Take seat",
@@ -130,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn a_watcher_can_take_any_playing_seat() {
+    fn a_watcher_sees_every_playing_seat_and_who_is_online() {
         let mut game = snapshot(&[(Red, "Ann", true), (Blue, "Bob", false)], &["Cy"]);
         // A playing color whose seat is empty has nobody to take over from.
         game.playing_colors.push(Yellow);

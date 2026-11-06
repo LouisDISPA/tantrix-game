@@ -214,6 +214,10 @@ async fn room_socket(
     if let Err(refusal) = handshake::check(&code) {
         return refuse(refusal);
     }
+    // Larger frames never reach the room (axum allows 64 MiB by default).
+    let upgrade = upgrade
+        .max_message_size(tantrix_room::engine::MAX_FRAME_BYTES)
+        .max_frame_size(tantrix_room::engine::MAX_FRAME_BYTES);
 
     match state.rooms.open(&code).await {
         Ok(room::OpenRoom::Ready(handle)) => match handle.inspect(room::now_ms(), true).await {

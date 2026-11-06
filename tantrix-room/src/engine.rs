@@ -26,6 +26,16 @@
 //! room, bad nickname) gets a rejected `Welcome` and the socket is closed;
 //! the engine forgets it, so whatever else it sends is ignored and a retry
 //! needs a new socket. Frames from closed or unknown sockets are ignored.
+//!
+//! Abuse limits, the same on both servers:
+//!
+//! - A socket may send [`MESSAGE_BURST`] frames at once, then
+//!   [`MESSAGES_PER_SECOND`] on average. One that sends faster is closed
+//!   with [`TOO_MANY_MESSAGES`] and leaves the room as a disconnect would.
+//! - A room keeps at most [`MAX_CONNECTIONS`] sockets. Members are capped,
+//!   and each has one joined socket, so the room is full of sockets that
+//!   never said `Hello`: the oldest of those is closed with
+//!   [`TOO_MANY_CONNECTIONS`] to make room for the new one.
 
 use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
@@ -33,11 +43,22 @@ use std::future::Future;
 use serde::{Deserialize, Serialize};
 use tantrix_proto::{HostMessage, PeerId, PeerMessage, RejectCode};
 
-use crate::room_logic::RoomData;
+use crate::room_logic::{RoomData, MAX_MEMBERS};
 use crate::session_cookie::SessionToken;
 
 /// Larger text frames are refused before they are parsed.
 pub const MAX_MESSAGE_BYTES: usize = 8 * 1024;
+/// Transports drop frames larger than this before they reach the engine,
+/// which still answers those up to it with an error.
+pub const MAX_FRAME_BYTES: usize = 8 * MAX_MESSAGE_BYTES;
+
+/// Frames a socket may send at once…
+pub const MESSAGE_BURST: u64 = 20;
+/// …and then on average per second. Players send a few per turn.
+pub const MESSAGES_PER_SECOND: u64 = 2;
+/// Sockets a room keeps open: one joined socket per member, and as many
+/// again that have not said `Hello` yet.
+pub const MAX_CONNECTIONS: usize = 2 * MAX_MEMBERS;
 
 /// Close reason for an older socket of a player who opened the room again.
 pub use tantrix_proto::OPENED_ELSEWHERE;
@@ -45,6 +66,10 @@ pub use tantrix_proto::OPENED_ELSEWHERE;
 pub const STORAGE_UNAVAILABLE: &str = "Room storage is unavailable.";
 /// Close reason for a socket the server could not deliver a message to.
 pub const TOO_SLOW: &str = "Connection is too slow.";
+/// Close reason for a socket that sends faster than its allowance.
+pub const TOO_MANY_MESSAGES: &str = "Too many messages.";
+/// Close reason for a socket the room had no room for.
+pub const TOO_MANY_CONNECTIONS: &str = "Too many connections to this room.";
 
 /// An open socket, numbered by its adapter. Unique among a room's sockets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -77,6 +102,41 @@ pub enum Effect {
 
 type Connections = BTreeMap<ConnId, Connection>;
 
+/// How many frames a socket may still send: a token bucket, in thousandths
+/// of a frame, refilled at [`MESSAGES_PER_SECOND`] up to [`MESSAGE_BURST`].
+/// Kept in memory only: a Durable Object that hibernated, or a restarted
+/// server, gives its sockets a full allowance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Allowance {
+    millis: u64,
+    /// When `millis` was last worked out, in milliseconds.
+    at: u64,
+}
+
+impl Allowance {
+    const FULL: u64 = MESSAGE_BURST * 1000;
+
+    fn full(now: u64) -> Self {
+        Self {
+            millis: Self::FULL,
+            at: now,
+        }
+    }
+
+    /// The allowance after one more frame at `now`, or `None` when there is
+    /// none left. A clock that went back refills nothing.
+    fn spend(self, now: u64) -> Option<Self> {
+        let refill = now
+            .saturating_sub(self.at)
+            .saturating_mul(MESSAGES_PER_SECOND);
+        let millis = self.millis.saturating_add(refill).min(Self::FULL);
+        Some(Self {
+            millis: millis.checked_sub(1000)?,
+            at: now.max(self.at),
+        })
+    }
+}
+
 /// What an event leads to. Nothing changes until it is
 /// [committed](RoomEngine::commit), which [`RoomEngine::run`] does once the
 /// new room, if any, is saved.
@@ -86,6 +146,8 @@ pub struct Step {
     room: Option<RoomData>,
     connections: Option<Connections>,
     effects: Vec<Effect>,
+    /// What is left of the sender's allowance after this frame.
+    spent: Option<(ConnId, Allowance)>,
 }
 
 impl Step {
@@ -134,6 +196,8 @@ pub trait RoomHost {
 pub struct RoomEngine {
     room: RoomData,
     connections: Connections,
+    /// Of the sockets in `connections` that sent something.
+    allowances: BTreeMap<ConnId, Allowance>,
 }
 
 impl RoomEngine {
@@ -147,6 +211,7 @@ impl RoomEngine {
         Self {
             room,
             connections: connections.into_iter().collect(),
+            allowances: BTreeMap::new(),
         }
     }
 
@@ -184,15 +249,39 @@ impl RoomEngine {
         );
         Step {
             room: Some(room),
-            connections: None,
             effects,
+            ..Step::default()
         }
     }
 
     /// A socket was accepted, with the session token of its handshake. It
-    /// hears nothing until it says `Hello`.
+    /// hears nothing until it says `Hello`. A room with [`MAX_CONNECTIONS`]
+    /// sockets first closes its oldest socket that has not said `Hello`, or
+    /// closes this one if there is none.
     pub fn on_open(&self, conn: ConnId, token: SessionToken) -> Step {
         let mut connections = self.connections.clone();
+        let mut effects = Vec::new();
+        if connections.len() >= MAX_CONNECTIONS {
+            // Socket numbers grow, so the first waiting socket is the oldest.
+            let Some(oldest) = connections
+                .iter()
+                .find(|(_, c)| !c.joined)
+                .map(|(id, _)| *id)
+            else {
+                return Step {
+                    effects: vec![Effect::Close {
+                        conn,
+                        reason: TOO_MANY_CONNECTIONS,
+                    }],
+                    ..Step::default()
+                };
+            };
+            connections.remove(&oldest);
+            effects.push(Effect::Close {
+                conn: oldest,
+                reason: TOO_MANY_CONNECTIONS,
+            });
+        }
         connections.insert(
             conn,
             Connection {
@@ -202,36 +291,63 @@ impl RoomEngine {
         );
         Step {
             connections: Some(connections),
+            effects,
             ..Step::default()
         }
     }
 
-    /// A text frame arrived.
-    pub fn on_text(&self, conn: ConnId, text: &str) -> Step {
+    /// A text frame arrived at `now`, in milliseconds. A clock that goes
+    /// back refills no allowance until it catches up.
+    pub fn on_text(&self, conn: ConnId, text: &str, now: u64) -> Step {
         let Some(connection) = self.connections.get(&conn) else {
             return Step::default();
         };
-        if text.len() > MAX_MESSAGE_BYTES {
-            return Step::error(conn, "message too large");
-        }
-        let Ok(intent) = tantrix_proto::decode::<PeerMessage>(text.as_bytes()) else {
-            return Step::error(conn, "invalid message");
+        let Some(allowance) = self.spend(conn, now) else {
+            return self.drop_connections(&[conn], Some(TOO_MANY_MESSAGES));
         };
-        match intent {
-            PeerMessage::Hello { .. } if connection.joined => Step::error(conn, "already joined"),
-            PeerMessage::Hello { nickname } => self.hello(conn, &connection.token, nickname),
-            _ if !connection.joined => Step::error(conn, "say hello first"),
-            intent => self.intent(conn, &connection.token, intent),
+        let step = if text.len() > MAX_MESSAGE_BYTES {
+            Step::error(conn, "message too large")
+        } else {
+            match tantrix_proto::decode::<PeerMessage>(text.as_bytes()) {
+                Err(_) => Step::error(conn, "invalid message"),
+                Ok(PeerMessage::Hello { .. }) if connection.joined => {
+                    Step::error(conn, "already joined")
+                }
+                Ok(PeerMessage::Hello { nickname }) => {
+                    self.hello(conn, &connection.token, nickname)
+                }
+                Ok(_) if !connection.joined => Step::error(conn, "say hello first"),
+                Ok(intent) => self.intent(conn, &connection.token, intent),
+            }
+        };
+        Step {
+            spent: Some((conn, allowance)),
+            ..step
         }
     }
 
-    /// A binary frame arrived: the protocol is text only.
-    pub fn on_binary(&self, conn: ConnId) -> Step {
-        if self.connections.contains_key(&conn) {
-            Step::error(conn, "text messages only")
-        } else {
-            Step::default()
+    /// A binary frame arrived at `now`: the protocol is text only.
+    pub fn on_binary(&self, conn: ConnId, now: u64) -> Step {
+        if !self.connections.contains_key(&conn) {
+            return Step::default();
         }
+        let Some(allowance) = self.spend(conn, now) else {
+            return self.drop_connections(&[conn], Some(TOO_MANY_MESSAGES));
+        };
+        Step {
+            spent: Some((conn, allowance)),
+            ..Step::error(conn, "text messages only")
+        }
+    }
+
+    /// `conn`'s allowance after one more frame at `now`, or `None` when it
+    /// has none left: the caller closes it.
+    fn spend(&self, conn: ConnId, now: u64) -> Option<Allowance> {
+        self.allowances
+            .get(&conn)
+            .copied()
+            .unwrap_or_else(|| Allowance::full(now))
+            .spend(now)
     }
 
     /// A socket closed (or errored). A seated player keeps the seat; anyone
@@ -254,6 +370,14 @@ impl RoomEngine {
         }
         if let Some(connections) = step.connections {
             self.connections = connections;
+            let connections = &self.connections;
+            self.allowances
+                .retain(|conn, _| connections.contains_key(conn));
+        }
+        if let Some((conn, allowance)) = step.spent {
+            if self.connections.contains_key(&conn) {
+                self.allowances.insert(conn, allowance);
+            }
         }
         step.effects
     }
@@ -296,7 +420,6 @@ impl RoomEngine {
                         let mut connections = self.connections.clone();
                         connections.remove(&conn);
                         return Step {
-                            room: None,
                             connections: Some(connections),
                             effects: vec![
                                 Effect::Send {
@@ -305,6 +428,7 @@ impl RoomEngine {
                                 },
                                 Effect::Close { conn, reason: "" },
                             ],
+                            ..Step::default()
                         };
                     }
                 }
@@ -353,6 +477,7 @@ impl RoomEngine {
             room: joined_room,
             connections: Some(connections),
             effects,
+            ..Step::default()
         }
     }
 
@@ -366,7 +491,7 @@ impl RoomEngine {
             Ok(change) if change.persist => Step {
                 effects: broadcast(joined_ids(&self.connections, None), change.message),
                 room: Some(room),
-                connections: None,
+                ..Step::default()
             },
             Ok(change) => Step::reply(conn, change.message),
             Err((code, message)) => Step::reply(conn, HostMessage::Error { code, message }),
@@ -415,6 +540,7 @@ impl RoomEngine {
             room,
             connections: Some(connections),
             effects,
+            ..Step::default()
         }
     }
 }

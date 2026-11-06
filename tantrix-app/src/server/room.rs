@@ -6,9 +6,10 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
+use std::time::Duration;
 
 use axum::extract::ws::{close_code, CloseFrame, Message, WebSocket};
-use futures::{SinkExt, StreamExt};
+use futures::{Sink, SinkExt, StreamExt};
 use tantrix_proto::{
     HostMessage, RejectCode, RoomApiError, RoomReference, KEEPALIVE_PING, KEEPALIVE_PONG,
 };
@@ -17,11 +18,22 @@ use tantrix_room::lifecycle::{self, RoomRecord};
 use tantrix_room::room_logic::RoomData;
 use tantrix_room::session_cookie::SessionToken;
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
+use tokio::time::Instant;
 
 use super::store::{RoomStore, StoreError, StoreResult};
 
 const OUTGOING_CAPACITY: usize = 64;
 const COMMAND_CAPACITY: usize = 64;
+
+/// A socket must send something other than a keepalive this soon after it
+/// opens (clients say `Hello` right away)…
+const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
+/// …and then some frame at least this often: clients ping every 30 s.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(75);
+/// A peer that takes longer to accept a frame has stopped reading.
+const SEND_TIMEOUT: Duration = Duration::from_secs(10);
+/// Close reason for a socket that went quiet.
+const TIMED_OUT: &str = "Connection timed out.";
 
 /// Socket numbers, unique across the process and so within each room.
 static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
@@ -268,8 +280,8 @@ impl RoomActor {
                     self.sockets.insert(conn, socket);
                     self.engine.on_open(conn, token)
                 }
-                RoomCommand::Text { conn, text } => self.engine.on_text(conn, &text),
-                RoomCommand::Binary { conn } => self.engine.on_binary(conn),
+                RoomCommand::Text { conn, text } => self.engine.on_text(conn, &text, now_ms()),
+                RoomCommand::Binary { conn } => self.engine.on_binary(conn, now_ms()),
                 RoomCommand::Close { conn, done: ack } => {
                     self.sockets.remove(&conn);
                     done = Some(ack);
@@ -283,9 +295,15 @@ impl RoomActor {
                 sockets: &mut self.sockets,
             };
             let result = self.engine.run(&mut host, step).await;
-            self.record
+            let presence = self
+                .record
                 .observe_connections(self.engine.connections().any(|(_, c)| c.joined), now_ms());
-            let saved = self.store.save_record(&self.record).await;
+            // A changed room was saved with the presence it had; save again
+            // only for a new presence, and never after a failed run.
+            let saved = match &result {
+                Ok(()) if presence => self.store.save_record(&self.record).await,
+                _ => Ok(()),
+            };
             if let Some(done) = done {
                 let _ = done.send(());
             }
@@ -309,9 +327,16 @@ struct Host<'a> {
 impl RoomHost for Host<'_> {
     type Error = StoreError;
 
+    /// The record takes the new room only once storage holds it, so a
+    /// failed save leaves nothing uncommitted for a later save to write.
     fn save(&mut self, room: &RoomData) -> impl Future<Output = StoreResult<()>> {
-        let archive = self.record.replace_room(room);
-        self.store.save_with_archive(self.record, archive)
+        let mut next = self.record.clone();
+        let archive = next.replace_room(room);
+        async move {
+            self.store.save_with_archive(&next, archive).await?;
+            *self.record = next;
+            Ok(())
+        }
     }
 
     fn deliver(&mut self, effects: Vec<Effect>) -> Vec<ConnId> {
@@ -378,8 +403,44 @@ pub async fn missing_room(socket: WebSocket) {
 
 pub async fn rejected_room(mut socket: WebSocket, code: RejectCode) {
     let message = engine::rejected_welcome(code);
-    let _ = socket.send(wire_message(&message)).await;
-    let _ = socket.send(close_frame("")).await;
+    if write(&mut socket, wire_message(&message)).await {
+        write(&mut socket, close_frame("")).await;
+    }
+}
+
+/// Write one frame, giving up on a peer that stopped reading.
+async fn write<S: Sink<Message> + Unpin>(writer: &mut S, message: Message) -> bool {
+    matches!(
+        tokio::time::timeout(SEND_TIMEOUT, writer.send(message)).await,
+        Ok(Ok(()))
+    )
+}
+
+/// When a socket must have sent its next frame, so that sockets that never
+/// say anything, or whose peer vanished without closing, don't stay open
+/// (and their player shown as connected).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Liveness {
+    greeted: bool,
+    deadline: Instant,
+}
+
+impl Liveness {
+    fn new(now: Instant) -> Self {
+        Self {
+            greeted: false,
+            deadline: now + HELLO_TIMEOUT,
+        }
+    }
+
+    /// A frame arrived at `now`. Keepalives keep a greeted socket open but
+    /// are not its greeting.
+    fn on_frame(&mut self, now: Instant, keepalive: bool) {
+        self.greeted |= !keepalive;
+        if self.greeted {
+            self.deadline = now + IDLE_TIMEOUT;
+        }
+    }
 }
 
 pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: SessionToken) {
@@ -397,6 +458,7 @@ pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: S
     };
 
     if handle.send(open).await {
+        let mut liveness = Liveness::new(Instant::now());
         loop {
             // Outgoing frames first, so a close reason or a rejection
             // queued before the room stopped still reaches the browser.
@@ -405,17 +467,23 @@ pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: S
                 message = incoming.recv() => {
                     let Some(message) = message else { break; };
                     let is_close = matches!(message, Message::Close(_));
-                    if writer.send(message).await.is_err() || is_close { break; }
+                    if !write(&mut writer, message).await || is_close { break; }
                 }
                 changed = closed.changed() => {
                     if changed.is_ok() {
                         let reason = closed.borrow().clone().unwrap_or_default();
-                        let _ = writer.send(close_frame(&reason)).await;
+                        write(&mut writer, close_frame(&reason)).await;
                     }
                     break;
                 }
                 frame = reader.next() => {
                     let Some(Ok(frame)) = frame else { break; };
+                    let keepalive = match &frame {
+                        Message::Text(text) => text.as_str() == KEEPALIVE_PING,
+                        Message::Ping(_) | Message::Pong(_) => true,
+                        Message::Binary(_) | Message::Close(_) => false,
+                    };
+                    liveness.on_frame(Instant::now(), keepalive);
                     let command = match frame {
                         // Keepalives never reach the room.
                         Message::Text(text) if text == KEEPALIVE_PING => {
@@ -428,6 +496,10 @@ pub async fn socket_session(socket: WebSocket, handle: Arc<RoomHandle>, token: S
                         Message::Ping(_) | Message::Pong(_) => continue,
                     };
                     if !handle.send(command).await { break; }
+                }
+                _ = tokio::time::sleep_until(liveness.deadline) => {
+                    write(&mut writer, close_frame(TIMED_OUT)).await;
+                    break;
                 }
                 _ = handle.tx.closed() => break,
             }
@@ -447,6 +519,54 @@ mod tests {
 
     fn text(message: &PeerMessage) -> String {
         serde_json::to_string(message).unwrap()
+    }
+
+    #[test]
+    fn silent_and_vanished_sockets_time_out() {
+        let start = Instant::now();
+        let at = |seconds| start + Duration::from_secs(seconds);
+        let mut liveness = Liveness::new(start);
+        assert_eq!(liveness.deadline, start + HELLO_TIMEOUT);
+        // Keepalives before a greeting don't keep a socket open.
+        liveness.on_frame(at(5), true);
+        assert_eq!(liveness.deadline, start + HELLO_TIMEOUT);
+        // Once greeted, any frame does, keepalives included.
+        liveness.on_frame(at(6), false);
+        assert_eq!(liveness.deadline, at(6) + IDLE_TIMEOUT);
+        liveness.on_frame(at(36), true);
+        assert_eq!(liveness.deadline, at(36) + IDLE_TIMEOUT);
+        // Clients ping every 30 s; one missed ping must not close them.
+        assert!(IDLE_TIMEOUT > Duration::from_secs(60));
+    }
+
+    #[tokio::test]
+    async fn a_failed_save_leaves_the_record_as_storage_has_it() {
+        let store = RoomStore::open(":memory:").unwrap();
+        let mut sockets = HashMap::new();
+        let next = RoomData {
+            match_id: 7,
+            ..RoomData::default()
+        };
+        // Storage has no row for this room yet, so saving it fails.
+        let mut record = RoomRecord::new("game".into(), 0);
+        let mut host = Host {
+            record: &mut record,
+            store: &store,
+            sockets: &mut sockets,
+        };
+        assert!(host.save(&next).await.is_err());
+        assert_eq!(record.room.as_ref().map(|room| room.match_id), Some(0));
+
+        store.insert("game", 0).await.unwrap();
+        let mut host = Host {
+            record: &mut record,
+            store: &store,
+            sockets: &mut sockets,
+        };
+        host.save(&next).await.unwrap();
+        assert_eq!(record.room.as_ref().map(|room| room.match_id), Some(7));
+        let stored = store.load("game").await.unwrap().unwrap();
+        assert_eq!(stored.room.map(|room| room.match_id), Some(7));
     }
 
     fn test_socket() -> (Socket, mpsc::Receiver<Message>) {

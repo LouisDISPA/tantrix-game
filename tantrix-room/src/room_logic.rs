@@ -18,6 +18,57 @@ use crate::session_cookie::SessionToken;
 /// small if someone scripts joins.
 pub const MAX_MEMBERS: usize = 32;
 
+/// Longest nickname, in characters.
+pub const MAX_NICKNAME_CHARS: usize = 24;
+
+/// `nickname` as the room shows it: trimmed, without control characters,
+/// text-direction overrides or the invisible characters that make a name
+/// look blank. Joiners and variation selectors stay, as emoji and some
+/// scripts need them. `None` if no visible character is left, or the name
+/// is longer than [`MAX_NICKNAME_CHARS`].
+pub fn clean_nickname(nickname: &str) -> Option<String> {
+    let cleaned: String = nickname.chars().filter(|&c| !is_hidden(c)).collect();
+    let cleaned = cleaned.trim();
+    let visible = cleaned
+        .chars()
+        .any(|c| !c.is_whitespace() && !is_modifier(c));
+    (visible && cleaned.chars().count() <= MAX_NICKNAME_CHARS).then(|| cleaned.to_string())
+}
+
+/// Characters that show nothing, or change how the text around them
+/// shows, and that no name needs.
+fn is_hidden(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{00AD}' // soft hyphen
+                | '\u{034F}' // combining grapheme joiner
+                | '\u{061C}' // Arabic letter mark
+                | '\u{115F}' | '\u{1160}' | '\u{3164}' | '\u{FFA0}' // Hangul fillers
+                | '\u{17B4}' | '\u{17B5}' // Khmer inherent vowels
+                | '\u{200B}' // zero-width space
+                | '\u{200E}' | '\u{200F}' // direction marks
+                | '\u{2028}'..='\u{202E}' // line breaks, direction embeddings and overrides
+                | '\u{2060}'..='\u{206F}' // word joiner, invisible operators, direction isolates
+                | '\u{FEFF}' // zero-width no-break space
+                | '\u{FFF9}'..='\u{FFFB}' // interlinear annotations
+        )
+}
+
+/// Characters kept in names that only modify their neighbours: joiners,
+/// variation selectors, emoji tags. A name of only these looks blank.
+fn is_modifier(c: char) -> bool {
+    matches!(
+        c,
+        '\u{180B}'..='\u{180F}'
+            | '\u{200C}'
+            | '\u{200D}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{E0000}'..='\u{E007F}'
+            | '\u{E0100}'..='\u{E01EF}'
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerRecord {
     pub id: PeerId,
@@ -154,7 +205,8 @@ impl RoomData {
 
     /// Register a new member or resume an existing one. Newcomers are welcome
     /// at any time: during or after a game they join without a seat and
-    /// watch, and can take over a seat with `ReplaceSeat`.
+    /// watch, and can take over a disconnected player's seat with
+    /// `ReplaceSeat`.
     pub fn hello(
         &mut self,
         token: SessionToken,
@@ -167,22 +219,19 @@ impl RoomData {
         if self.players.len() >= MAX_MEMBERS {
             return Err(RejectCode::RoomFull);
         }
-        let nickname = nickname.trim();
-        if nickname.is_empty() || nickname.chars().count() > 24 {
-            return Err(RejectCode::InvalidMove);
-        }
+        let nickname = clean_nickname(&nickname).ok_or(RejectCode::InvalidMove)?;
         self.players.push(PlayerRecord {
             id: new_id.clone(),
             token,
-            nickname: nickname.to_string(),
+            nickname,
         });
         Ok(new_id)
     }
 
     /// A seated player keeps their seat when their socket drops, in the
     /// lobby and in a game, so a reload with the same cookie resumes it;
-    /// anyone may take it over meanwhile (`ReplaceSeat`). Members without a
-    /// seat have nothing to keep and are removed.
+    /// someone else may take it over meanwhile (`ReplaceSeat`). Members
+    /// without a seat have nothing to keep and are removed.
     pub fn disconnect(&mut self, token: &SessionToken) -> bool {
         if self.color_of(token).is_some() {
             return false;
@@ -269,6 +318,17 @@ impl RoomData {
                         .contains(&color)
                     {
                         return Err((RejectCode::InvalidMove, "that color is not playing".into()));
+                    }
+                    // Taking over keeps a game going when a player drops out;
+                    // nobody can take the hand of someone still playing it.
+                    if self.seats[color]
+                        .as_ref()
+                        .is_some_and(|owner| connected.contains(owner))
+                    {
+                        return Err((
+                            RejectCode::ColorTaken,
+                            "that player is still connected".into(),
+                        ));
                     }
                 } else if let Some(old) = mine {
                     self.seats[old] = None;
@@ -387,19 +447,23 @@ impl RoomData {
                 persist: false,
             }),
             PeerMessage::UpdateNickname { nickname } => {
-                let nickname = nickname.trim();
-                if nickname.is_empty() || nickname.chars().count() > 24 {
+                let Some(nickname) = clean_nickname(&nickname) else {
                     return Err((
                         RejectCode::InvalidMove,
                         "nickname must be 1–24 characters".into(),
                     ));
-                }
-                if let Some(player) = self.players.iter_mut().find(|p| &p.token == token) {
-                    player.nickname = nickname.to_string();
-                }
+                };
+                // The same name again changes nothing: no save, no broadcast.
+                let persist = match self.players.iter_mut().find(|p| &p.token == token) {
+                    Some(player) if player.nickname != nickname => {
+                        player.nickname = nickname;
+                        true
+                    }
+                    _ => false,
+                };
                 Ok(Change {
-                    message: self.current_message(connected),
-                    persist: true,
+                    message: self.roster_message(connected),
+                    persist,
                 })
             }
         }
