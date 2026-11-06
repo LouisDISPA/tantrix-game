@@ -1,6 +1,6 @@
-//! The randomness of the AIs that sample: their own seeded generator
-//! ([`TantrixAi::with_seed`](tantrix_game::TantrixAi::with_seed)), or the
-//! thread's.
+//! The randomness of the AIs that pick or sample at random: their own
+//! seeded generator ([`TantrixAi::with_seed`](tantrix_game::TantrixAi::with_seed)),
+//! or OS entropy.
 
 use std::sync::{Mutex, PoisonError};
 
@@ -21,24 +21,25 @@ impl AiRng {
         }
     }
 
+    /// Run `f` with this generator: a seeded AI's own, so it advances by
+    /// exactly what `f` draws, or a fresh one from OS entropy.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an unseeded AI draws from OS entropy"
+    )]
+    pub(crate) fn with<T>(&self, f: impl FnOnce(&mut Xoshiro256PlusPlus) -> T) -> T {
+        match &self.seeded {
+            // A panic mid-draw leaves the generator usable; its state is valid.
+            Some(rng) => f(&mut rng.lock().unwrap_or_else(PoisonError::into_inner)),
+            None => f(&mut Xoshiro256PlusPlus::from_rng(&mut rand::rng())),
+        }
+    }
+
     /// A generator for one decision, seeded from this one: a seeded AI
     /// makes the same decisions from the same seed, and holds no lock while
     /// it thinks.
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "an unseeded AI forks from OS entropy"
-    )]
     pub(crate) fn fork(&self) -> Xoshiro256PlusPlus {
-        match &self.seeded {
-            Some(rng) => {
-                let seed = rng
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .next_u64();
-                Xoshiro256PlusPlus::seed_from_u64(seed)
-            }
-            None => Xoshiro256PlusPlus::from_rng(&mut rand::rng()),
-        }
+        self.with(|rng| Xoshiro256PlusPlus::seed_from_u64(rng.next_u64()))
     }
 }
 
