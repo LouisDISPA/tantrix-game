@@ -13,6 +13,8 @@ export default defineConfig({
   globalTimeout: 15 * 60_000,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // The retry captures a trace; a test that only passes on retry still fails CI.
+  failOnFlakyTests: !!process.env.CI,
   workers: process.env.CI ? 4 : 8,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {

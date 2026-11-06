@@ -41,7 +41,7 @@ BASE_URL=http://127.0.0.1:8080 pnpm run test:native
 
 `DIOXUS_CLI=/absolute/path/to/dx` selects a versioned CLI for native startup. `BASE_URL` skips server startup for either backend. Otherwise, local runs reuse an existing server; CI starts a fresh process. Plain `pnpm exec playwright test` selects native. Every page waits for hydration.
 
-Native startup has ten minutes; Worker startup has one minute; the suite has fifteen minutes. Local runs use eight workers and no retries. CI native runs use four workers and one retry; Worker runs use eight workers. CI runs only the native suite: its release build shares outputs with native startup, and Rust caches retain compilation outputs. Run the Worker suite locally with `just worker-e2e`, which rebuilds browser and SSR assets before starting Wrangler.
+Native startup has ten minutes; Worker startup has one minute; the suite has fifteen minutes. Local runs use eight workers and no retries. CI native runs use four workers and one retry, and a test that passes only on retry still fails the run (`failOnFlakyTests`); Worker runs use eight workers. CI runs only the native suite: its release build shares outputs with native startup, and Rust caches retain compilation outputs. Run the Worker suite locally with `just worker-e2e`, which rebuilds browser and SSR assets before starting Wrangler.
 
 ## Screenshots and diagnosis
 
