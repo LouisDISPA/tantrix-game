@@ -98,7 +98,10 @@ directory. Set `TANTRIX_ROOM_DB` to choose another file. It runs as one process;
 multiple replicas need shared room routing or coordination. For HTTPS behind a
 reverse proxy, set `TANTRIX_PUBLIC_ORIGIN` to the browser-facing origin (for
 example `https://tantrix.example.com`) so session cookies use the Secure flag.
-Room endpoints do not validate the browser's Origin header.
+It also makes the server take the last `X-Forwarded-For` address as the
+client's for [request limits](#request-limits), so set it only behind a proxy
+that appends that header. Room endpoints do not validate the browser's Origin
+header.
 
 Rooms deal with the OS-seeded thread RNG and retain no seed. Saves retain
 the bag and history; snapshots expose neither. See
@@ -127,6 +130,31 @@ validate permanent IDs before accepting sockets. The
 socket sends `RoomInfo` with the current code, then the normal Hello/Welcome
 exchange. Missing games reject Welcome with `RoomNotFound`; expired lobbies
 use `RoomExpired` (HTTP APIs return 410).
+
+### Request limits
+
+Invitation codes are short enough to scan, so both servers count room
+requests per client IP address:
+
+| Endpoint | Limit per client |
+| --- | --- |
+| `POST /api/rooms` | 10 per minute |
+| `GET /api/rooms/code/{CODE}` | 30 per minute |
+
+A client can spend a whole minute's allowance at once. Further requests get
+HTTP 429 with `RateLimited`, and the online menu shows *Too many room
+requests. Wait a minute and try again.* A pending creation keeps its request
+ID, so a later retry still makes one room. IPv6 clients count per /64
+network. Loopback clients (local development, browser tests) are not limited.
+Permanent-ID requests are not counted; each socket has its own frame limit.
+
+- **Native.** `tantrix_room::rate_limit` keeps a token bucket per client in
+  memory, so a restart forgets the counts. The client is the socket's peer,
+  or with `TANTRIX_PUBLIC_ORIGIN` set, the last `X-Forwarded-For` entry.
+- **Worker.** The `ROOM_CREATION_LIMIT` and `CODE_LOOKUP_LIMIT` rate-limit
+  bindings in `cloudflare/wrangler.toml`, keyed by `CF-Connecting-IP`. They
+  must match `tantrix_room::rate_limit`. Cloudflare counts per location and
+  approximately.
 
 ## Inactivity and persistence
 

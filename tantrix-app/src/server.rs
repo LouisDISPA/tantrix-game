@@ -4,11 +4,11 @@
 //! and hydration** through Dioxus's Axum handlers. Known application routes
 //! render on the server; unknown paths return the shared static 404 page.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{ws::WebSocketUpgrade, Extension, Path, State};
-use axum::http::{header, HeaderValue, Request, StatusCode};
+use axum::extract::{ws::WebSocketUpgrade, ConnectInfo, Extension, FromRequestParts, Path, State};
+use axum::http::{header, request::Parts, HeaderValue, Request, StatusCode};
 use axum::middleware::{from_fn_with_state, Next};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -25,12 +25,15 @@ use tower_http::compression::CompressionLayer;
 use crate::app;
 use crate::route::Route;
 
+mod limits;
 mod room;
 mod store;
 
 struct ServerState {
     rooms: room::RoomManager,
+    /// Set behind a reverse proxy, which is then trusted for client addresses.
     public_origin: Option<String>,
+    limits: limits::RoomLimits,
 }
 
 /// Where to bind the HTTP listener.
@@ -80,6 +83,7 @@ pub fn run() {
             public_origin: std::env::var("TANTRIX_PUBLIC_ORIGIN")
                 .ok()
                 .map(|origin| origin.trim_end_matches('/').to_owned()),
+            limits: limits::RoomLimits::new(),
         });
         let cleanup_state = state.clone();
         tokio::spawn(async move {
@@ -122,9 +126,12 @@ pub fn run() {
         let listener = tokio::net::TcpListener::bind(addr)
             .await
             .expect("failed to bind fullstack server");
-        axum::serve(listener, router)
-            .await
-            .expect("fullstack server exited with an error");
+        axum::serve(
+            listener,
+            router.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .expect("fullstack server exited with an error");
     });
 }
 
@@ -163,6 +170,30 @@ async fn session_cookie_layer(
     response
 }
 
+/// The address a room request is counted under: see [`limits::client_ip`].
+struct Client(IpAddr);
+
+impl FromRequestParts<Arc<ServerState>> for Client {
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<ServerState>,
+    ) -> Result<Self, Self::Rejection> {
+        // The server always has connect info; without it everyone shares one count.
+        let peer = parts
+            .extensions
+            .get::<ConnectInfo<SocketAddr>>()
+            .map_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED), |info| info.0.ip());
+        let trust_forwarded = state.public_origin.is_some();
+        Ok(Self(limits::client_ip(
+            peer,
+            &parts.headers,
+            trust_forwarded,
+        )))
+    }
+}
+
 fn api_error(error: RoomApiError) -> Response {
     (
         StatusCode::from_u16(error.status()).unwrap(),
@@ -181,9 +212,13 @@ fn api_result(result: Result<tantrix_proto::RoomReference, RoomApiError>) -> Res
 
 async fn create_room(
     State(state): State<Arc<ServerState>>,
+    Client(client): Client,
     Extension(token): Extension<SessionToken>,
     Json(request): Json<CreateRoom>,
 ) -> Response {
+    if !state.limits.allow_creation(client) {
+        return api_error(RoomApiError::RateLimited);
+    }
     if !is_game_id(&request.request_id) {
         return api_error(RoomApiError::InvalidRequest);
     }
@@ -191,7 +226,14 @@ async fn create_room(
     api_result(state.rooms.create(&id, room::now_ms()).await)
 }
 
-async fn resolve_room(State(state): State<Arc<ServerState>>, Path(code): Path<String>) -> Response {
+async fn resolve_room(
+    State(state): State<Arc<ServerState>>,
+    Client(client): Client,
+    Path(code): Path<String>,
+) -> Response {
+    if !state.limits.allow_lookup(client) {
+        return api_error(RoomApiError::RateLimited);
+    }
     if !tantrix_proto::is_room_code(&code) {
         return api_error(RoomApiError::InvalidRequest);
     }
@@ -300,6 +342,17 @@ mod tests {
                 .contains("SSR route reached"));
         }
     }
+
+    const CLIENT: IpAddr = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 9));
+
+    fn test_state() -> Arc<ServerState> {
+        Arc::new(ServerState {
+            rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
+            public_origin: Some("https://example.com".into()),
+            limits: limits::RoomLimits::new(),
+        })
+    }
+
     async fn read_room(response: Response) -> tantrix_proto::RoomReference {
         assert_eq!(response.status(), StatusCode::OK);
         let body = to_bytes(response.into_body(), 1024).await.unwrap();
@@ -308,10 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn http_creation_retries_are_scoped_to_the_player_and_resolve_to_one_game() {
-        let state = Arc::new(ServerState {
-            rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
-            public_origin: Some("https://example.com".into()),
-        });
+        let state = test_state();
         let request = CreateRoom {
             request_id: "01234567-89ab-4def-8123-456789abcdef".into(),
         };
@@ -319,11 +369,13 @@ mod tests {
         let (a, b) = tokio::join!(
             create_room(
                 State(state.clone()),
+                Client(CLIENT),
                 Extension(token.clone()),
                 Json(request.clone())
             ),
             create_room(
                 State(state.clone()),
+                Client(CLIENT),
                 Extension(token),
                 Json(request.clone())
             ),
@@ -332,12 +384,13 @@ mod tests {
         assert_eq!(a, read_room(b).await);
         let code = a.code.clone().unwrap();
         assert_eq!(
-            read_room(resolve_room(State(state.clone()), Path(code)).await).await,
+            read_room(resolve_room(State(state.clone()), Client(CLIENT), Path(code)).await).await,
             a
         );
         let other = read_room(
             create_room(
                 State(state.clone()),
+                Client(CLIENT),
                 Extension(SessionToken::new("player-two-123456")),
                 Json(request),
             )
@@ -359,14 +412,12 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_creation_requests_cannot_allocate_rooms() {
-        let state = Arc::new(ServerState {
-            rooms: room::RoomManager::new(store::RoomStore::open(":memory:").unwrap()),
-            public_origin: Some("https://example.com".into()),
-        });
+        let state = test_state();
         let token = SessionToken::new("player-one-123456");
         assert_eq!(
             create_room(
                 State(state.clone()),
+                Client(CLIENT),
                 Extension(token),
                 Json(CreateRoom {
                     request_id: "ABCDEF".into()
@@ -377,10 +428,45 @@ mod tests {
             StatusCode::BAD_REQUEST
         );
         assert_eq!(
-            resolve_room(State(state), Path("bad".into()))
+            resolve_room(State(state), Client(CLIENT), Path("bad".into()))
                 .await
                 .status(),
             StatusCode::BAD_REQUEST
         );
+    }
+
+    #[tokio::test]
+    async fn a_client_over_its_limits_gets_a_retryable_429() {
+        let state = test_state();
+        let token = SessionToken::new("player-one-123456");
+        let create = |client: IpAddr, n: usize| {
+            create_room(
+                State(state.clone()),
+                Client(client),
+                Extension(token.clone()),
+                Json(CreateRoom {
+                    request_id: format!("01234567-89ab-4def-8123-{n:012x}"),
+                }),
+            )
+        };
+        for n in 0..10 {
+            assert_eq!(create(CLIENT, n).await.status(), StatusCode::OK);
+        }
+        let refused = create(CLIENT, 10).await;
+        assert_eq!(refused.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(refused.headers()["cache-control"], "no-store");
+        let body = to_bytes(refused.into_body(), 1024).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<RoomApiError>(&body).unwrap(),
+            RoomApiError::RateLimited
+        );
+        // Other clients, and invitation lookups, keep their own counts.
+        let other = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 10));
+        assert_eq!(create(other, 11).await.status(), StatusCode::OK);
+        let lookup = || resolve_room(State(state.clone()), Client(CLIENT), Path("ABCDEF".into()));
+        for _ in 0..30 {
+            assert_eq!(lookup().await.status(), StatusCode::NOT_FOUND);
+        }
+        assert_eq!(lookup().await.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 }
