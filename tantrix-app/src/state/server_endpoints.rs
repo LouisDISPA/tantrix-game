@@ -3,16 +3,10 @@
 /// Native clients use their saved setting. Browsers use the current origin,
 /// unless a build-time TANTRIX_ROOM_URL points to another server's /room path.
 pub fn server_origin() -> String {
-    #[cfg(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    ))]
+    #[cfg(native_io)]
     return super::server_settings::server_address();
 
-    #[cfg(not(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    )))]
+    #[cfg(not(native_io))]
     {
         if let Some(address) = option_env!("TANTRIX_ROOM_URL") {
             let mut url = url::Url::parse(address).expect("TANTRIX_ROOM_URL must be a URL");

@@ -12,7 +12,7 @@ use crate::state::nickname;
 use crate::state::online_state::{
     ConnectionStatus, FailureReason, OnlinePhase, OnlineState, OnlineStateStoreExt,
 };
-#[cfg(any(feature = "desktop", feature = "android"))]
+#[cfg(native_client)]
 use crate::state::room_connection;
 use crate::state::server_endpoints;
 
@@ -20,10 +20,7 @@ use crate::state::server_endpoints;
 pub fn OnlineRoom(id: String) -> Element {
     let server = use_hook(server_endpoints::server_origin);
     let url = use_hook(|| server_endpoints::room_url(&server, &id));
-    #[cfg(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    ))]
+    #[cfg(native_io)]
     use_context_provider(|| room_connection::RoomServer(server.clone()));
     let mut attempt = use_signal(|| 0u32);
     let state = use_store(|| OnlineState::new(id.clone()));

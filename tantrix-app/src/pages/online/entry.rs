@@ -10,7 +10,7 @@ use crate::components::menu_button::MenuButton;
 use crate::components::menu_card::MenuCard;
 use crate::components::menu_screen::MenuScreen;
 use crate::route::Route;
-#[cfg(not(any(feature = "desktop", feature = "android")))]
+#[cfg(not(native_client))]
 use crate::state::online_compatibility::DOWNLOAD_URL;
 use crate::state::online_compatibility::{self, Compatibility};
 use crate::state::{room_api, server_endpoints};
@@ -159,7 +159,7 @@ pub fn OnlineEntry() -> Element {
                                     class: "surface surface-inset online-compatibility stack gap-3",
                                     role: "alert",
                                     p {
-                                        if !cfg!(any(feature = "desktop", feature = "android")) {
+                                        if !cfg!(native_client) {
                                             "This page is out of date. Reload to play online."
                                         } else if *status == Compatibility::AppOutdated {
                                             "Update Tantrix to play online with this server."
@@ -167,11 +167,11 @@ pub fn OnlineEntry() -> Element {
                                             "This server needs updating to work with your app."
                                         }
                                     }
-                                    if !cfg!(any(feature = "desktop", feature = "android")) {
+                                    if !cfg!(native_client) {
                                         MenuButton {
                                             full_width: true,
                                             on_click: move |_| {
-                                                #[cfg(all(target_arch = "wasm32", feature = "web"))]
+                                                #[cfg(web_client)]
                                                 if let Some(window) = web_sys::window() {
                                                     let _ = window.location().reload();
                                                 }
@@ -209,7 +209,7 @@ fn UpdateAction() -> Element {
     return rsx! {
         crate::pages::desktop_update::DesktopUpdate { required: true }
     };
-    #[cfg(not(any(feature = "desktop", feature = "android")))]
+    #[cfg(not(native_client))]
     rsx! {
         a { class: "button button-primary button-full", href: DOWNLOAD_URL, "Download Tantrix ↗" }
     }
@@ -284,10 +284,7 @@ fn ServerSettings(
     on_ready: EventHandler<bool>,
     on_server_changed: EventHandler<String>,
 ) -> Element {
-    #[cfg(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    ))]
+    #[cfg(native_io)]
     {
         use crate::state::server_settings::{self, DEFAULT_SERVER};
         let mut address = use_signal(server_settings::server_address);
@@ -386,9 +383,6 @@ fn ServerSettings(
             }
         };
     }
-    #[cfg(not(any(
-        all(feature = "desktop", not(target_arch = "wasm32")),
-        all(feature = "android", target_os = "android")
-    )))]
+    #[cfg(not(native_io))]
     rsx! {}
 }

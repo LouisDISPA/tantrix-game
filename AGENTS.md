@@ -89,6 +89,7 @@ Paths below are relative to `tantrix-app/src/`.
 - Put `key` on each RSX loop's direct child; a block returning `rsx!` leaves the list unkeyed. Split components by subscriptions; memoize expensive derivations; avoid cloning large state. Profile before optimizing.
 - One component tree across screen sizes; responsiveness is CSS only. Board fills the backdrop; HUD/hands float above it. `game.css` sets base layout, `desk.css` expands it; camera frames the remaining stage and derives home zoom from stage size.
 - SVG tiles/paths use axial-to-pixel geometry. Theme: global `THEME`, OKLCH CSS variables. Shared tokens/components live in `tokens.css`/`components.css`; desktop chrome in `desktop.css`.
+- Gate app platform code with the `cfg` aliases from `tantrix-app/build.rs`; never spell their predicates out. `native_client`: desktop or Android feature. `native_io`: that app built for its own OS (reqwest, native WebSocket, settings file). `web_client`: wasm32 browser build.
 - Production client build rebuilds std with silent immediate-abort panics (see `justfile`). Preserve dx symbols for hydration; never add `-Zfmt-debug=none` (`Color` display, keys and data attributes need `Debug`). Measure Wasm with `twiggy top` on a `dx build --keep-names` copy.
 
 ## Tests

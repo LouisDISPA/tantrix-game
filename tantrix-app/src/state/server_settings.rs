@@ -37,20 +37,14 @@ pub fn normalize_server(address: &str) -> Result<String, String> {
 #[cfg(any(feature = "desktop", target_os = "android"))]
 use super::native_settings::{load, save};
 
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 pub fn server_address() -> String {
     load("server-address")
         .and_then(|address| normalize_server(&address).ok())
         .unwrap_or_else(|| DEFAULT_SERVER.into())
 }
 
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 pub fn save_server_address(address: &str) -> Result<String, String> {
     let address = normalize_server(address)?;
     save("server-address", &address)?;
@@ -58,10 +52,7 @@ pub fn save_server_address(address: &str) -> Result<String, String> {
 }
 
 /// Keep private reconnect identities separate for each server on native clients.
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android")
-))]
+#[cfg(native_io)]
 pub fn session_cookie(server: &str) -> Result<String, String> {
     let filename = session_key(server)?;
     let token = match load(&filename) {
@@ -84,11 +75,7 @@ pub fn session_cookie(server: &str) -> Result<String, String> {
 }
 
 /// HTTP preflight and WebSocket connections to one origin share an identity.
-#[cfg(any(
-    all(feature = "desktop", not(target_arch = "wasm32")),
-    all(feature = "android", target_os = "android"),
-    test
-))]
+#[cfg(any(native_io, test))]
 fn session_key(server: &str) -> Result<String, String> {
     let url = url::Url::parse(server).map_err(|error| error.to_string())?;
     let address = normalize_server(&url.origin().ascii_serialization())?;

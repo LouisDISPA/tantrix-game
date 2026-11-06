@@ -6140,6 +6140,7 @@ version = "0.2.0"
 dependencies = [
  "arboard",
  "axum",
+ "cfg_aliases",
  "dioxus",
  "dioxus-fullstack-core",
  "dirs",

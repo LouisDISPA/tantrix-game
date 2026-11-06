@@ -13,7 +13,7 @@ pub fn MainMenu() -> Element {
     let quick = use_hook(move || *visit.has_seen_main.peek());
     use_effect(move || visit.has_seen_main.set(true));
 
-    #[cfg(not(any(feature = "desktop", feature = "android")))]
+    #[cfg(not(native_client))]
     let download_link = rsx! {
         div { class: "title-download-link",
             Link {

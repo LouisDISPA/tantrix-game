@@ -81,7 +81,7 @@ pub fn app() -> Element {
     hooks::android_updates::use_android_updates();
     #[cfg(feature = "desktop")]
     hooks::desktop_updates::use_desktop_updates();
-    #[cfg(not(any(feature = "desktop", feature = "android")))]
+    #[cfg(not(native_client))]
     hooks::downloads::use_download_context();
     let theme = *THEME.resolve().read();
     #[cfg(all(feature = "android", target_os = "android"))]

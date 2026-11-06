@@ -2,11 +2,11 @@
 
 // SSR renders the same models but only the browser constructs detected
 // platforms, parsed release assets, and installed states.
-#![cfg_attr(not(all(target_arch = "wasm32", feature = "web")), allow(dead_code))]
+#![cfg_attr(not(web_client), allow(dead_code))]
 
 use dioxus::prelude::*;
 
-#[cfg(all(target_arch = "wasm32", feature = "web"))]
+#[cfg(web_client)]
 pub mod browser;
 
 use super::releases::Package;
@@ -80,13 +80,13 @@ pub enum InstallStatus {
 pub struct DownloadContext {
     pub device: Signal<Device>,
     pub install_status: Signal<InstallStatus>,
-    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    #[cfg(web_client)]
     pub prompt: Signal<Option<browser::InstallPrompt>>,
 }
 
 impl DownloadContext {
     pub fn install(self) {
-        #[cfg(all(target_arch = "wasm32", feature = "web"))]
+        #[cfg(web_client)]
         browser::install(self);
     }
 }
