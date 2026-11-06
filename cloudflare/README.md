@@ -1,6 +1,6 @@
 # Cloudflare Worker
 
-The Worker serves Dioxus SSR and static assets; one Durable Object per room owns the game, persists accepted changes and broadcasts snapshots. Browsers send intents over WebSockets. Shared rules and orchestration live in `tantrix-room`; the Worker adapter is `tantrix-worker/src/room.rs`. See [multiplayer](../doc/MULTIPLAYER.md) for protocol, sessions, seats and persistence.
+The Worker serves Dioxus SSR and static assets; one Durable Object per room owns the game, persists accepted changes and broadcasts snapshots. Browsers send intents over WebSockets. Shared rules and orchestration live in `tantrix-room`; the Worker adapter is `tantrix-worker/src/room.rs`. See the [request flow](../doc/architecture.md#cloudflare-worker) and [multiplayer](../doc/MULTIPLAYER.md) for protocol, sessions, seats and persistence.
 
 ## Routing
 
@@ -9,6 +9,7 @@ The Worker serves Dioxus SSR and static assets; one Durable Object per room owns
 | Existing assets | Workers Static Assets, before Worker execution |
 | `GET /health` | Health response |
 | `GET /robots.txt`, `GET /sitemap.xml` | Search discovery |
+| `GET /api/online-version` | Online protocol version |
 | `POST /api/rooms` | Idempotent server allocation |
 | `GET /api/rooms/code/{CODE}` | Resolve a short invitation code |
 | `GET /api/rooms/{ID}` | Current game reference |
@@ -20,9 +21,13 @@ Canonical `Link` headers cover `/`, `/learn`, `/about` and `/online`; other rend
 
 Room creation and code lookups are limited per client IP by the `ROOM_CREATION_LIMIT` and `CODE_LOOKUP_LIMIT` rate-limit bindings; see [request limits](../doc/MULTIPLAYER.md#request-limits).
 
-Each game has a permanent-ID Room object; each short code has a RoomCodes object owning its reservation. Room alarms release invitations after an hour without joined sockets. Unstarted lobbies expire; started games and results remain available by permanent link until [retention](../doc/MULTIPLAYER.md#retention) deletes the object's storage.
+Each game has a permanent-ID Room object; each short code has a RoomCodes object owning its reservation. Room alarms apply [retention](../doc/MULTIPLAYER.md#retention).
 
-Room sockets hibernate; 30-second client pings receive automatic pongs without waking the object. State changes and reconnects send full snapshots; clients never poll. Storage succeeds before state is committed and broadcast. A failed save closes every socket and forces a reload from storage on the next event.
+Room sockets hibernate; 30-second client pings receive automatic pongs without waking the object. State changes and reconnects send full snapshots; clients never poll. Saving follows the [save-first rule](../doc/MULTIPLAYER.md#room-engine-rules).
+
+## Logs
+
+The Worker logs errors only: panics, failed room endpoints, room loads and storage writes (`console_error!` in `tantrix-worker`) and failed SSR (`src/index.js`). `[observability]` in `wrangler.toml` keeps every log, skips invocation logs (one per room socket message) and samples 5% of traces.
 
 ## Build, test, deploy
 

@@ -1,9 +1,8 @@
 # Online multiplayer
 
-Rooms are server-authoritative. `tantrix-room` owns rules and orchestration;
-native Axum or a Cloudflare Durable Object provides sockets and storage.
-`tantrix-proto` defines intents/snapshots; `tantrix-net` transports them in
-browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.md).
+Rooms are server-authoritative. Crates and request flows:
+[architecture](architecture.md#online-rooms); Worker routing and storage:
+[Worker](../cloudflare/README.md).
 
 ## Player flow
 
@@ -13,9 +12,10 @@ browsers and desktop clients. See [Worker routing/storage](../cloudflare/README.
 2. Any number of people can be in the lobby; the four colors are seats.
    Take a free seat, or **Release my seat** to leave it for someone else. The
    lobby lists who is waiting for a seat. Clicking a seat someone else holds
-   asks for confirmation, then takes it; they stay in the room without a seat. Any seated player can press
-   **Start game** once at least two seated players are connected. There is no
-   host role: the room belongs to nobody, and its creator can leave.
+   asks for confirmation, then takes it; they stay in the room without a
+   seat. Any seated player can press **Start game** once at least two seated
+   players are connected. There is no host role: the room belongs to nobody,
+   and its creator can leave.
 3. Players take turns; the server rejects out-of-turn or illegal moves.
    Anyone without a seat watches, and can take over the seat of a player who
    disconnected (after confirming), inheriting its hand and turn, so a
@@ -59,16 +59,19 @@ themes and leaving still work. Selections, drags and room confirmation dialogs
 close. Commands are never replayed on a replacement socket.
 
 Recovery joins the captured server and room with the existing session identity,
-using its permanent game ID. It tries up to three times after 1, 2 and 4 seconds, each shortened at random by up to half so clients dropped together by a restart don't all return at once. Each attempt
-has 20 seconds to receive a fresh snapshot, bounded by 60 seconds total from the
-first loss. Brief connections keep consuming that allowance; 30 seconds of stable
-connection renews it. **Retry** starts a new bounded cycle after exhaustion.
+using its permanent game ID. It tries up to three times after 1, 2 and 4
+seconds, each shortened at random by up to half so clients dropped together by
+a restart don't all return at once. Each attempt has 20 seconds to receive a
+fresh snapshot, bounded by 60 seconds total from the first loss. Brief
+connections keep consuming that allowance; 30 seconds of stable connection
+renews it. **Retry** starts a new bounded cycle after exhaustion.
 Leaving the page cancels both the active socket and scheduled retries.
 
 Welcome's same-match lobby only updates identity during recovery. A fresh
 `GameStarted` or `GameEnded` snapshot restores play or results, recalculating seat
-ownership. A newer match's lobby returns the page to the lobby. A displaced player resumes as a spectator with an explanation. Results
-remain available after later socket closure.
+ownership. A newer match's lobby returns the page to the lobby. A displaced
+player resumes as a spectator with an explanation. Results remain available
+after later socket closure.
 
 Both transports send keepalive pings every 30 seconds and allow 15 seconds for a
 pong. A missed response enters the same recovery flow; suspended timers never
@@ -88,7 +91,7 @@ Worker storage uses `match:{match_id}` keys in the same Room object. Old histori
 remain stored separately from the active room until the room is
 [deleted](#retention). There is no history browser yet.
 Match IDs on Start, Play, End and Rematch reject commands from an earlier match;
-repeated rematch clicks do not restart the next game. Online API version: **3**.
+repeated rematch clicks do not restart the next game.
 
 ## Running locally
 
@@ -174,6 +177,41 @@ socket sends `RoomInfo` with the current code, then the normal Hello/Welcome
 exchange. Missing games reject Welcome with `RoomNotFound`; expired lobbies
 use `RoomExpired` (HTTP APIs return 410).
 
+### Room engine rules
+
+`RoomEngine::run` applies these rules on both servers:
+
+- **Save first.** A changed room is saved before the step is committed and
+  before anyone hears of it. If the save fails, nothing is committed and
+  every socket is closed with *Room storage is unavailable.*; the room is
+  loaded from storage again for the next visitor.
+- **Slow sockets.** A socket the server cannot hand a message to (the native
+  64-message queue is full, or the socket is gone) is closed with
+  *Connection is too slow.* and leaves the room as a disconnect would.
+- **Hello once.** A socket must say `Hello` before anything else (*say hello
+  first*), and only once (*already joined*). A refused `Hello` (full room,
+  bad nickname) gets a rejected `Welcome` and the socket is closed;
+  anything else it sends is ignored, so a retry needs a new connection.
+- **Frames.** Binary frames, frames over 8 KiB and invalid JSON are
+  answered with an error and change nothing. The native server drops frames
+  over 64 KiB before they reach the room.
+- **Rate limit.** A socket may send 20 frames at once, then 2 per second on
+  average; one that sends faster is closed with *Too many messages.* and
+  leaves the room as a disconnect would. The allowance is kept in memory, so
+  a restart or a hibernated Durable Object refills it.
+- **Socket cap.** A room keeps at most 64 sockets (twice the member limit).
+  A new socket in a full room closes the oldest one that never said `Hello`
+  (*Too many connections to this room.*).
+- **Timeouts (native).** A socket must send something other than a keepalive
+  within 10 seconds of opening, then some frame at least every 75 seconds,
+  or it is closed with *Connection timed out.* A peer that stops reading for
+  10 seconds is dropped. The Worker relies on the runtime and the socket cap.
+- **Nicknames.** Control characters, text-direction overrides and invisible
+  fillers are removed; a name with no visible character is refused. Setting
+  the same name again saves and broadcasts nothing.
+- **Restarts.** A room loaded from storage forgets members without a seat
+  whose sockets are gone; seated players keep their seats.
+
 ### Request limits
 
 Invitation codes are short enough to scan, so both servers count room
@@ -220,8 +258,6 @@ Code reservations are persisted before being published, and releases compare
 both game ID and a unique claim nonce. Pending reservations and releases survive
 storage failures and are safe to repeat.
 
-This is a breaking storage/protocol change: old code-only rooms are not migrated.
-
 ### Retention
 
 Room storage is bounded by inactivity (`tantrix_room::lifecycle`). A joined
@@ -239,38 +275,3 @@ client clocks set back.
 Deletion first releases any invitation code. Native deletes the record and its
 archives in one transaction; the Worker's room alarm calls `storage.deleteAll()`,
 which also clears the alarm (compatibility date 2026-02-24 or later).
-
-Events (`on_open`, `on_text`, `on_binary`, `on_close`) produce a `Step`: an
-optional room to persist and send/broadcast/close effects. Both adapters use
-`RoomEngine::run`:
-
-- **Save first.** A changed room is saved before the step is committed and
-  before anyone hears of it. If the save fails, nothing is committed and
-  every socket is closed with *Room storage is unavailable.*; the room is
-  loaded from storage again for the next visitor.
-- **Slow sockets.** A socket the server cannot hand a message to (the native
-  64-message queue is full, or the socket is gone) is closed with
-  *Connection is too slow.* and leaves the room as a disconnect would.
-- **Hello once.** A socket must say `Hello` before anything else (*say hello
-  first*), and only once (*already joined*). A refused `Hello` (full room,
-  bad nickname) gets a rejected `Welcome` and the socket is closed;
-  anything else it sends is ignored, so a retry needs a new connection.
-- **Frames.** Binary frames, frames over 8 KiB and invalid JSON are
-  answered with an error and change nothing. The native server drops frames
-  over 64 KiB before they reach the room.
-- **Rate limit.** A socket may send 20 frames at once, then 2 per second on
-  average; one that sends faster is closed with *Too many messages.* and
-  leaves the room as a disconnect would. The allowance is kept in memory, so
-  a restart or a hibernated Durable Object refills it.
-- **Socket cap.** A room keeps at most 64 sockets (twice the member limit).
-  A new socket in a full room closes the oldest one that never said `Hello`
-  (*Too many connections to this room.*).
-- **Timeouts (native).** A socket must send something other than a keepalive
-  within 10 seconds of opening, then some frame at least every 75 seconds,
-  or it is closed with *Connection timed out.* A peer that stops reading for
-  10 seconds is dropped. The Worker relies on the runtime and the socket cap.
-- **Nicknames.** Control characters, text-direction overrides and invisible
-  fillers are removed; a name with no visible character is refused. Setting
-  the same name again saves and broadcasts nothing.
-- **Restarts.** A room loaded from storage forgets members without a seat
-  whose sockets are gone; seated players keep their seats.

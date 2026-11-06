@@ -1,6 +1,6 @@
 # Desktop updates
 
-Velopack 1.2.161 checks GitHub Releases once per launch and downloads updates in the background. Navigation and online compatibility reuse that result. Menus show progress, then **Restart and update**; installation requires a click. Games never show restart controls. Legacy, `.deb` and development installs fall back to a download link. The game server address does not affect the update source.
+Velopack 1.2.161 checks GitHub Releases once per launch (not while an update waits for a restart) and downloads updates in the background. Navigation and online compatibility reuse that result. Menus show progress, then **Restart and update**; installation requires a click. Games never show restart controls. Legacy, `.deb` and development installs get no automatic updates; when a server needs a newer app, the online menu links to the download page. The game server address does not affect the update source.
 
 ## Packages and release channels
 
@@ -20,18 +20,6 @@ The Linux AppImage retains the GTK/WebKit/GStreamer payload assembled by
 instead of generating a standalone AppImage.
 
 Publish `releases.<channel>.json` with every `.nupkg` it references. Never rename update packages. Windows portable downloads must include the entire ZIP. Existing unmanaged releases need a one-time managed install; old NSIS installations can then be removed separately.
-
-## Local macOS build
-
-Install the .NET 8 SDK and `dotnet tool install -g vpk --version 1.2.161`, then:
-
-```sh
-dx bundle --locked --release --platform macos --package tantrix-app --features desktop,bundle --package-types macos --out-dir bundles
-python3 scripts/pack-desktop.py macos aarch64 0.1.3
-```
-
-Use the app version from `tantrix-app/Cargo.toml` and the build's architecture.
-Outputs are in `artifacts/`. Copy the app out of the DMG before running it.
 
 ## Free self-signed releases
 
@@ -138,11 +126,11 @@ verifies the signature using a temporary keyring.
 
 ### 4. Test and release
 
-Run **Actions → Release → Run workflow** on the branch containing these changes.
-It builds downloadable artifacts without publishing a release. Install them and
-test an older-to-newer update on each OS before creating a release tag normally.
+Build with **Run workflow** ([desktop releases](desktop-release.md#publish)),
+then test an older-to-newer update on each OS ([verification](#verification))
+before tagging.
 
-No GitHub environment is required. With a platform's signing settings absent, it builds unsigned; partial settings or failed signatures stop publication. Publish public-key SHA-256 fingerprints separately from downloads so players can compare them independently.
+No GitHub environment is required. A desktop platform without signing settings builds unsigned; partial settings or failed signatures stop publication. Android always needs its keystore secrets. Publish public-key SHA-256 fingerprints separately from downloads so players can compare them independently.
 
 ### What players need to do
 

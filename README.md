@@ -4,7 +4,7 @@
 
 **Tantrix** is a tabletop game where you compete for the longest line or loop.
 
-This is small side project, unofficial and not affiliated with Tantrix.
+This is a small side project, unofficial and not affiliated with Tantrix.
 
 <details>
 <summary>Screenshots</summary>
@@ -32,7 +32,7 @@ The game engine is independent of the interface and server. The web app, desktop
 | Multiplayer | WebSockets, JSON messages, shared room engine |
 | Terminal | Ratatui, Crossterm |
 
-The UI sends move requests to an authoritative room server. The shared room engine validates actions and produces state changes and socket effects; each backend handles its own storage and delivery. Local games run directly through the core engine.
+The UI sends move requests to an authoritative room server. The shared room engine validates actions and produces state changes and socket effects; each backend handles its own storage and delivery. Local games run directly through the core engine; see the [architecture](doc/architecture.md).
 
 ## Workspace
 
@@ -80,8 +80,8 @@ just ci                          # all of the above, as CI runs them
 just worker-e2e                  # Worker browser tests
 ```
 
-[Game engine](doc/game.md) · [Worker setup](cloudflare/README.md) · [Browser tests](e2e/README.md)
+[Architecture](doc/architecture.md) · [Game engine](doc/game.md) · [Multiplayer](doc/MULTIPLAYER.md) · [Worker setup](cloudflare/README.md) · [Browser tests](e2e/README.md)
 
 ## AI Disclaimer
 
-This project use a lot of AI tools for it's development.
+This project uses a lot of AI tools for its development.

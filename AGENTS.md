@@ -21,7 +21,7 @@ Other paths:
 | Path | Contents |
 | --- | --- |
 | `tantrix-app/assets/` | CSS and favicon; CSS assembled in `src/lib.rs` |
-| `tantrix-app/public/` | Web manifest and icons |
+| `tantrix-app/public/` | Web manifest, icons, static 404 page |
 | `tantrix-game/doc/game_rules.md` | Game rules |
 | `doc/` | Domain documentation; screenshots/header in `doc/assets/` |
 | `cloudflare/` | Worker JS entry, Wrangler configuration |
@@ -58,8 +58,8 @@ Paths below are relative to `tantrix-app/src/`.
 | Path | Responsibility |
 | --- | --- |
 | `lib.rs`, `main.rs` | App root/styles/router; platform entry |
-| `route.rs` | `/`, `/learn`, `/about`, `/game?seed=N`, `/online`, `/online/game/:id`, `/join/:code`, fallback; `/download` except desktop/native |
-| `state/` | Data/actions, no RSX: game/UI state, driver, AI, gestures/drag, online sessions, downloads, desktop settings/updates |
+| `route.rs` | `/`, `/learn`, `/about`, `/game?seed=N`, `/online`, `/online/game/:id`, `/join/:code`, fallback; `/download` except desktop/Android |
+| `state/` | Data/actions, no RSX: game/UI state, driver, AI, gestures/drag, online sessions, downloads, native settings, desktop/Android updates |
 | `hooks/` | Context providers, camera, derived game/phase/scoring values, online snapshots, downloads/updates |
 | `pages/game/` | Shared local/online HUD, hands, drag overlay, results; render-count tests |
 | `pages/local_game/`, `pages/online/` | Local setup/play; online entry/lobby/room |
@@ -67,15 +67,15 @@ Paths below are relative to `tantrix-app/src/`.
 | `components/` | Reusable UI; no session access |
 | `svg/` | Pure geometry, paths, camera math, card placement |
 | `server.rs`, `server/` | Axum routes, room sockets, SQLite storage |
-| `desktop.rs` | Desktop window chrome/platform integration |
+| `desktop.rs`, `mobile.rs`, `platform/` | Desktop window chrome; mobile WebView setup; Android JNI |
 | `util/test_page.rs` | Test-only `GamePage` harness |
 
 ## Domain and authority
 
-- `Game` owns game state; mutate through its API. `GameState` adds cached `Game::moves_by_tile()` results (`hand_info`).
+- `Game` owns game state; mutate through its API (typed errors, no panics). Ask `Game::status()` whether a game goes on. `GameState` caches `Game::moves_by_tile()` (`hand_info`).
 - `Placement` = tile + axial position + rotation; `Move` adds the rules' forced flag. `Board` stores up to 56 moves, sorted by position. Each tile has three of four colors; rotations step by 60°.
 - `TurnEvent` records moves, skips and retirements for undo/replay. Local games/tournaments retain reproducible seeds; online rooms use random deals and persist `GameData`. Never send a seed or bag order to players.
-- `RoomEngine` takes socket events and produces state/effects. Both backends persist before committing state and delivering effects.
+- `RoomEngine` takes socket events and produces state/effects. Both backends persist before committing state and delivering effects. Limits, handshake, retention: [limits and logs](doc/architecture.md#limits-and-logs).
 - `GameCtx` = atomic `Signal<GameState>` + field-reactive `Store<UiState>` + `GameDriver`. `Local` runs turns/AI here; `Online(RoomLink)` sends intents and mirrors authoritative snapshots. Components query the driver; actions dispatch through it.
 - `TurnPhase`: SelectTile → SelectPosition → SelectRotation, plus WaitingForAi/GameOver.
 
@@ -98,7 +98,7 @@ Keep tests beside code and deterministic: seeded games/fixed data, no timers. Ex
 
 ## Domain docs
 
-[Engine](doc/game.md) · [AI/tournaments](doc/ai.md) · [Multiplayer](doc/MULTIPLAYER.md) · [Components](doc/components.md) · [State](doc/signals.md) · [Styling](doc/styling.md) · [Worker](cloudflare/README.md) · [Browser tests](e2e/README.md) · [Desktop releases](doc/desktop-release.md) · [Android releases](doc/android-release.md) · [Updates](doc/desktop-updates.md)
+[Architecture](doc/architecture.md) · [Engine](doc/game.md) · [AI/tournaments](doc/ai.md) · [Multiplayer](doc/MULTIPLAYER.md) · [Components](doc/components.md) · [State](doc/signals.md) · [Styling](doc/styling.md) · [Worker](cloudflare/README.md) · [Browser tests](e2e/README.md) · [Desktop releases](doc/desktop-release.md) · [Android releases](doc/android-release.md) · [Updates](doc/desktop-updates.md)
 
 ## Skills
 

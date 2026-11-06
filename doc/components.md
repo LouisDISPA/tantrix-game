@@ -8,9 +8,10 @@ Paths below are relative to `tantrix-app/src/`.
 |---|---|
 | `lib.rs` | App root, CSS, startup overlay, download/update contexts, router |
 | `route.rs` | `AppLayout`: menu background, outlet, theme toggle; route definitions |
-| `pages/` | Main menu, learn, about, download, not-found and desktop-update screens |
+| `desktop.rs`, `mobile.rs`, `platform/` | Desktop window and chrome; mobile WebView setup; Android system bars and clipboard |
+| `pages/` | Main menu, learn, about, download, not-found and desktop/Android update screens |
 | `pages/local_game/` | Setup → playing/results; creates local `GameCtx` |
-| `pages/online/` | Entry/join, session driver, room screens, lobby, seat takeover, HUD badge |
+| `pages/online/` | Entry/join, session driver, room screens, lobby, seat takeover, online game view, HUD badge |
 | `pages/game/` | Shared local/online game: HUD, hands, results, turn banner, dragged tile |
 | `components/board/` | Board composer, viewport, placed/empty/preview layers, orientation picker, controls |
 | `components/tile/` | `HexSvg`, `BoardTile`, `EmptyHex`, `HandTile` |
@@ -18,6 +19,7 @@ Paths below are relative to `tantrix-app/src/`.
 | `hooks/` | Game contexts, camera, memoized board/phase/scoring data, downloads, updates |
 | `state/` | Game/UI/session state, actions, AI loop, tile dragging, settings |
 | `svg/` | Pure geometry, camera arithmetic, card placement, color paths |
+| `util/` | Logger, `sleep`, test page and render counter |
 
 ## Game tree
 

@@ -2,7 +2,8 @@
 
 Styles live in `tantrix-app/assets/`; `tantrix-app/src/lib.rs` assembles shared CSS.
 SSR embeds it; fullstack browser hydration reuses that tag. Desktop injects the
-shared CSS plus `desktop.css` through `src/desktop.rs`.
+shared CSS plus `desktop.css` through `src/desktop.rs`; Android puts it in the
+WebView head through `src/mobile.rs`.
 
 ## Files
 
@@ -13,22 +14,24 @@ shared CSS plus `desktop.css` through `src/desktop.rs`.
 | `utilities.css` | Small opt-in layout, token spacing and truncation helpers |
 | `components.css` | Shared buttons, cards, inputs, badges, dialogs |
 | `board.css` | Board, tiles, empty slots, orientation picker, results |
-| `hand.css` | Hand headers/tiles and interaction states |
-| `game.css` | Game shell, HUD, stack/side layouts, turn banner, dragged tile |
+| `hand.css` | Hand headers/tiles, interaction states, dragged tile |
+| `game.css` | Game shell, HUD, stack/side layouts, turn banner |
 | `desk.css` | Desktop-size game layout: top bar, left rail, bottom rack |
-| `menu.css` | Menu, setup, online entry/lobby, download/about screens |
+| `menu.css` | Menu, setup, online entry/lobby, download/about screens, update notices |
 | `learn.css` | Rules/tutorial screen |
 | `animations.css` | Shared keyframes/animation classes |
 | `loading.css` | Startup overlay and its motion |
-| `desktop.css` | Native window chrome and update UI |
+| `desktop.css` | Native window chrome: title bar, window buttons, resize edges |
 
 Layers: `reset → tokens → base → utilities → components → features → responsive → motion`.
+`loading.css` sits outside the layers, so its rules win.
 
 ## Conventions
 
 - Keep static presentation, transitions and responsive rules in CSS. Rust supplies
   dynamic geometry and state classes; prefer custom properties over inline rules.
-  Existing dragged-tile positioning supplies inline `left`/`top`/`width`.
+  The dragged tile and the rotation card set inline `left`/`top` (and `width`
+  or arrow properties).
 - Reuse tokenized spacing, radii, motion and surfaces (`.surface`, `.surface-blur`).
   `THEME` sets `data-theme`; palettes override tokens for light/dark.
 - Player colors use `--color-*`/`--glow-*`; `.color-*` and `--player-color` carry

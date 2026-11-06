@@ -1,7 +1,7 @@
 # Game implementation
 
 `tantrix-game` owns the rules; UI and server adapters depend on it.
-See the [workspace map](../README.md#workspace), [AI and tournaments](ai.md),
+See the [architecture](architecture.md), [AI and tournaments](ai.md),
 [multiplayer](MULTIPLAYER.md), and [Worker deployment](../cloudflare/README.md).
 
 ## Core model
@@ -96,10 +96,11 @@ returns `None` for empty history or a final retirement, whose hand was lost.
 game unchanged. `Game::replay(seed, players, events)` reports the failing
 event through `ReplayError`.
 
-`new` / `from_players` generate and retain a random seed; `new_seeded` /
-`from_players_seeded` retain the supplied seed. Deals use
+A deal shuffles the bag, then the turn order, and gives each hand six tiles
+in turn order. `new` / `from_players` generate and retain a random seed;
+`new_seeded` / `from_players_seeded` retain the supplied seed. Deals use
 `Xoshiro256PlusPlus::seed_from_u64`; `/game?seed=N` reproduces them.
-`from_players_with_rng` retains no seed.
+`new_with_rng` / `from_players_with_rng` retain no seed.
 
 `GameData` persists board, hands, bag, turn, optional seed and history;
 older saves default to no seed/history. Online rooms use the OS-seeded
