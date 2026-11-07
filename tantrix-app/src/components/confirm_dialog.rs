@@ -44,8 +44,11 @@ pub fn ConfirmDialog(
                         button {
                             class: "button button-secondary modal-btn",
                             // The safe choice takes the focus, so Escape and
-                            // Enter work at once.
+                            // Enter work at once (the trap's, in a browser).
                             "data-autofocus": "true",
+                            onmounted: move |e| async move {
+                                let _ = e.data().set_focus(true).await;
+                            },
                             onclick: move |_| on_cancel.call(()),
                             "Cancel"
                         }

@@ -1,18 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { placedTiles, startLocalGame } from './play-move';
+import { useProductionScriptPolicy } from './script-policy';
 import { centreOf } from './touch';
 
 test('desktop drag places only on release under the production script policy', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/*', async route => {
-    if (!route.request().isNavigationRequest()) return route.continue();
-    const response = await route.fetch();
-    await route.fulfill({ response, headers: {
-      ...response.headers(),
-      'content-security-policy': "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
-    } });
-  });
+  const errors = await useProductionScriptPolicy(page);
   await startLocalGame(page);
   const tile = page.locator('.player-hand.active .hand-tile').first();
   const origin = centreOf((await tile.boundingBox())!);
