@@ -48,7 +48,7 @@ jobs:
       fail-fast: false
       matrix: >-
         ${{ fromJSON(inputs.macos_only && '{"include":[{"runner":"macos-15-intel","platform":"macos","arch":"x86_64","target":"x86_64-apple-darwin","packages":"--package-types macos"}]}' || inputs.windows_only && '{"include":[{"runner":"windows-2022","platform":"windows","arch":"x86_64","target":"x86_64-pc-windows-msvc"}]}' ||
-          '{"include":[{"runner":"macos-14","platform":"macos","arch":"aarch64","target":"aarch64-apple-darwin","packages":"--package-types macos"},
+          '{"include":[{"runner":"macos-latest","platform":"macos","arch":"aarch64","target":"aarch64-apple-darwin","packages":"--package-types macos"},
             {"runner":"macos-15-intel","platform":"macos","arch":"x86_64","target":"x86_64-apple-darwin","packages":"--package-types macos"},
             {"runner":"ubuntu-24.04","platform":"linux","arch":"x86_64","target":"x86_64-unknown-linux-gnu","packages":"--package-types deb"},
             {"runner":"ubuntu-24.04-arm","platform":"linux","arch":"aarch64","target":"aarch64-unknown-linux-gnu","packages":"--package-types deb"},
