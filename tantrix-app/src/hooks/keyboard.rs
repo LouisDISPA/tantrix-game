@@ -35,7 +35,7 @@ pub(crate) fn use_take_focus(
 /// became of the focus. Tab is left to the browser. The listener is
 /// compiled `web-sys`, which the production script policy allows; only the
 /// browser app has it, elsewhere this does nothing.
-pub fn use_route_stray_keys(screen: &'static str) {
+pub(crate) fn use_route_stray_keys(screen: &'static str) {
     stray::use_route(screen);
 }
 
@@ -52,7 +52,7 @@ mod stray {
         web_sys::window()?.document()
     }
 
-    pub fn use_route(screen: &'static str) {
+    pub(super) fn use_route(screen: &'static str) {
         let listener = use_hook(move || {
             // `Fn`, not `FnMut`: the copy it dispatches bubbles back up to
             // the document and calls it again (to return at once).
@@ -116,5 +116,5 @@ mod stray {
 
 #[cfg(not(web_client))]
 mod stray {
-    pub fn use_route(_screen: &'static str) {}
+    pub(super) fn use_route(_screen: &'static str) {}
 }

@@ -87,7 +87,7 @@ mod dom {
     use web_sys::{Document, Element, HtmlElement};
 
     /// The page can be asked what takes the focus.
-    pub const TRAPS: bool = true;
+    pub(super) const TRAPS: bool = true;
 
     /// What a Tab stops on.
     const TABBABLE: &str = "a[href], button:not([disabled]), input:not([disabled]), \
@@ -123,7 +123,7 @@ mod dom {
     }
 
     /// Move the focus in: to the item marked `data-autofocus`, else the first.
-    pub fn focus_in(id: &str) {
+    pub(super) fn focus_in(id: &str) {
         let Some(root) = root(id) else { return };
         let marked = root
             .query_selector("[data-autofocus]")
@@ -136,7 +136,7 @@ mod dom {
     }
 
     /// Focus the trap's first (`last`: last) item.
-    pub fn focus_edge(id: &str, last: bool) {
+    pub(super) fn focus_edge(id: &str, last: bool) {
         let Some(root) = root(id) else { return };
         let items = items(&root);
         let target = if last { items.last() } else { items.first() };
@@ -147,14 +147,14 @@ mod dom {
 
     /// What had the focus when the trap opened.
     #[derive(Default)]
-    pub struct Saved {
+    pub(super) struct Saved {
         taken: Cell<bool>,
         element: RefCell<Option<HtmlElement>>,
     }
 
     impl Saved {
         /// Remember what has the focus, once per opening.
-        pub fn remember(&self) {
+        pub(super) fn remember(&self) {
             if !self.taken.replace(true) {
                 let active = document().and_then(|d| d.active_element()).and_then(html);
                 self.element.replace(active);
@@ -163,7 +163,7 @@ mod dom {
 
         /// Give the focus back to what had it, or to the first of
         /// `fallback` that shows — unless the player took it elsewhere.
-        pub fn give_back(&self, id: &str, fallback: &[&str]) {
+        pub(super) fn give_back(&self, id: &str, fallback: &[&str]) {
             if !self.taken.replace(false) {
                 return;
             }
@@ -198,18 +198,18 @@ mod dom {
 #[cfg(not(web_client))]
 mod dom {
     /// Without `web-sys` the page cannot be asked what takes the focus.
-    pub const TRAPS: bool = false;
+    pub(super) const TRAPS: bool = false;
 
-    pub fn focus_in(_id: &str) {}
+    pub(super) fn focus_in(_id: &str) {}
 
-    pub fn focus_edge(_id: &str, _last: bool) {}
+    pub(super) fn focus_edge(_id: &str, _last: bool) {}
 
     #[derive(Default)]
-    pub struct Saved;
+    pub(super) struct Saved {}
 
     impl Saved {
-        pub fn remember(&self) {}
+        pub(super) fn remember(&self) {}
 
-        pub fn give_back(&self, _id: &str, _fallback: &[&str]) {}
+        pub(super) fn give_back(&self, _id: &str, _fallback: &[&str]) {}
     }
 }
