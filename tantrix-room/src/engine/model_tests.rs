@@ -393,7 +393,7 @@ fn random_socket_events_keep_the_room_consistent() {
 impl<'a> Harness<'a> {
     fn new(coverage: &'a mut Coverage) -> Self {
         Self {
-            engine: RoomEngine::default(),
+            engine: RoomEngine::new(RoomData::default(), []),
             server: Server::default(),
             sockets: Vec::new(),
             clock: 0,
