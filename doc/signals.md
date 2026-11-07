@@ -30,7 +30,7 @@ unchanged game/seat snapshots preserve an open selection.
 |---|---|
 | Turn | `phase`, `message`; HUD, phase hooks, actions |
 | Selection | `selected_tile`, `selected_position`, `hovered`; hand/board hooks |
-| Keyboard | `focus_request`; set by `state/keyboard.rs` key actions, taken and cleared by the target (`hooks::use_take_focus`) |
+| Keyboard | `focus_request`: set by `state/keyboard.rs` key actions, taken and cleared by the target (`hooks::use_take_focus`); `keyboard`: keys on `GamePlay` set it, a pointer clears it |
 | Tile drag | `tile_drag`, `suppress_tile_click`; `state/tile_drag.rs`, game pointer handlers/overlay, hand tiles |
 | Hand view | `peeked`; shown-hand/HUD memos; cleared on turn change |
 | Camera | `zoom`, `pan_x`, `pan_y`, `gesture`, `dragged`, `stage`; camera, viewport, open orientation card |

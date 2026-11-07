@@ -5,13 +5,14 @@ use tantrix_game::{Move, Position, Rotation, Tile};
 
 use crate::components::tile::HexSvg;
 use crate::hooks::phase_view::Orientations;
-use crate::hooks::{use_pointer_press, use_take_focus};
+use crate::hooks::use_take_focus;
 use crate::state::actions::pick_rotation;
 use crate::state::game_state::GameCtx;
 use crate::state::keyboard::{
-    choose_rotation, request_focus, rotation_label, step_in, FocusTarget, Nav,
+    choose_rotation, is_choice, keys_in_use, request_focus, rotation_label, step_in, FocusTarget,
+    Nav,
 };
-use crate::state::ui_state::{Hovered, UiStateStoreExt};
+use crate::state::ui_state::{set_if_changed, Hovered, UiStateStoreExt};
 use crate::svg::camera_math::{Pose, Size};
 use crate::svg::card_placement::{place_card_at, size_style};
 use crate::svg::geometry::{TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W};
@@ -100,13 +101,14 @@ pub fn OrientationPicker(
 }
 
 /// One way round on the card: the `index`th of `count`. The keys step
-/// along the card (←/→, or R) and take the option in focus (Enter); the
-/// first takes the focus when the keyboard opened the card.
+/// along the card (←/→, or R) and take the option in focus (Enter or
+/// Space, handled here rather than by the button's own click, so a held
+/// key or a Space let go here plays nothing); the first takes the focus
+/// when the keyboard opened the card.
 #[component]
 fn OrientationOption(tile: Tile, rotation: Rotation, index: usize, count: usize) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
-    let press = use_pointer_press();
     let mut element = use_signal(|| None::<Rc<MountedData>>);
     use_take_focus(element, move || {
         ctx.ui_state.focus_request()() == Some(FocusTarget::Card(index))
@@ -119,26 +121,36 @@ fn OrientationOption(tile: Tile, rotation: Rotation, index: usize, count: usize)
             aria_label: rotation_label(rotation),
             onmounted: move |e| element.set(Some(e.data())),
             onclick: move |_| {
-                if press.by_pointer() {
-                    pick_rotation(ctx, rotation);
-                } else {
-                    // Enter or Space: the keyboard's focus goes on.
+                // A click from the keys (a screen reader's) moves the focus
+                // on, as Enter does.
+                if keys_in_use(ctx) {
                     choose_rotation(ctx, rotation);
+                } else {
+                    pick_rotation(ctx, rotation);
                 }
             },
             onkeydown: move |e| {
-                if let Some(nav) = Nav::of_rotation(&e.key(), e.modifiers()) {
+                let key = e.key();
+                if is_choice(&key, e.modifiers()) {
+                    e.prevent_default();
+                    if !e.is_auto_repeating() {
+                        choose_rotation(ctx, rotation);
+                    }
+                } else if let Some(nav) = Nav::of_rotation(&key, e.modifiers()) {
                     e.prevent_default();
                     if let Some(next) = step_in(count, Some(index), nav) {
                         request_focus(ctx, FocusTarget::Card(next));
                     }
                 }
             },
-            // Pressed: the ghost shows what lifting does.
-            onpointerdown: move |_| {
-                press.down();
-                hovered.set(Hovered::Rotation(rotation));
+            // A Space pressed elsewhere (on the spots) must not click this.
+            onkeyup: move |e| {
+                if is_choice(&e.key(), e.modifiers()) {
+                    e.prevent_default();
+                }
             },
+            // Pressed: the ghost shows what lifting does.
+            onpointerdown: move |_| hovered.set(Hovered::Rotation(rotation)),
             onpointerup: move |_| hovered.set(Hovered::None),
             onpointercancel: move |_| hovered.set(Hovered::None),
             // A mouse previews on hover; a finger has no hover.
@@ -150,12 +162,11 @@ fn OrientationOption(tile: Tile, rotation: Rotation, index: usize, count: usize)
             onpointerleave: move |_| hovered.set(Hovered::None),
             // So does the keyboard's focus.
             onfocus: move |_| {
-                if !press.by_pointer() {
-                    hovered.set(Hovered::Rotation(rotation));
+                if keys_in_use(ctx) {
+                    set_if_changed(hovered, Hovered::Rotation(rotation));
                 }
             },
             onblur: move |_| {
-                press.reset();
                 if *hovered.peek() == Hovered::Rotation(rotation) {
                     hovered.set(Hovered::None);
                 }

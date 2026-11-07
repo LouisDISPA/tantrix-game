@@ -141,6 +141,10 @@ pub struct UiState {
     /// Where a key handler asked the keyboard's focus to go next; the
     /// component that shows the target takes it and clears this.
     pub focus_request: Option<FocusTarget>,
+    /// Whether the player is on the keys: a key on the game screen sets it,
+    /// a pointer pressing it clears it. A focus previews what it is on (as
+    /// hovering does) only then.
+    pub keyboard: bool,
 
     // --- Hand panel ---
     /// The seat whose tiles the player is looking at instead of their own
@@ -187,6 +191,7 @@ impl Default for UiState {
             hovered: Hovered::None,
 
             focus_request: None,
+            keyboard: false,
 
             peeked: None,
 

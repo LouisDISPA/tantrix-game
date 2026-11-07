@@ -17,9 +17,9 @@ pub fn spot_id(at: Position) -> String {
 /// An empty hex slot on the board. Positioned at a board coordinate; click and
 /// hover interactions dispatch directly through `GameCtx`.
 ///
-/// A spot to choose (not `faint`) is an option of the board's spots, the
-/// `rank`th of `count` as the keys read them; the keys reach it through
-/// the spots (`BoardSpots`), so it is no tab stop of its own.
+/// A spot to choose (not `faint`) is an option of the board's spots; the
+/// keys reach it through them (`BoardSpots`), so it is no tab stop of its
+/// own.
 #[component]
 pub fn EmptyHex(
     position: Position,
@@ -27,8 +27,6 @@ pub fn EmptyHex(
     forced: bool,
     faint: bool,
     picked: bool,
-    rank: usize,
-    count: usize,
 ) -> Element {
     let ctx = use_context::<GameCtx>();
     let mut hovered = ctx.ui_state.hovered();
@@ -54,8 +52,6 @@ pub fn EmptyHex(
             "data-position": "{position.x()},{position.y()}",
             role: if !faint { "option" },
             aria_label: if forced { "Forced spot" } else { "Spot" },
-            aria_posinset: if !faint { "{rank}" },
-            aria_setsize: if !faint { "{count}" },
             onclick: move |evt| {
                 // A tap on a spot is not a tap on the board behind it.
                 evt.stop_propagation();

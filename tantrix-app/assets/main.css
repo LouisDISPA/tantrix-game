@@ -89,6 +89,14 @@
 
   /* A hex ring of the keyboard's focus (`.focus-hex-*` polygons): the same
     width at any size or zoom. */
+  .focus-hex {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+
   .focus-hex-halo,
   .focus-hex-line {
     fill: none;

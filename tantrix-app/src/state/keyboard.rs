@@ -26,7 +26,7 @@ use dioxus::prelude::*;
 use tantrix_game::{Color, Position, Rotation, TileMoveInfo};
 
 use crate::hooks::camera::BoardCamera;
-use crate::state::actions::{click_position, click_tile, pick_rotation};
+use crate::state::actions::{click_position, click_tile, pick_rotation, placed_positions};
 use crate::state::game_state::GameCtx;
 use crate::state::ui_state::{
     set_if_changed, Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt,
@@ -130,9 +130,18 @@ impl Nav {
     }
 }
 
-/// Whether `key` takes the choice in focus: Enter or Space.
-pub fn is_choice(key: &Key) -> bool {
-    matches!(key, Key::Named(NamedKey::Enter)) || matches!(key, Key::Character(c) if c == " ")
+/// Whether `key` takes the choice in focus: Enter or Space, not held with
+/// Ctrl, Alt or Meta.
+pub fn is_choice(key: &Key, modifiers: Modifiers) -> bool {
+    !modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META)
+        && (matches!(key, Key::Named(NamedKey::Enter))
+            || matches!(key, Key::Character(c) if c == " "))
+}
+
+/// Whether the player is on the keys (`UiState::keyboard`): a focus then
+/// previews, and a click moves the focus on, as a key would.
+pub fn keys_in_use(ctx: GameCtx) -> bool {
+    *ctx.ui_state.keyboard().peek()
 }
 
 /// Where `nav` goes in a row of `len` choices from the one at `at` (none:
@@ -172,19 +181,16 @@ pub fn spot_order(spots: impl IntoIterator<Item = Position>) -> Vec<Position> {
 /// End). ↑ and ↓ keep to the spot when no row above or below has one.
 pub fn step_spot(order: &[Position], from: Option<Position>, nav: Nav) -> Option<Position> {
     let at = from.and_then(|from| order.iter().position(|&spot| spot == from));
-    let Some(from) = at.map(|at| order[at]) else {
-        let nav = if matches!(nav, Nav::Up | Nav::Down) {
-            Nav::Next
-        } else {
-            nav
-        };
-        return step_in(order.len(), None, nav).map(|i| order[i]);
-    };
-    let row = match nav {
-        // The closest row above (a greater y) or below that has a spot.
-        Nav::Up => order.iter().map(|s| s.y()).filter(|&y| y > from.y()).min(),
-        Nav::Down => order.iter().map(|s| s.y()).filter(|&y| y < from.y()).max(),
+    let from = match (at, nav) {
+        (Some(at), Nav::Up | Nav::Down) => order[at],
+        (None, Nav::Up | Nav::Down) => return order.first().copied(),
         _ => return step_in(order.len(), at, nav).map(|i| order[i]),
+    };
+    // The closest row above (a greater y) or below that has a spot.
+    let row = if nav == Nav::Up {
+        order.iter().map(|s| s.y()).filter(|&y| y > from.y()).min()
+    } else {
+        order.iter().map(|s| s.y()).filter(|&y| y < from.y()).max()
     };
     let Some(row) = row else { return Some(from) };
     // Its spot nearest across; on a tie, the left one (read first).
@@ -195,15 +201,11 @@ pub fn step_spot(order: &[Position], from: Option<Position>, nav: Nav) -> Option
         .min_by_key(|&spot| (column(spot) - column(from)).abs())
 }
 
-/// Which of the hand to move's tiles can be played, from their moves: the
-/// tiles that fit somewhere, and only those that fill a forced space while
-/// one does. The others are the disabled tiles (`HandTile`).
+/// Which of the hand to move's tiles can be played: those with a move.
+/// While a forced space can be filled the rules offer only the moves that
+/// fill one, so the other tiles have none.
 pub fn playable_tiles(infos: &[TileMoveInfo]) -> Vec<bool> {
-    let any_forced = infos.iter().any(|info| info.has_forced);
-    infos
-        .iter()
-        .map(|info| info.has_moves() && (info.has_forced || !any_forced))
-        .collect()
+    infos.iter().map(TileMoveInfo::has_moves).collect()
 }
 
 /// The tile the hand's focus goes to: `wanted` if it can be played, else
@@ -280,21 +282,18 @@ fn active_spot(ctx: GameCtx, spots: &[Position]) -> Option<Position> {
 /// the stage.
 fn activate_spot(ctx: GameCtx, at: Position) {
     set_if_changed(ctx.ui_state.hovered(), Hovered::BoardPosition(at));
-    let placed: Vec<Position> = ctx
-        .game_state
-        .peek()
-        .board()
-        .iter()
-        .map(|m| m.position)
-        .collect();
-    BoardCamera::new(ctx.ui_state).frame_spots(&placed, &[at]);
+    BoardCamera::new(ctx.ui_state).frame_spots(&placed_positions(ctx), &[at]);
 }
 
 /// The spots took the keyboard's focus: the keys go on from the spot
-/// already hovered (the one just stepped back from), else the first.
+/// already hovered (the one just stepped back from), else the one whose
+/// card is open, else the first.
 pub fn focus_spots(ctx: GameCtx) {
     let spots = selected_spots(ctx);
-    let at = active_spot(ctx, &spots).or_else(|| spots.first().copied());
+    let open = (*ctx.ui_state.selected_position().peek()).filter(|at| spots.contains(at));
+    let at = active_spot(ctx, &spots)
+        .or(open)
+        .or_else(|| spots.first().copied());
     if let Some(at) = at {
         activate_spot(ctx, at);
     }
@@ -456,9 +455,11 @@ mod tests {
             Some(Nav::Next)
         );
 
-        assert!(is_choice(&key(NamedKey::Enter)));
-        assert!(is_choice(&Key::Character(" ".into())));
-        assert!(!is_choice(&key(NamedKey::Escape)));
+        assert!(is_choice(&key(NamedKey::Enter), none));
+        assert!(is_choice(&Key::Character(" ".into()), Modifiers::SHIFT));
+        assert!(!is_choice(&key(NamedKey::Enter), Modifiers::META));
+        assert!(!is_choice(&key(NamedKey::Enter), Modifiers::CONTROL));
+        assert!(!is_choice(&key(NamedKey::Escape), none));
     }
 
     #[test]
@@ -728,6 +729,19 @@ mod tests {
         page.act(step_back);
         assert_eq!(phase(&page), TurnPhase::SelectTile);
         assert_eq!(focus_request(&page), Some(FocusTarget::Hand(Some(idx))));
+    }
+
+    #[test]
+    fn tabbing_back_from_the_card_the_keys_stay_on_its_spot() {
+        let (game, idx, two_way) = tile_with_positions(|rotations| rotations.len() > 1);
+        let mut page = GamePage::local(game);
+        page.act(|mut ctx| ctx.ui_state.select_tile(idx));
+        page.act(|ctx| click_position(ctx, two_way));
+        // Leaving the card cleared its option's hover; the spots take the
+        // focus on the spot it is open at, not on the first.
+        page.act(|ctx| ctx.ui_state.hovered().set(Hovered::None));
+        page.act(focus_spots);
+        assert_eq!(hovered(&page), Hovered::BoardPosition(two_way));
     }
 
     #[test]

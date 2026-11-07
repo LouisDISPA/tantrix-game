@@ -508,11 +508,10 @@
     }
 
     /* Tiles rest on the glass with a soft shadow of their own. */
-    /* The tile casts a shadow; the keyboard's ring over it does not. */
-    .hand-panel .hand-tile svg:not(.hand-hex-focus) {
+    .hand-panel .hand-tile-art {
       filter: drop-shadow(0 0.18em 0.3em rgba(0, 0, 0, 0.45));
     }
-    .hand-panel .hand-tile.selected svg:not(.hand-hex-focus) {
+    .hand-panel .hand-tile.selected .hand-tile-art {
       filter: drop-shadow(0 0.35em 0.6em rgba(0, 0, 0, 0.55));
     }
 

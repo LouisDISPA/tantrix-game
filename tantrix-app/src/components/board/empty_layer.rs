@@ -3,37 +3,30 @@ use std::rc::Rc;
 use dioxus::prelude::*;
 use tantrix_game::{Placement, Position};
 
-use crate::components::tile::{spot_id, BoardTile, BoardTileVariant, EmptyHex};
+use crate::components::tile::{spot_id, BoardTile, BoardTileVariant, EmptyHex, FocusHex};
 use crate::hooks::phase_view::ValidPosition;
-use crate::hooks::{use_current_player, use_pointer_press, use_take_focus};
+use crate::hooks::{use_current_player, use_take_focus};
 use crate::state::game_state::GameCtx;
 use crate::state::keyboard::{
-    choose_spot, focus_spots, is_choice, move_spot, reading_key, FocusTarget, Nav,
+    choose_spot, focus_spots, is_choice, keys_in_use, move_spot, FocusTarget, Nav,
 };
-use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt};
-use crate::svg::geometry::{
-    hex_position_style, HEX_SIZE, TILE_CX, TILE_CY, TILE_HEX, TILE_VB_H, TILE_VB_W,
-};
-use crate::svg::paths::hex_polygon_points;
+use crate::state::ui_state::{set_if_changed, Hovered, TurnPhase, UiStateStoreExt};
+use crate::svg::geometry::{hex_position_style, HEX_SIZE, TILE_HEX};
 
-/// Renders the click-target empty hexes for the current turn phase, in the
-/// order the keys read them (`state::keyboard`).
+/// Renders the click-target empty hexes for the current turn phase.
 ///
-/// `positions` comes from the board (`use_valid_positions`): this layer
-/// re-renders when the set of hexes changes, not when one is hovered.
+/// `positions` comes from the board (`use_valid_positions`), in the order
+/// the keys read them, which a screen reader's count of the spots follows:
+/// this layer re-renders when the set of hexes changes, not when one is
+/// hovered.
 #[component]
 pub fn BoardEmptyLayer(positions: ReadSignal<Vec<ValidPosition>>) -> Element {
     #[cfg(test)]
     crate::util::render_count::record("BoardEmptyLayer", ());
-    let spots = use_memo(move || {
-        let mut spots = positions();
-        spots.sort_by_key(|vp| reading_key(vp.pos));
-        spots
-    });
 
     rsx! {
         BoardSpots { positions,
-            for (rank, vp) in spots.read().iter().enumerate() {
+            for vp in positions.iter() {
                 EmptyHex {
                     key: "e{vp.pos.x()},{vp.pos.y()}",
                     position: vp.pos,
@@ -41,8 +34,6 @@ pub fn BoardEmptyLayer(positions: ReadSignal<Vec<ValidPosition>>) -> Element {
                     forced: vp.forced,
                     faint: vp.faint,
                     picked: vp.picked,
-                    rank: rank + 1,
-                    count: spots.read().len(),
                 }
             }
         }
@@ -56,15 +47,16 @@ pub fn BoardEmptyLayer(positions: ReadSignal<Vec<ValidPosition>>) -> Element {
 /// keys move the active spot (`state::keyboard` reads the board's rows),
 /// Enter takes it. A ring marks it while the keyboard has the focus here.
 ///
-/// It reads the hovered spot only while it has the focus, so a mouse
-/// hovering the board does not wake it.
+/// It reads the hovered spot only while the keys work it (focused from the
+/// keyboard, or since a key), so a mouse hovering the board — even after a
+/// click on a spot, which focuses this box — does not wake it.
 #[component]
 fn BoardSpots(positions: ReadSignal<Vec<ValidPosition>>, children: Element) -> Element {
     let ctx = use_context::<GameCtx>();
     let ui = ctx.ui_state;
     let mut hovered = ui.hovered();
     let current = use_current_player();
-    let press = use_pointer_press();
+    // The keys work the spots: it has the keyboard's focus.
     let mut focused = use_signal(|| false);
     let mut element = use_signal(|| None::<Rc<MountedData>>);
 
@@ -94,16 +86,14 @@ fn BoardSpots(positions: ReadSignal<Vec<ValidPosition>>, children: Element) -> E
             aria_label: "Where to place the tile",
             aria_activedescendant: active().map(spot_id),
             onmounted: move |e| element.set(Some(e.data())),
-            onpointerdown: move |_| press.down(),
             onfocus: move |_| {
-                focused.set(true);
-                if takes_keys() && !press.by_pointer() {
+                if takes_keys() && keys_in_use(ctx) {
+                    focused.set(true);
                     focus_spots(ctx);
                 }
             },
             onblur: move |_| {
-                focused.set(false);
-                press.reset();
+                set_if_changed(focused, false);
                 if hovered.peek().board_position().is_some() {
                     hovered.set(Hovered::None);
                 }
@@ -113,11 +103,16 @@ fn BoardSpots(positions: ReadSignal<Vec<ValidPosition>>, children: Element) -> E
                     return;
                 }
                 let key = e.key();
-                if is_choice(&key) {
+                if is_choice(&key, e.modifiers()) {
                     e.prevent_default();
-                    choose_spot(ctx);
+                    // Once: a held key must not run on into the card.
+                    if !e.is_auto_repeating() {
+                        set_if_changed(focused, true);
+                        choose_spot(ctx);
+                    }
                 } else if let Some(nav) = Nav::of(&key, e.modifiers()) {
                     e.prevent_default();
+                    set_if_changed(focused, true);
                     move_spot(ctx, nav);
                 }
             },
@@ -129,22 +124,15 @@ fn BoardSpots(positions: ReadSignal<Vec<ValidPosition>>, children: Element) -> E
     }
 }
 
-/// The keyboard's ring: a hex a little larger than a tile, round it. It
-/// spills out of the tile's viewBox, which the stylesheet lets show.
-pub const RING_HEX: f64 = TILE_HEX + 3.0;
-
-/// The keyboard's ring round the active spot. The stylesheet shows it only
-/// while the spots have the keyboard's focus (`:focus-visible`).
+/// The keyboard's ring round the active spot: a hex a little larger than a
+/// tile. The stylesheet shows it only while the spots have the keyboard's
+/// focus (`:focus-visible`).
 #[component]
 fn SpotRing(position: Position) -> Element {
     let style = hex_position_style(position, HEX_SIZE);
-    let points = hex_polygon_points(TILE_CX, TILE_CY, RING_HEX);
     rsx! {
-        div { class: "spot-ring", style, aria_hidden: "true",
-            svg { view_box: "0 0 {TILE_VB_W:.1} {TILE_VB_H:.1}",
-                polygon { class: "focus-hex-halo", points: points.clone() }
-                polygon { class: "focus-hex-line", points }
-            }
+        div { class: "spot-ring", style,
+            FocusHex { size: TILE_HEX + 3.0 }
         }
     }
 }

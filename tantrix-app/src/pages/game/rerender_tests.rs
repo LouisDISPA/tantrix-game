@@ -64,6 +64,7 @@ impl Page {
                         ui.selected_position()(),
                         ui.hovered()(),
                         ui.focus_request()(),
+                        ui.keyboard()(),
                         ui.peeked()(),
                         ui.new_tile()(),
                         ui.last_placed_position()(),

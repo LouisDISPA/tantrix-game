@@ -43,8 +43,10 @@ test('plays local turns from the keyboard alone', async ({ page }) => {
   const spots = page.getByRole('listbox', { name: 'Where to place the tile' });
   await expect(spots).toBeFocused();
   const spot = (id: string) => page.locator(`[id="${id}"]`);
+  // The options come in the order the keys read them.
+  const option = (n: number) => spots.getByRole('option').nth(n);
   const firstSpot = (await spots.getAttribute('aria-activedescendant'))!;
-  await expect(spot(firstSpot)).toHaveAttribute('aria-posinset', '1');
+  await expect(option(0)).toHaveAttribute('id', firstSpot);
   await expect(page.locator('.spot-ring')).toBeVisible();
   const ghost = page.locator('.board-tile.tile-preview');
   await expect(ghost).toHaveAttribute('data-position', (await spot(firstSpot).getAttribute('data-position'))!);
@@ -54,7 +56,7 @@ test('plays local turns from the keyboard alone', async ({ page }) => {
   await expect(spots).not.toHaveAttribute('aria-activedescendant', firstSpot);
   const chosen = (await spots.getAttribute('aria-activedescendant'))!;
   const at = (await spot(chosen).getAttribute('data-position'))!;
-  await expect(spot(chosen)).toHaveAttribute('aria-posinset', '2');
+  await expect(option(1)).toHaveAttribute('id', chosen);
   await expect(ghost).toHaveAttribute('data-position', at);
 
   // Enter on a spot that takes the tile two ways opens the card, its first
@@ -95,6 +97,38 @@ test('plays local turns from the keyboard alone', async ({ page }) => {
   );
   // Red's turn, from Red's tiles.
   await expect(mover(page)).toHaveText('Red');
+  await expect(focusedTile(page)).toHaveCount(1);
+});
+
+test('a held key takes one step, and keys reach the game with nothing focused', async ({ page }) => {
+  await openApp(page, '/game?seed=5');
+  await page.getByRole('button', { name: 'Start Game' }).focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await expect(placedTiles(page)).toHaveCount(1);
+  await expect(focusedTile(page)).toHaveCount(1);
+
+  // Holding Enter on Blue's tile takes it once: the repeats do not run on
+  // into the spots and the card.
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
+  const spots = page.getByRole('listbox', { name: 'Where to place the tile' });
+  await expect(spots).toBeFocused();
+  await expect(page.locator('.orientation-option')).toHaveCount(0);
+  await expect(placedTiles(page)).toHaveCount(1);
+
+  // With nothing focused, Escape still steps back…
+  const blur = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await blur();
+  await expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.player-hand.active .hand-tile.selected')).toHaveCount(0);
+  // …and an arrow key hands the focus to the hand.
+  await blur();
+  await page.keyboard.press('ArrowRight');
   await expect(focusedTile(page)).toHaveCount(1);
 });
 

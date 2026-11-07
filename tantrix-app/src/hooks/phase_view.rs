@@ -13,6 +13,7 @@ use tantrix_game::{Placement, Position, Rotation, Tile};
 
 use crate::state::actions::auto_move;
 use crate::state::game_state::GameCtx;
+use crate::state::keyboard::reading_key;
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt};
 
 /// An empty hex shown on the board as a click target.
@@ -38,7 +39,7 @@ pub struct Orientations {
 /// Empty hex positions to show as click targets: the hovered hand tile's
 /// (faintly) while a tile is being chosen, then the selected tile's, the
 /// one being decided marked. Empty while the AI plays and once the game is
-/// over.
+/// over. In the order the keys read them (`state::keyboard::reading_key`).
 pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
     let ctx = use_context::<GameCtx>();
     let ui_state = ctx.ui_state;
@@ -63,7 +64,8 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
         let Some(info) = gs.hand_info().get(idx) else {
             return Vec::new();
         };
-        info.positions
+        let mut positions: Vec<ValidPosition> = info
+            .positions
             .keys()
             .map(|&pos| ValidPosition {
                 pos,
@@ -71,7 +73,9 @@ pub fn use_valid_positions() -> Memo<Vec<ValidPosition>> {
                 faint,
                 picked: picked == Some(pos),
             })
-            .collect()
+            .collect();
+        positions.sort_by_key(|vp| reading_key(vp.pos));
+        positions
     })
 }
 
@@ -226,12 +230,13 @@ mod tests {
         page.act(|ctx| ctx.ui_state.hovered().set(hovered));
     }
 
-    /// `idx`'s positions as the board lists them, `faint` or not.
+    /// `idx`'s positions as the board lists them (in the keys' reading
+    /// order), `faint` or not.
     fn positions_of(game: &GameState, idx: usize, faint: bool) -> Vec<(Position, bool, bool)> {
         let info = &game.hand_info()[idx];
-        info.positions
-            .keys()
-            .map(|&at| (at, info.has_forced, faint))
+        crate::state::keyboard::spot_order(info.positions.keys().copied())
+            .into_iter()
+            .map(|at| (at, info.has_forced, faint))
             .collect()
     }
 

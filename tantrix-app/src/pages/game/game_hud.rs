@@ -16,11 +16,11 @@ use crate::components::board::{EndGameButton, ZoomControls};
 use crate::components::confirm_dialog::ConfirmDialog;
 use crate::components::hud_menu::HudMenu;
 use crate::components::theme_toggle::ThemeToggle;
-use crate::hooks::{use_current_player, use_has_forced_move, use_is_game_over, use_pointer_press};
+use crate::hooks::{use_current_player, use_has_forced_move, use_is_game_over};
 use crate::state::actions::end_game;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::GameCtx;
-use crate::state::keyboard::step_back;
+use crate::state::keyboard::{keys_in_use, step_back};
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::svg::paths::color_name as color_slug;
 
@@ -103,7 +103,6 @@ pub fn GameHud(
     let message = ui.message();
     // Local UI flag: the End Game confirmation is open.
     let mut confirming_end = use_signal(|| false);
-    let back_press = use_pointer_press();
 
     use_effect(move || {
         if !ctx.driver.can_end_game() {
@@ -164,15 +163,13 @@ pub fn GameHud(
                     class: "button button-icon button-secondary hud-back",
                     title: "Back",
                     aria_label: "Back",
-                    onpointerdown: move |_| back_press.down(),
-                    onblur: move |_| back_press.reset(),
-                    // From the keyboard, the focus steps back too: this
-                    // button goes once the tile is put back.
+                    // From the keys, the focus steps back too: this button
+                    // goes once the tile is put back.
                     onclick: move |_| {
-                        if back_press.by_pointer() {
-                            ui.go_back();
-                        } else {
+                        if keys_in_use(ctx) {
                             step_back(ctx);
+                        } else {
+                            ui.go_back();
                         }
                     },
                     "✕"

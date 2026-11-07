@@ -65,7 +65,8 @@
   /* Board tiles / empty slots are positioned via --hx/--hy/--hw/--hh set inline
     by `hex_position_style`, keeping CSS static and the dynamic part minimal. */
   .board-tile,
-  .board-empty {
+  .board-empty,
+  .spot-ring {
     position: absolute;
     left: var(--hx);
     top: var(--hy);
@@ -210,21 +211,9 @@
   }
 
   .spot-ring {
-    position: absolute;
-    left: var(--hx);
-    top: var(--hy);
-    width: var(--hw);
-    height: var(--hh);
     z-index: 3;
     pointer-events: none;
     visibility: hidden;
-  }
-
-  .spot-ring svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-    overflow: visible;
   }
 
   .board-spots:focus-visible .spot-ring {
