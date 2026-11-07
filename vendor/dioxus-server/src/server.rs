@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use crate::local_pool::LocalPoolHandle;
 use crate::{
     ServeConfig, ServerFunction,
     ssr::{SSRError, SsrRendererPool},
@@ -11,19 +13,17 @@ use axum::{
 };
 use dioxus_core::{ComponentFunction, VirtualDom};
 use http::header::*;
-use std::path::PathBuf;
+#[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-// Workers render pinned tasks on the JS event loop instead of OS threads.
-#[cfg(target_arch = "wasm32")]
-use crate::local_pool::LocalPoolHandle;
 #[cfg(not(target_arch = "wasm32"))]
 use tokio_util::task::LocalPoolHandle;
-
 #[cfg(not(target_arch = "wasm32"))]
-use {
-    std::path::Path, tower::ServiceExt, tower::util::MapResponse,
-    tower_http::services::fs::ServeFileSystemResponseBody,
-};
+use tower::ServiceExt;
+#[cfg(not(target_arch = "wasm32"))]
+use tower::util::MapResponse;
+#[cfg(not(target_arch = "wasm32"))]
+use tower_http::services::fs::ServeFileSystemResponseBody;
 
 /// A extension trait with utilities for integrating Dioxus with your Axum router.
 pub trait DioxusRouterExt {
@@ -158,7 +158,6 @@ impl DioxusRouterExt for Router<FullstackState> {
         serve_dir_cached(self, &public_path, &public_path)
     }
 
-    /// Static assets are served by the wasm32 host (Workers' asset binding).
     #[cfg(target_arch = "wasm32")]
     fn serve_static_assets(self) -> Router<FullstackState> {
         self
@@ -417,9 +416,8 @@ fn serve_dir_cached<S>(mut router: Router<S>, public_path: &Path, directory: &Pa
 where
     S: Send + Sync + Clone + 'static,
 {
-    #[cfg(debug_assertions)]
-    use tower_http::services::ServeDir;
-    use tower_http::services::ServeFile;
+    #[cfg_attr(not(debug_assertions), allow(unused_imports))]
+    use tower_http::services::{ServeDir, ServeFile};
 
     let dir = std::fs::read_dir(directory)
         .unwrap_or_else(|e| panic!("Couldn't read public directory at {:?}: {}", &directory, e));
@@ -501,7 +499,6 @@ fn file_name_looks_immutable(file_name: &str) -> bool {
     })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn test_file_name_looks_immutable() {
     assert!(file_name_looks_immutable("main-dxh12345678.js"));

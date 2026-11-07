@@ -97,3 +97,72 @@ worker-e2e: worker-ssr-build setup-worker setup-e2e
 [group('Worker')]
 worker-deploy: worker-ssr-build setup-worker
     cd cloudflare && pnpm exec wrangler deploy
+
+# vendor/dioxus-server is a published dioxus-server release plus its
+# upstream.diff; see its PATCHES.md. The release is the version in its
+# Cargo.toml unless `vendor-update` names a new one.
+
+# Fail unless vendor/dioxus-server equals its release plus upstream.diff.
+[group('Vendor')]
+vendor-check: (_dioxus-server "check")
+
+# Rewrite upstream.diff from the edited vendor/dioxus-server.
+[group('Vendor')]
+vendor-diff: (_dioxus-server "diff")
+
+# Replace vendor/dioxus-server with another release and reapply upstream.diff.
+[group('Vendor')]
+vendor-update version: (_dioxus-server "update" version)
+
+_dioxus-server mode version="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=vendor/dioxus-server
+    version="{{ version }}"
+    [ -n "$version" ] || version=$(awk -F'"' '/^version = /{print $2; exit}' "$dir/Cargo.toml")
+    # Personal git settings would change how the diff is written and applied.
+    plain_git() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git "$@"; }
+    if [ "{{ mode }}" = update ] && [ -n "$(git status --porcelain -- "$dir")" ]; then
+        echo "Commit or discard the changes in $dir first: the update replaces it." >&2
+        exit 1
+    fi
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    # a/ is the release without packaging files: the lockfile is unused and
+    # Cargo.toml.orig inherits from the Dioxus workspace.
+    curl -sSfL "https://static.crates.io/crates/dioxus-server/dioxus-server-$version.crate" | tar -xzf - -C "$tmp"
+    mv "$tmp/dioxus-server-$version" "$tmp/a"
+    rm -f "$tmp/a/Cargo.lock" "$tmp/a/Cargo.toml.orig" "$tmp/a/.cargo_vcs_info.json"
+    if [ "{{ mode }}" = update ]; then
+        find "$dir" -mindepth 1 -maxdepth 1 ! -name PATCHES.md ! -name upstream.diff -exec rm -rf {} +
+        cp -R "$tmp/a/." "$dir/"
+        if ! plain_git apply --reject --directory="$dir" "$dir/upstream.diff"; then
+            echo "Redo the hunks in each *.rej file, and for each file git reported missing, then delete the .rej files." >&2
+            echo "upstream.diff keeps the old hunks until just vendor-diff rewrites it." >&2
+            exit 1
+        fi
+        echo "$dir is dioxus-server $version plus upstream.diff; build it, then run just vendor-diff."
+        exit 0
+    fi
+    # b/ is the vendored copy as git sees it (minus files deleted from disk),
+    # without PATCHES.md and the diff.
+    mkdir "$tmp/b"
+    git -C "$dir" ls-files -z --cached --others --exclude-standard |
+        while IFS= read -r -d '' f; do if [ -e "$dir/$f" ]; then printf '%s\0' "$f"; fi; done |
+        tar -C "$dir" --null -T - -cf - | tar -xf - -C "$tmp/b"
+    rm -f "$tmp/b/PATCHES.md" "$tmp/b/upstream.diff"
+    if [ "{{ mode }}" = diff ]; then
+        plain_git -C "$tmp" diff --no-index --no-prefix a b > "$dir/upstream.diff" || [ $? = 1 ]
+        echo "Wrote $dir/upstream.diff against dioxus-server $version; update PATCHES.md to match."
+        exit 0
+    fi
+    if ! plain_git -C "$tmp/a" apply "$PWD/$dir/upstream.diff"; then
+        echo "upstream.diff does not apply to dioxus-server $version; see the upgrade steps in PATCHES.md." >&2
+        exit 1
+    fi
+    if ! plain_git -C "$tmp" diff --no-index --no-prefix a b >&2; then
+        echo "$dir is not dioxus-server $version plus upstream.diff (diff above: a/ expected, b/ actual)." >&2
+        echo "If the change is intended, run just vendor-diff and update PATCHES.md." >&2
+        exit 1
+    fi
+    echo "$dir is dioxus-server $version plus upstream.diff."

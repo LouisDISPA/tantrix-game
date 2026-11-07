@@ -34,14 +34,15 @@ pub mod server;
 pub mod config;
 
 pub(crate) mod document;
+#[cfg(target_arch = "wasm32")]
+mod local_pool;
 pub(crate) mod ssr;
 pub(crate) mod streaming;
 
-#[cfg(target_arch = "wasm32")]
-mod local_pool;
-
 #[cfg(not(target_arch = "wasm32"))]
-pub use launch::{router, serve};
+pub use launch::router;
+#[cfg(not(target_arch = "wasm32"))]
+pub use launch::serve;
 
 pub mod serverfn;
 pub use serverfn::*;
@@ -50,5 +51,4 @@ pub mod isrg;
 pub use isrg::*;
 
 mod index_html;
-// Public so hosts without a filesystem can supply the client index.html.
 pub use index_html::IndexHtml;
