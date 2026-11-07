@@ -647,11 +647,17 @@ mod tests {
         assert_eq!(lookup().await.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 
-    /// What a test's log layer wrote.
-    #[derive(Clone, Default)]
-    struct Logs(Arc<std::sync::Mutex<Vec<u8>>>);
+    thread_local! {
+        /// The format and buffer of the log capture on this test's thread.
+        static CAPTURE: std::cell::RefCell<Option<(LogFormat, Buffer)>> =
+            const { std::cell::RefCell::new(None) };
+    }
 
-    impl std::io::Write for Logs {
+    /// Bytes a capture's log layer wrote.
+    #[derive(Clone, Default)]
+    struct Buffer(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Buffer {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
             self.0.lock().unwrap().extend_from_slice(bytes);
             Ok(bytes.len())
@@ -662,17 +668,60 @@ mod tests {
         }
     }
 
-    impl MakeWriter<'_> for Logs {
-        type Writer = Self;
+    /// Writes each event to the capture on the thread that logged it.
+    struct ThreadCapture;
 
-        fn make_writer(&self) -> Self {
-            self.clone()
+    impl MakeWriter<'_> for ThreadCapture {
+        type Writer = tracing_subscriber::fmt::writer::OptionalWriter<Buffer>;
+
+        fn make_writer(&self) -> Self::Writer {
+            CAPTURE
+                .with_borrow(|capture| capture.as_ref().map(|(_, buffer)| buffer.clone()))
+                .into()
         }
     }
 
+    /// A `format` layer that sees the server's own events on capturing threads.
+    fn capture_layer<S>(format: LogFormat) -> impl Layer<S>
+    where
+        S: tracing::Subscriber + for<'span> LookupSpan<'span>,
+    {
+        // Dynamic, so `tracing` asks on every event instead of caching.
+        let filter = tracing_subscriber::filter::dynamic_filter_fn(move |metadata, _| {
+            metadata.target().starts_with("tantrix_app")
+                && CAPTURE.with_borrow(|capture| matches!(capture, Some((f, _)) if *f == format))
+        });
+        log_layer(format, ThreadCapture).with_filter(filter)
+    }
+
+    /// The server's own events, every level, that this thread logs while the
+    /// capture lives.
+    ///
+    /// Captures share one global subscriber rather than each setting a
+    /// thread's default: `tracing` caches per call site whether any subscriber
+    /// wants it, and while a test's scoped subscriber is the only one, the
+    /// cache follows whichever thread reaches the call site first. A parallel
+    /// test without a subscriber then turns that event off for good.
+    struct Logs(Buffer);
+
     impl Logs {
+        fn capture(format: LogFormat) -> Self {
+            static SUBSCRIBER: std::sync::Once = std::sync::Once::new();
+            SUBSCRIBER.call_once(|| {
+                use tracing_subscriber::prelude::*;
+                let subscriber = tracing_subscriber::registry()
+                    .with(capture_layer(LogFormat::Compact))
+                    .with(capture_layer(LogFormat::Json));
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("no other global subscriber in tests");
+            });
+            let buffer = Buffer::default();
+            CAPTURE.set(Some((format, buffer.clone())));
+            Self(buffer)
+        }
+
         fn text(&self) -> String {
-            String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+            String::from_utf8(self.0 .0.lock().unwrap().clone()).unwrap()
         }
 
         /// The first JSON event with `message`, once a server task logs it.
@@ -692,23 +741,23 @@ mod tests {
         }
     }
 
+    impl Drop for Logs {
+        fn drop(&mut self) {
+            CAPTURE.set(None);
+        }
+    }
+
     #[tokio::test]
     async fn socket_logs_name_the_room_connection_and_reason_but_not_the_token() {
         use futures::{SinkExt, StreamExt};
         use tantrix_proto::{HostMessage, PeerMessage};
         use tantrix_room::engine::{MESSAGE_BURST, TOO_MANY_MESSAGES};
         use tokio_tungstenite::tungstenite::{client::IntoClientRequest, Message};
-        use tracing_subscriber::prelude::*;
 
         const GAME: &str = "01234567-89ab-4def-8123-456789abcdef";
         const TOKEN: &str = "private-session-token-1234";
-        let logs = Logs::default();
-        // Every level of the server's own events; the test's client traces
-        // its handshake request, cookie included.
-        let _logging = tracing_subscriber::registry()
-            .with(tracing_subscriber::EnvFilter::new("tantrix_app=trace"))
-            .with(log_layer(LogFormat::Json, logs.clone()))
-            .set_default();
+        // The test's runtime runs every server task on this thread.
+        let logs = Logs::capture(LogFormat::Json);
         let state = test_state();
         state.rooms.create(GAME, room::now_ms()).await.unwrap();
         let address = serve_state(state).await;
@@ -773,16 +822,11 @@ mod tests {
     #[test]
     fn compact_logs_carry_the_socket_fields() {
         use tantrix_room::engine::{ConnId, TOO_MANY_CONNECTIONS};
-        use tracing_subscriber::prelude::*;
 
-        let logs = Logs::default();
-        let subscriber =
-            tracing_subscriber::registry().with(log_layer(LogFormat::Compact, logs.clone()));
-        tracing::subscriber::with_default(subscriber, || {
-            let span = room::socket_span(MISSING_GAME, ConnId(7));
-            span.record("peer", tracing::field::display("peer-7"));
-            span.in_scope(|| room::log_closed(TOO_MANY_CONNECTIONS));
-        });
+        let logs = Logs::capture(LogFormat::Compact);
+        let span = room::socket_span(MISSING_GAME, ConnId(7));
+        span.record("peer", tracing::field::display("peer-7"));
+        span.in_scope(|| room::log_closed(TOO_MANY_CONNECTIONS));
         // Strip colours: `ESC [ … m`.
         let mut line = String::new();
         let mut chars = logs.text().chars().collect::<Vec<_>>().into_iter();
