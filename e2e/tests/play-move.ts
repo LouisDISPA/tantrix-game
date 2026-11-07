@@ -12,7 +12,7 @@ export async function playMove(page: Page) {
   const placed = placedTiles(page);
   const before = await placed.count();
   const positions = page.locator('.board-empty:not(.faint)');
-  const rotation = page.getByRole('button', { name: 'Choose rotation' }).first();
+  const rotation = page.locator('.orientation-option').first();
   await page.locator('.player-hand.active .hand-tile:not(.disabled)').first().click();
   await expect.poll(async () => (await placed.count()) > before || (await positions.count()) > 0).toBe(true);
   if ((await placed.count()) === before) {

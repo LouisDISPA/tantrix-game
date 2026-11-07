@@ -508,10 +508,10 @@
     }
 
     /* Tiles rest on the glass with a soft shadow of their own. */
-    .hand-panel .hand-tile svg {
+    .hand-panel .hand-tile-art {
       filter: drop-shadow(0 0.18em 0.3em rgba(0, 0, 0, 0.45));
     }
-    .hand-panel .hand-tile.selected svg {
+    .hand-panel .hand-tile.selected .hand-tile-art {
       filter: drop-shadow(0 0.35em 0.6em rgba(0, 0, 0, 0.55));
     }
 

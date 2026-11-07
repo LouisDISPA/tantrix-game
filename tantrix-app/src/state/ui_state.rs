@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use tantrix_game::{Color, Position, Rotation};
 
 use super::gesture::Gesture;
+use super::keyboard::FocusTarget;
 use super::tile_drag::TileDrag;
 use crate::svg::geometry::Rect;
 
@@ -136,6 +137,15 @@ pub struct UiState {
     // --- Hover (unified) ---
     pub hovered: Hovered,
 
+    // --- Keyboard ---
+    /// Where a key handler asked the keyboard's focus to go next; the
+    /// component that shows the target takes it and clears this.
+    pub focus_request: Option<FocusTarget>,
+    /// Whether the player is on the keys: a key on the game screen sets it,
+    /// a pointer pressing it clears it. A focus previews what it is on (as
+    /// hovering does) only then.
+    pub keyboard: bool,
+
     // --- Hand panel ---
     /// The seat whose tiles the player is looking at instead of their own
     /// (not `peek`: the store's accessor would shadow `Readable::peek`).
@@ -179,6 +189,9 @@ impl Default for UiState {
             suppress_tile_click: false,
 
             hovered: Hovered::None,
+
+            focus_request: None,
+            keyboard: false,
 
             peeked: None,
 

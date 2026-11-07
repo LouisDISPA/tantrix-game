@@ -122,7 +122,7 @@ fn make_room_for_card(ctx: GameCtx, at: Position) {
     BoardCamera::new(ctx.ui_state).make_room_for_card(&placed, at);
 }
 
-fn placed_positions(ctx: GameCtx) -> Vec<Position> {
+pub(crate) fn placed_positions(ctx: GameCtx) -> Vec<Position> {
     let gs = ctx.game_state.read();
     gs.board().iter().map(|m| m.position).collect()
 }

@@ -18,6 +18,7 @@ use crate::state::config::{Difficulty, GameConfig, PlayerKind};
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::{GameCtx, GameState};
 use crate::state::gesture::{Pointer, TOUCH_SLOP};
+use crate::state::keyboard::{focus_spots, move_spot, request_focus, FocusTarget, Nav};
 use crate::state::tile_drag::{move_tile, press_tile};
 use crate::state::ui_state::{Hovered, TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::svg::geometry::Rect;
@@ -62,6 +63,8 @@ impl Page {
                         ui.selected_tile()(),
                         ui.selected_position()(),
                         ui.hovered()(),
+                        ui.focus_request()(),
+                        ui.keyboard()(),
                         ui.peeked()(),
                         ui.new_tile()(),
                         ui.last_placed_position()(),
@@ -190,6 +193,37 @@ fn hovering_a_hex_re_renders_only_the_preview() {
     page.act(|ctx| ctx.ui_state.hovered().set(Hovered::None));
     assert_eq!(render_count::total("BoardPreview"), 2);
     assert_quiet(&all_but(&["BoardPreview"]));
+}
+
+#[test]
+fn moving_the_keyboards_spot_re_renders_only_the_preview() {
+    let (game, idx, _) = game_with_choices();
+    let mut page = Page::new(game);
+    page.act(|mut ctx| ctx.ui_state.select_tile(idx));
+
+    render_count::reset();
+    page.act(focus_spots);
+    page.act(|ctx| move_spot(ctx, Nav::Next));
+    page.act(|ctx| move_spot(ctx, Nav::Down));
+    // The ghost follows the keys as it follows the mouse; the hexes, the
+    // hands and the HUD stay as they are.
+    assert!(render_count::total("BoardPreview") >= 2);
+    assert_quiet(&all_but(&["BoardPreview"]));
+}
+
+#[test]
+fn asking_for_the_keyboards_focus_re_renders_nothing() {
+    let (game, idx, _) = game_with_choices();
+    let mut page = Page::new(game);
+
+    render_count::reset();
+    page.act(|ctx| request_focus(ctx, FocusTarget::Hand(Some(idx))));
+    page.act(|ctx| request_focus(ctx, FocusTarget::NextTurn { placed: 1 }));
+    page.act(|ctx| request_focus(ctx, FocusTarget::Spots));
+    // The tile it names takes the focus in an effect: no hand, tile or board
+    // layer renders for it.
+    assert_quiet(&BOARD_AND_HANDS);
+    assert_eq!(render_count::total("BoardTile"), 0);
 }
 
 #[test]

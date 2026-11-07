@@ -34,6 +34,9 @@
       "panel";
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    /* Holding the focus when nothing on it does (so Escape works) is no
+      control of its own to ring. */
+    outline: none;
     /* The board runs past the window, so this clips and never scrolls: focus
       or a scroll-into-view on a hex out there must not slide the screen. */
     overflow: hidden;

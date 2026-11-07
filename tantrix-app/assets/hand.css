@@ -155,7 +155,7 @@
     }
   }
 
-  .hand-tile svg {
+  .hand-tile-art {
     display: block;
     width: 100%;
     height: auto;
@@ -279,6 +279,22 @@
   .hand-hex-ring {
     fill: none;
     stroke-width: 2;
+  }
+
+  /* The keyboard's focus: a hex ring round the tile, not a box, over it
+    and without its shadow. */
+  .hand-hex-focus {
+    position: absolute;
+    inset: 0;
+    visibility: hidden;
+  }
+
+  .hand-tile:focus-visible {
+    outline: none;
+  }
+
+  .hand-tile:focus-visible .hand-hex-focus {
+    visibility: visible;
   }
 
   .hand-hex-ring.selected {

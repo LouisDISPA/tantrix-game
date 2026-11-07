@@ -13,8 +13,8 @@ Paths below are relative to `tantrix-app/src/`.
 | `pages/online/` | Entry/join, session driver, room screens, lobby, seat takeover, HUD badge |
 | `pages/game/` | Shared local/online game: HUD, hands, results, turn banner, dragged tile |
 | `components/board/` | Board composer, viewport, placed/empty/preview layers, orientation picker, controls |
-| `components/tile/` | `HexSvg`, `BoardTile`, `EmptyHex`, `HandTile` |
-| `components/` | Shared menu, dialog, input, badge, theme and loading widgets |
+| `components/tile/` | `HexSvg`, `BoardTile`, `EmptyHex`, `HandTile`, `FocusHex` (keyboard ring) |
+| `components/` | Shared menu, dialog, focus trap, input, badge, theme and loading widgets |
 | `hooks/` | Game contexts, camera, memoized board/phase/scoring data, downloads, updates |
 | `state/` | Game/UI/session state, actions, AI loop, tile dragging, settings |
 | `svg/` | Pure geometry, camera arithmetic, card placement, color paths |
@@ -27,8 +27,8 @@ LocalGame / OnlineGameView → GameCtx
 │   ├── GameHud → HudMenu → zoom / end game / theme
 │   ├── TurnBanner
 │   ├── Board
-│   │   ├── BoardViewport → BoardTilesLayer / BoardEmptyLayer / BoardPreview
-│   │   └── OrientationPicker
+│   │   ├── BoardViewport → BoardTilesLayer / BoardEmptyLayer → BoardSpots / BoardPreview
+│   │   └── OrientationPicker → OrientationOption × way round
 │   ├── PlayerHand × seat → HandTile × tile
 │   └── GameDraggedTile
 └── GameOver → GameHud / Board / ScoresPanel
@@ -85,6 +85,35 @@ component reads or writes it; otherwise hoist it to the common page.
   avoid subscriptions in the component body.
 - Reuse `HexSvg` for tile geometry; wrappers own position and state classes.
 - One component tree serves every window size; CSS selects the layout.
+
+## Keyboard
+
+Each turn step takes the same keys: arrows move between its choices, Enter or
+Space takes one, Escape steps back from anywhere on `GamePlay` (`step_back`).
+
+| Step | Tab stop | Arrows |
+|---|---|---|
+| Tile | Each playable tile of the hand to move | ←/→ and Home/End over the playable tiles |
+| Spot | `BoardSpots`, one listbox; the hexes are options named by `aria-activedescendant` | Reading order: rows top to bottom, left to right; ←/→ wrap, ↑/↓ nearest spot in the closest row with one |
+| Way round | Each `OrientationOption` button | ←/→, ↑/↓ or R / Shift+R |
+
+- The active spot is `Hovered::BoardPosition`, so the keys show the mouse's ghost;
+  a `FocusHex` ring marks it on `:focus-visible`. Focus never moves onto
+  transformed hexes. `use_valid_positions` lists spots in reading order, so the
+  listbox's own option count matches the arrows.
+- Focus moves only through `UiState::focus_request` (`FocusTarget`): key actions
+  ask for the next step, the target takes it with `use_take_focus`. `NextTurn`
+  waits until the board grows and this device's seat is to choose a tile; any
+  focus landing on `GamePlay` drops a pending request.
+- A focus previews like hover, and a click moves focus on like Enter, only while
+  the player is on the keys (`UiState::keyboard`: a key on `GamePlay` sets it, a
+  pointer pressing it clears it). Choice keys ignore auto-repeat, so a held key
+  takes one step.
+- `GamePlay` takes focus on mount, and keys pressed with nothing focused are
+  routed to it; on the bare screen an arrow or Enter hands focus to the current
+  step (`enter_turn`).
+- `FocusTrap` moves focus into a dialog or open menu, wraps Tab with edge stops,
+  and restores focus (or a fallback selector) on close.
 
 ## Verification
 

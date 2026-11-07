@@ -20,6 +20,7 @@ use crate::hooks::{use_current_player, use_has_forced_move, use_is_game_over};
 use crate::state::actions::end_game;
 use crate::state::game_driver::GameDriver;
 use crate::state::game_state::GameCtx;
+use crate::state::keyboard::{keys_in_use, step_back};
 use crate::state::ui_state::{TurnPhase, UiStateStoreExt, UiStateStoreImplExt};
 use crate::svg::paths::color_name as color_slug;
 
@@ -127,7 +128,9 @@ pub fn GameHud(
                 if waiting() {
                     span { class: "hud-chip-phase hud-chip-error", "Awaiting synchronization" }
                 } else if let Some(text) = error() {
-                    span { class: "hud-chip-phase alert hud-chip-error", role: "status",
+                    span {
+                        class: "hud-chip-phase alert hud-chip-error",
+                        role: "status",
                         "{text}"
                     }
                 } else if message.read().is_empty() {
@@ -160,7 +163,15 @@ pub fn GameHud(
                     class: "button button-icon button-secondary hud-back",
                     title: "Back",
                     aria_label: "Back",
-                    onclick: move |_| ui.go_back(),
+                    // From the keys, the focus steps back too: this button
+                    // goes once the tile is put back.
+                    onclick: move |_| {
+                        if keys_in_use(ctx) {
+                            step_back(ctx);
+                        } else {
+                            ui.go_back();
+                        }
+                    },
                     "✕"
                 }
             }
@@ -189,6 +200,8 @@ pub fn GameHud(
                         end_game(ctx);
                     },
                     on_cancel: move |_| confirming_end.set(false),
+                    // Its End Game sits in the menu, which closed.
+                    return_to: &[".hud-menu-toggle", ".game-layout"],
                 }
             }
         }
