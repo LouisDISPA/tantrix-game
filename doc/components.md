@@ -111,11 +111,12 @@ Space takes one, Escape steps back from anywhere on `GamePlay` (`step_back`).
   the player is on the keys (`UiState::keyboard`: a key on `GamePlay` sets it, a
   pointer pressing it clears it). Choice keys ignore auto-repeat, so a held key
   takes one step.
-- `GamePlay` takes focus on mount, and keys pressed with nothing focused are
-  routed to it; on the bare screen an arrow or Enter hands focus to the current
-  step (`enter_turn`).
+- `GamePlay` takes focus on mount, and in a browser keys pressed with nothing
+  focused are routed to it (`use_route_stray_keys`); on the bare screen an arrow
+  or Enter hands focus to the current step (`enter_turn`).
 - `FocusTrap` moves focus into a dialog or open menu, wraps Tab with edge stops,
-  and restores focus (or a fallback selector) on close.
+  and restores focus (or a fallback selector) on close. It asks the page through
+  `web-sys`, so only the browser app traps; elsewhere a dialog focuses Cancel.
 
 ## Verification
 

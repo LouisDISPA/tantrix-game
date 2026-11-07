@@ -83,7 +83,7 @@ tokio-tungstenite = { workspace = true, features = ["connect"] }
 default = []
 # Hot reload and dioxus's tracing output, for `dx serve`; left out of release bundles.
 devtools = ["dioxus/devtools", "dioxus/logger"]
-web = ["dioxus/web", "dep:gloo-timers", "dep:js-sys", "dep:wasm-bindgen", "web-sys/Event", "web-sys/EventTarget", "web-sys/Request", "web-sys/RequestInit", "web-sys/Response", "web-sys/Headers", "web-sys/AbortSignal", "web-sys/MediaQueryList"]
+web = ["dioxus/web", "dep:gloo-timers", "dep:js-sys", "dep:wasm-bindgen", "web-sys/Event", "web-sys/EventTarget", "web-sys/Request", "web-sys/RequestInit", "web-sys/Response", "web-sys/Headers", "web-sys/AbortSignal", "web-sys/MediaQueryList", "web-sys/Document", "web-sys/HtmlElement", "web-sys/NodeList", "web-sys/KeyboardEvent", "web-sys/KeyboardEventInit"]
 server = [
     "dioxus/server",
     "dep:dioxus-fullstack-core",

@@ -1,6 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openApp } from './open-app';
 import { placedTiles, startLocalGame } from './play-move';
+import { useProductionScriptPolicy } from './script-policy';
+
+// Under the production script policy, with no uncaught error.
+let errors: string[] = [];
+test.beforeEach(async ({ page }) => {
+  errors = await useProductionScriptPolicy(page);
+});
+test.afterEach(() => {
+  expect(errors).toEqual([]);
+});
 
 /** The tile of the hand to move that has the keyboard's focus. */
 function focusedTile(page: Page) {

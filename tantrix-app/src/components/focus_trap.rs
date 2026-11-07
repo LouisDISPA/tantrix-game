@@ -11,74 +11,15 @@
 //! it is.
 //!
 //! The children are whatever the caller puts in, so which of them can take
-//! the focus is asked of the page (a small script through
-//! `document::eval`) rather than tracked here.
+//! the focus is asked of the page through `web-sys` — compiled code, which
+//! the production script policy allows, where evaluating JavaScript is not.
+//! Only the browser app has it: elsewhere the trap renders its children and
+//! no stops, and a dialog focuses its own first button.
 
 use std::cell::Cell;
 use std::rc::Rc;
 
 use dioxus::prelude::*;
-
-/// What a Tab stops on.
-const TABBABLE: &str = "a[href], button:not([disabled]), input:not([disabled]), \
-    select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
-
-/// A script on the trap `id`: `root`, and its `items` that a Tab stops on
-/// and that show, in page order, before `body`.
-fn script(id: &str, body: &str) -> String {
-    format!(
-        "const root = document.getElementById({id:?});
-         const items = root
-           ? [...root.querySelectorAll({TABBABLE:?})].filter((e) => e.getClientRects().length > 0)
-           : [];
-         {body}"
-    )
-}
-
-/// Remember what has the focus, then move it in.
-fn open_script(id: &str) -> String {
-    script(
-        id,
-        &format!(
-            "const saved = (window.__focusReturn ??= {{}});
-             saved[{id:?}] = document.activeElement;
-             (root?.querySelector('[data-autofocus]') ?? items[0])?.focus();"
-        ),
-    )
-}
-
-/// Give the focus back — unless the player took it elsewhere meanwhile.
-fn close_script(id: &str, fallback: &[&str]) -> String {
-    script(
-        id,
-        &format!(
-            "const saved = window.__focusReturn?.[{id:?}];
-             if (window.__focusReturn) delete window.__focusReturn[{id:?}];
-             const shows = (e) => !!e && e.isConnected && e.getClientRects().length > 0;
-             const active = document.activeElement;
-             const lost = !shows(active) || active === document.body || !!root?.contains(active);
-             const target = shows(saved)
-               ? saved
-               : {fallback:?}.map((s) => document.querySelector(s)).find(shows);
-             if (lost && shows(target)) target.focus();"
-        ),
-    )
-}
-
-/// Focus the trap's first (`last`: last) item.
-fn edge_script(id: &str, last: bool) -> String {
-    script(
-        id,
-        &format!(
-            "items[{}]?.focus();",
-            if last { "items.length - 1" } else { "0" }
-        ),
-    )
-}
-
-fn run(js: String) {
-    let _ = document::eval(&js);
-}
 
 /// See the module. `id` names the children's box (one per page);
 /// `fallback` lists CSS selectors, the first that shows taking the focus
@@ -94,60 +35,181 @@ pub fn FocusTrap(
     // Whether the focus was moved in (and is to be given back): not
     // reactive, read when this unmounts.
     let opened = use_hook(|| Rc::new(Cell::new(false)));
+    let saved = use_hook(|| Rc::new(dom::Saved::default()));
 
-    let on_change = opened.clone();
+    // What has the focus before anything moves it in: read while rendering
+    // the open trap, before its children mount and one focuses itself.
+    if active() {
+        saved.remember();
+    }
+
+    let (on_change, saved_on_change) = (opened.clone(), saved.clone());
     use_effect(move || {
         let open = active() && mounted();
         if open != on_change.get() {
             on_change.set(open);
-            run(if open {
-                open_script(id)
+            if open {
+                dom::focus_in(id);
             } else {
-                close_script(id, fallback)
-            });
+                saved_on_change.give_back(id, fallback);
+            }
         }
     });
     use_drop(move || {
         if opened.get() {
-            run(close_script(id, fallback));
+            saved.give_back(id, fallback);
         }
     });
 
-    let stop = move || if active() { "0" } else { "-1" };
+    let stop = move || if dom::TRAPS && active() { "0" } else { "-1" };
     rsx! {
         span {
             class: "focus-edge",
             tabindex: stop(),
             aria_hidden: "true",
-            onfocus: move |_| run(edge_script(id, true)),
+            onfocus: move |_| dom::focus_edge(id, true),
         }
-        div {
-            id,
-            class: "focus-trap",
-            onmounted: move |_| mounted.set(true),
-            {children}
-        }
+        div { id, class: "focus-trap", onmounted: move |_| mounted.set(true), {children} }
         span {
             class: "focus-edge",
             tabindex: stop(),
             aria_hidden: "true",
-            onfocus: move |_| run(edge_script(id, false)),
+            onfocus: move |_| dom::focus_edge(id, false),
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{close_script, edge_script, open_script};
+#[cfg(web_client)]
+mod dom {
+    use std::cell::{Cell, RefCell};
 
-    #[test]
-    fn the_scripts_name_their_trap_and_fallback_as_string_literals() {
-        let open = open_script("end-game-dialog");
-        assert!(open.contains(r#"document.getElementById("end-game-dialog")"#));
-        assert!(open.contains(r#"saved["end-game-dialog"] = document.activeElement"#));
-        let close = close_script("hud-menu", &[".hud-menu-toggle", ".game-layout"]);
-        assert!(close.contains(r#"[".hud-menu-toggle", ".game-layout"].map("#));
-        assert!(edge_script("hud-menu", true).ends_with("items[items.length - 1]?.focus();"));
-        assert!(edge_script("hud-menu", false).ends_with("items[0]?.focus();"));
+    use wasm_bindgen::JsCast;
+    use web_sys::{Document, Element, HtmlElement};
+
+    /// The page can be asked what takes the focus.
+    pub const TRAPS: bool = true;
+
+    /// What a Tab stops on.
+    const TABBABLE: &str = "a[href], button:not([disabled]), input:not([disabled]), \
+        select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+    fn document() -> Option<Document> {
+        web_sys::window()?.document()
+    }
+
+    /// Whether `element` is on the page and shows (a hidden ancestor leaves
+    /// it nothing to be laid out in).
+    fn shows(element: &HtmlElement) -> bool {
+        element.is_connected() && element.offset_parent().is_some()
+    }
+
+    fn html(element: Element) -> Option<HtmlElement> {
+        element.dyn_into().ok()
+    }
+
+    fn root(id: &str) -> Option<Element> {
+        document()?.get_element_by_id(id)
+    }
+
+    /// The trap's items a Tab stops on and that show, in page order.
+    fn items(root: &Element) -> Vec<HtmlElement> {
+        let Ok(list) = root.query_selector_all(TABBABLE) else {
+            return Vec::new();
+        };
+        (0..list.length())
+            .filter_map(|i| list.item(i)?.dyn_into::<HtmlElement>().ok())
+            .filter(shows)
+            .collect()
+    }
+
+    /// Move the focus in: to the item marked `data-autofocus`, else the first.
+    pub fn focus_in(id: &str) {
+        let Some(root) = root(id) else { return };
+        let marked = root
+            .query_selector("[data-autofocus]")
+            .ok()
+            .flatten()
+            .and_then(html);
+        if let Some(target) = marked.or_else(|| items(&root).into_iter().next()) {
+            let _ = target.focus();
+        }
+    }
+
+    /// Focus the trap's first (`last`: last) item.
+    pub fn focus_edge(id: &str, last: bool) {
+        let Some(root) = root(id) else { return };
+        let items = items(&root);
+        let target = if last { items.last() } else { items.first() };
+        if let Some(target) = target {
+            let _ = target.focus();
+        }
+    }
+
+    /// What had the focus when the trap opened.
+    #[derive(Default)]
+    pub struct Saved {
+        taken: Cell<bool>,
+        element: RefCell<Option<HtmlElement>>,
+    }
+
+    impl Saved {
+        /// Remember what has the focus, once per opening.
+        pub fn remember(&self) {
+            if !self.taken.replace(true) {
+                let active = document().and_then(|d| d.active_element()).and_then(html);
+                self.element.replace(active);
+            }
+        }
+
+        /// Give the focus back to what had it, or to the first of
+        /// `fallback` that shows — unless the player took it elsewhere.
+        pub fn give_back(&self, id: &str, fallback: &[&str]) {
+            if !self.taken.replace(false) {
+                return;
+            }
+            let saved = self.element.take();
+            let Some(document) = document() else { return };
+            let root = root(id);
+            let lost = match document.active_element().and_then(html) {
+                None => true,
+                Some(active) => {
+                    !shows(&active)
+                        || document.body().is_some_and(|body| body == active)
+                        || root.is_some_and(|root| root.contains(Some(&**active)))
+                }
+            };
+            if !lost {
+                return;
+            }
+            let target = saved.filter(shows).or_else(|| {
+                fallback
+                    .iter()
+                    .filter_map(|selector| document.query_selector(selector).ok().flatten())
+                    .filter_map(html)
+                    .find(shows)
+            });
+            if let Some(target) = target {
+                let _ = target.focus();
+            }
+        }
+    }
+}
+
+#[cfg(not(web_client))]
+mod dom {
+    /// Without `web-sys` the page cannot be asked what takes the focus.
+    pub const TRAPS: bool = false;
+
+    pub fn focus_in(_id: &str) {}
+
+    pub fn focus_edge(_id: &str, _last: bool) {}
+
+    #[derive(Default)]
+    pub struct Saved;
+
+    impl Saved {
+        pub fn remember(&self) {}
+
+        pub fn give_back(&self, _id: &str, _fallback: &[&str]) {}
     }
 }

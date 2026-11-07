@@ -91,6 +91,7 @@ Paths below are relative to `tantrix-app/src/`.
 - One component tree across screen sizes; responsiveness is CSS only. Board fills the backdrop; HUD/hands float above it. `game.css` sets base layout, `desk.css` expands it; camera frames the remaining stage and derives home zoom from stage size.
 - SVG tiles/paths use axial-to-pixel geometry. Theme: global `THEME`, OKLCH CSS variables. Shared tokens/components live in `tokens.css`/`components.css`; desktop chrome in `desktop.css`.
 - Workspace manifest and lints: a dependency of two or more crates goes in the root `[workspace.dependencies]` (members list their features). `unreachable_pub` warns on `pub` items other crates can't reach: make them `pub(crate)` or narrower. tantrix-game, -proto and -room also `#![warn(missing_docs)]`.
+- No runtime JavaScript (`document::eval`): the production script policy has no `'unsafe-eval'`. Reach the DOM through `web-sys` behind `web_client`; `e2e/tests/script-policy.ts` applies the policy.
 - Gate app platform code with the `cfg` aliases from `tantrix-app/build.rs`; never spell their predicates out. `native_client`: desktop or Android feature. `native_io`: that app built for its own OS (reqwest, native WebSocket, settings file). `web_client`: wasm32 browser build.
 - Production client build rebuilds std with silent immediate-abort panics (see `justfile`). Preserve dx symbols for hydration; never add `-Zfmt-debug=none` (`Color` display, keys and data attributes need `Debug`). Measure Wasm with `twiggy top` on a `dx build --keep-names` copy.
 
