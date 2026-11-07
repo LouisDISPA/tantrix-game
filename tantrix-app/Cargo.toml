@@ -1,6 +1,6 @@
 [package]
 name = "tantrix-app"
-version = "0.2.0"
+version = "0.3.0"
 description = "A cross-platform implementation of the Tantrix hex tile strategy game"
 edition.workspace = true
 license.workspace = true
