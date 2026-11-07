@@ -3,13 +3,13 @@
 use super::releases::{Architecture, Package, Platform, Release, RELEASE_API};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Update {
+pub(crate) struct Update {
     pub version: String,
     pub url: String,
     pub size: u64,
 }
 
-pub async fn check() -> Result<Option<Update>, String> {
+pub(crate) async fn check() -> Result<Option<Update>, String> {
     let response = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent("Tantrix")
@@ -49,7 +49,7 @@ fn parse_release(body: &str, installed: &str) -> Result<Option<Update>, String> 
 }
 
 /// Stream into a private partial file; only expose a completed APK to the installer.
-pub async fn download(
+pub(crate) async fn download(
     update: &Update,
     mut progress: impl FnMut(u8),
 ) -> Result<std::path::PathBuf, String> {
@@ -102,7 +102,7 @@ pub async fn download(
     result
 }
 
-pub async fn install(path: std::path::PathBuf) -> Result<bool, String> {
+pub(crate) async fn install(path: std::path::PathBuf) -> Result<bool, String> {
     #[cfg(target_os = "android")]
     return crate::platform::android::install_update(path).await;
     #[cfg(not(target_os = "android"))]

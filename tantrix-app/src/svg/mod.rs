@@ -1,4 +1,4 @@
-pub mod camera_math;
-pub mod card_placement;
-pub mod geometry;
-pub mod paths;
+pub(crate) mod camera_math;
+pub(crate) mod card_placement;
+pub(crate) mod geometry;
+pub(crate) mod paths;

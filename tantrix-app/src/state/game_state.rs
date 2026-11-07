@@ -16,7 +16,7 @@ use super::ui_state::UiState;
 /// * `driver` — who plays: every seat on this device, or an online room
 ///   this device sends its seat's moves to (see [`GameDriver`])
 #[derive(Clone, Copy)]
-pub struct GameCtx {
+pub(crate) struct GameCtx {
     pub game_state: Signal<GameState>,
     pub ui_state: Store<UiState>,
     pub driver: GameDriver,
@@ -32,7 +32,7 @@ pub struct GameCtx {
 /// unit — every change touches the board, hands, turn and cache together —
 /// so providers wrap it in a plain `Signal<GameState>`.
 #[derive(Debug, Clone)]
-pub struct GameState {
+pub(crate) struct GameState {
     game: Game,
     hand_info: Vec<TileMoveInfo>,
 }
@@ -48,7 +48,7 @@ impl Deref for GameState {
 impl GameState {
     /// Deal a new game. A seeded config always deals the same bag and turn
     /// order; either way the game keeps its seed, so it can be replayed.
-    pub fn new(config: &GameConfig) -> Self {
+    pub(crate) fn new(config: &GameConfig) -> Self {
         let players = EnumMap::from_fn(|color| config.player_for(color));
         let game = match config.seed {
             Some(seed) => Game::from_players_seeded(players, seed),
@@ -60,7 +60,7 @@ impl GameState {
     /// Rebuild from an authoritative snapshot received over the wire. The
     /// bag's contents are stubbed (only its count matters for the UI), and
     /// each playing color is human-owned.
-    pub fn from_snapshot(snap: &GameSnapshot) -> Self {
+    pub(crate) fn from_snapshot(snap: &GameSnapshot) -> Self {
         let game = Game::from_snapshot(
             snap.board.clone(),
             snap.hands.clone(),
@@ -79,14 +79,14 @@ impl GameState {
     }
 
     /// The current player's legal moves per hand tile, in hand order.
-    pub fn hand_info(&self) -> &[TileMoveInfo] {
+    pub(crate) fn hand_info(&self) -> &[TileMoveInfo] {
         &self.hand_info
     }
 
     /// Play `placement` for the current player (see [`Game::play_move`]).
     /// They keep the turn while forced spaces remain to fill after their
     /// free move.
-    pub fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
+    pub(crate) fn play_move(&mut self, placement: Placement) -> Result<PlayedMove, MoveError> {
         let played = self.game.play_move(placement)?;
         self.refresh_hand_info();
         Ok(played)
@@ -96,7 +96,7 @@ impl GameState {
     /// (see [`Game::skip_stuck_players`]). When the current player can move,
     /// or nobody can ([`Game::status`]), nothing changes and `hand_info` is
     /// kept as it is.
-    pub fn skip_stuck_players(&mut self) {
+    pub(crate) fn skip_stuck_players(&mut self) {
         if self.game.is_stuck() {
             self.game.skip_stuck_players();
             self.refresh_hand_info();

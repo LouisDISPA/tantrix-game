@@ -1,15 +1,19 @@
 [package]
-license = "MIT"
 name = "tantrix-game"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
-enum-map = { version = "3.1.0", features = ["serde"] }
-enum-iterator = "2.3.0"
-rand = "0.10.3"
+enum-map = { workspace = true, features = ["serde"] }
+enum-iterator.workspace = true
+rand.workspace = true
 arrayvec = { version = "0.7.8", features = ["serde"] }
-serde = { version = "1.0.229", features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
-serde_json = "1.0.151"
+serde_json.workspace = true

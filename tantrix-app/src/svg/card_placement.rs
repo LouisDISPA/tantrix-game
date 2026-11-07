@@ -15,9 +15,9 @@ use super::geometry::{board_center, hex_rect, Rect, HEX_SIZE};
 /// The card's size: two 78×84 options, 8px apart, in 8px of padding. The
 /// stylesheet gets these through `--card-w` / `--card-h`
 /// ([`CardPlacement::style`]), so the numbers live here only.
-pub const CARD_WIDTH: f64 = 180.0;
-pub const CARD_HEIGHT: f64 = 100.0;
-pub const CARD: Size = Size {
+pub(crate) const CARD_WIDTH: f64 = 180.0;
+pub(crate) const CARD_HEIGHT: f64 = 100.0;
+pub(crate) const CARD: Size = Size {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
 };
@@ -40,7 +40,7 @@ const SLIDES: [f64; 5] = [0.0, -0.5, 0.5, -1.0, 1.0];
 
 /// Which side of the spot the card sits on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
+pub(crate) enum Side {
     Top,
     Bottom,
     Left,
@@ -49,10 +49,10 @@ pub enum Side {
 
 impl Side {
     /// In the order a tie between two sides is settled.
-    pub const ALL: [Side; 4] = [Side::Top, Side::Bottom, Side::Left, Side::Right];
+    pub(crate) const ALL: [Side; 4] = [Side::Top, Side::Bottom, Side::Left, Side::Right];
 
     /// The class that points the card's arrow at the spot.
-    pub fn css_class(self) -> &'static str {
+    pub(crate) fn css_class(self) -> &'static str {
         match self {
             Side::Top => "side-top",
             Side::Bottom => "side-bottom",
@@ -64,7 +64,7 @@ impl Side {
 
 /// Where the card goes, in stage pixels from the stage's top-left corner.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CardPlacement {
+pub(crate) struct CardPlacement {
     pub side: Side,
     pub left: f64,
     pub top: f64,
@@ -77,12 +77,12 @@ pub struct CardPlacement {
 impl CardPlacement {
     /// The card's rectangle on the stage.
     #[cfg(test)]
-    pub fn rect(&self, card: Size) -> Rect {
+    pub(crate) fn rect(&self, card: Size) -> Rect {
         Rect::at(self.left, self.top, card.width, card.height)
     }
 
     /// The card's inline style: its position, arrow and size.
-    pub fn style(&self) -> String {
+    pub(crate) fn style(&self) -> String {
         format!(
             "left: {:.1}px; top: {:.1}px; --arrow-x: {:.1}px; --arrow-y: {:.1}px; {}",
             self.left,
@@ -111,7 +111,7 @@ fn origin(side: Side, spot: Rect, card: Size) -> (f64, f64) {
 /// the tiles, plus a heavy price for covering the spot, is its cost. The
 /// cheapest wins, ties going to the first of [`Side::ALL`], and a card that
 /// had to be moved far from where it belongs loses to one that did not.
-pub fn place_card(spot: Rect, tiles: &[Rect], card: Size, stage: Size) -> CardPlacement {
+pub(crate) fn place_card(spot: Rect, tiles: &[Rect], card: Size, stage: Size) -> CardPlacement {
     let tiles: Vec<Rect> = tiles.iter().map(|tile| tile.shrunk(TILE_SHRINK)).collect();
     let (spot_x, spot_y) = spot.center();
 
@@ -158,7 +158,12 @@ pub fn place_card(spot: Rect, tiles: &[Rect], card: Size, stage: Size) -> CardPl
 /// The card for the hex `at` as the camera sees the board: `placed` are the
 /// board's tiles, `pose` where the camera looks and `stage` the size of the
 /// stage it looks onto.
-pub fn place_card_at(at: Position, placed: &[Position], pose: Pose, stage: Size) -> CardPlacement {
+pub(crate) fn place_card_at(
+    at: Position,
+    placed: &[Position],
+    pose: Pose,
+    stage: Size,
+) -> CardPlacement {
     let center = board_center(placed, HEX_SIZE);
     let on_stage =
         |position: Position| rect_to_stage(hex_rect(position, HEX_SIZE), pose, center, stage);
@@ -168,13 +173,13 @@ pub fn place_card_at(at: Position, placed: &[Position], pose: Pose, stage: Size)
 
 /// The card's size as the stylesheet needs it, for a card that is not yet
 /// placed.
-pub fn size_style() -> String {
+pub(crate) fn size_style() -> String {
     format!("--card-w: {CARD_WIDTH}px; --card-h: {CARD_HEIGHT}px;")
 }
 
 /// Whether some side of `spot` has room for the card as it belongs there:
 /// wholly on the stage and clear of the spot.
-pub fn has_room(spot: Rect, card: Size, stage: Size) -> bool {
+pub(crate) fn has_room(spot: Rect, card: Size, stage: Size) -> bool {
     let inside = Rect::new(
         MARGIN_X,
         MARGIN_Y,
@@ -193,7 +198,7 @@ pub fn has_room(spot: Rect, card: Size, stage: Size) -> bool {
 /// spot centred, at a zoom between [`MIN_SPOT_ZOOM`] (wide enough to tap) and
 /// [`max_fit_zoom`] (a spot zoomed in far leaves no room for a card), so it
 /// has.
-pub fn make_room(spot: Rect, pose: Pose, center: (f64, f64), stage: Size) -> Pose {
+pub(crate) fn make_room(spot: Rect, pose: Pose, center: (f64, f64), stage: Size) -> Pose {
     if has_room(rect_to_stage(spot, pose, center, stage), CARD, stage) {
         return pose;
     }

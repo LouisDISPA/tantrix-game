@@ -12,6 +12,50 @@ members = [
 ]
 resolver = "2"
 
+# No `rust-version`: rust-toolchain.toml pins a dated nightly, so an MSRV would
+# be untested.
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/LouisDISPA/tantrix-game"
+
+# Dependencies of two or more members, which list their own features. Default
+# features are off here when a member needs them off: members can only turn
+# them back on.
+[workspace.dependencies]
+tantrix-ai = { path = "tantrix-ai" }
+tantrix-game = { path = "tantrix-game" }
+tantrix-proto = { path = "tantrix-proto" }
+tantrix-room = { path = "tantrix-room" }
+
+axum = { version = "0.8.9", default-features = false }
+crossterm = "0.29.0"
+enum-iterator = "2.3.0"
+enum-map = "3.1.0"
+futures = "0.3.34"
+futures-channel = "0.3.34"
+getrandom = "0.4.3"
+log = "0.4.34"
+rand = "0.10.3"
+ratatui = "0.30.2"
+reqwest = { version = "0.13", default-features = false }
+serde = "1.0.229"
+serde_json = "1.0.151"
+tokio = "1.53.1"
+tokio-tungstenite = { version = "0.29.0", default-features = false }
+uuid = "1"
+wasm-bindgen = "0.2.129"
+web-sys = "0.3.106"
+web-time = "1"
+
+# Clippy keeps its default lints (plus clippy.toml). Members that inherit these
+# lints can't add their own, so tantrix-game, tantrix-proto and tantrix-room
+# set `#![warn(missing_docs)]` in lib.rs.
+[workspace.lints.rust]
+# `pub` only on items other crates can reach; everything else is `pub(crate)`
+# or narrower, so unused items surface as dead code.
+unreachable_pub = "warn"
+
 # Vendored dioxus-server 0.8.0-alpha.3 adds wasm32 support for Cloudflare SSR.
 [patch.crates-io]
 dioxus-server = { path = "vendor/dioxus-server" }

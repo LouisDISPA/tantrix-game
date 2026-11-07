@@ -12,23 +12,23 @@
 //! * [`keyboard`] — taking the keyboard's focus a key handler asked for.
 
 #[cfg(feature = "android")]
-pub mod android_updates;
-pub mod camera;
-pub mod derived;
+pub(crate) mod android_updates;
+pub(crate) mod camera;
+pub(crate) mod derived;
 #[cfg(feature = "desktop")]
-pub mod desktop_updates;
+pub(crate) mod desktop_updates;
 #[cfg(not(native_client))]
-pub mod downloads;
-pub mod game_ctx;
-pub mod keyboard;
-pub mod online_game;
-pub mod phase_view;
-pub mod scoring;
+pub(crate) mod downloads;
+pub(crate) mod game_ctx;
+pub(crate) mod keyboard;
+pub(crate) mod online_game;
+pub(crate) mod phase_view;
+pub(crate) mod scoring;
 
-pub use camera::use_board_camera;
-pub use derived::{use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves};
-pub use game_ctx::use_game_ctx;
-pub use keyboard::use_take_focus;
-pub use online_game::use_online_game_ctx;
-pub use phase_view::{use_orientations, use_preview_placement, use_valid_positions};
-pub use scoring::use_highlight_map;
+pub(crate) use camera::use_board_camera;
+pub(crate) use derived::{use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves};
+pub(crate) use game_ctx::use_game_ctx;
+pub(crate) use keyboard::use_take_focus;
+pub(crate) use online_game::use_online_game_ctx;
+pub(crate) use phase_view::{use_orientations, use_preview_placement, use_valid_positions};
+pub(crate) use scoring::use_highlight_map;

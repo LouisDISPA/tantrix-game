@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::tiles::NUMBER_OF_TILE;
 use crate::Tile;
 
+/// The shared draw pile: the tiles not dealt yet.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bag {
     tiles: ArrayVec<Tile, NUMBER_OF_TILE>,
@@ -18,6 +19,7 @@ impl Bag {
         clippy::disallowed_methods,
         reason = "an unseeded bag is shuffled from OS entropy"
     )]
+    /// A full bag shuffled from OS entropy.
     pub fn new() -> Self {
         Self::new_with_rng(&mut rand::rng())
     }
@@ -39,6 +41,7 @@ impl Bag {
         }
     }
 
+    /// Take the next tile, or `None` once the bag is empty.
     #[must_use = "a drawn tile leaves the bag"]
     pub fn draw(&mut self) -> Option<Tile> {
         self.tiles.pop()
@@ -56,10 +59,12 @@ impl Bag {
         &self.tiles
     }
 
+    /// How many tiles are left.
     pub fn count(&self) -> usize {
         self.tiles.len()
     }
 
+    /// Whether every tile has been drawn.
     pub fn is_empty(&self) -> bool {
         self.tiles.is_empty()
     }

@@ -19,17 +19,17 @@
 use super::geometry::{Rect, HEX_SIZE, SQRT3};
 
 /// The least and most the player can zoom by hand.
-pub const MIN_ZOOM: f64 = 0.3;
-pub const MAX_ZOOM: f64 = 5.0;
+pub(crate) const MIN_ZOOM: f64 = 0.3;
+pub(crate) const MAX_ZOOM: f64 = 5.0;
 /// The least zoom the camera picks by itself: a legal spot is then 45px
 /// across, wide enough for a finger.
-pub const MIN_SPOT_ZOOM: f64 = 0.52;
+pub(crate) const MIN_SPOT_ZOOM: f64 = 0.52;
 /// The most it zooms in to show the choices (a tile is 87px at 1.0).
-pub const MAX_FIT_ZOOM: f64 = 1.3;
+pub(crate) const MAX_FIT_ZOOM: f64 = 1.3;
 /// The room kept around what the camera frames, in stage pixels.
-pub const FIT_PAD: f64 = 12.0;
+pub(crate) const FIT_PAD: f64 = 12.0;
 /// The smallest comfortable tap target, in CSS pixels.
-pub const MIN_TARGET: f64 = 44.0;
+pub(crate) const MIN_TARGET: f64 = 44.0;
 /// A stage this big shows a board comfortably at 100%: a phone's, a laptop's.
 /// A bigger one starts zoomed in, so the board keeps up with an interface
 /// that grows with the window ([`home_zoom`]).
@@ -38,22 +38,22 @@ const HOME_STAGE: Size = Size {
     height: 480.0,
 };
 /// The most the board starts zoomed in, on the biggest windows.
-pub const MAX_HOME_ZOOM: f64 = 1.6;
+pub(crate) const MAX_HOME_ZOOM: f64 = 1.6;
 
 /// A width and a height, in pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Size {
+pub(crate) struct Size {
     pub width: f64,
     pub height: f64,
 }
 
 impl Size {
-    pub fn new(width: f64, height: f64) -> Self {
+    pub(crate) fn new(width: f64, height: f64) -> Self {
         Self { width, height }
     }
 
     /// The size of `rect`.
-    pub fn of(rect: &Rect) -> Self {
+    pub(crate) fn of(rect: &Rect) -> Self {
         Self::new(rect.width(), rect.height())
     }
 }
@@ -61,7 +61,7 @@ impl Size {
 /// Where the camera looks: the zoom, and the pan from the placed tiles'
 /// centre.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Pose {
+pub(crate) struct Pose {
     pub zoom: f64,
     pub pan_x: f64,
     pub pan_y: f64,
@@ -69,13 +69,13 @@ pub struct Pose {
 
 impl Pose {
     /// 100%, the placed tiles centred.
-    pub const HOME: Pose = Pose {
+    pub(crate) const HOME: Pose = Pose {
         zoom: 1.0,
         pan_x: 0.0,
         pan_y: 0.0,
     };
 
-    pub fn with_zoom(self, zoom: f64) -> Self {
+    pub(crate) fn with_zoom(self, zoom: f64) -> Self {
         Self { zoom, ..self }
     }
 }
@@ -85,7 +85,7 @@ impl Pose {
 /// (in both directions, the smaller of the two ratios), up to
 /// [`MAX_HOME_ZOOM`]. A function of the stage's size alone, so the camera
 /// never asks what kind of device it is on.
-pub fn home_zoom(stage: Size) -> f64 {
+pub(crate) fn home_zoom(stage: Size) -> f64 {
     (stage.width / HOME_STAGE.width)
         .min(stage.height / HOME_STAGE.height)
         .clamp(1.0, MAX_HOME_ZOOM)
@@ -93,17 +93,22 @@ pub fn home_zoom(stage: Size) -> f64 {
 
 /// The most the camera zooms in by itself to show the choices on `stage`
 /// ([`MAX_FIT_ZOOM`] at home, as much more as the stage's home zoom is).
-pub fn max_fit_zoom(stage: Size) -> f64 {
+pub(crate) fn max_fit_zoom(stage: Size) -> f64 {
     MAX_FIT_ZOOM * home_zoom(stage)
 }
 
 /// How wide a hex is on the screen at `zoom`.
-pub fn spot_width(zoom: f64) -> f64 {
+pub(crate) fn spot_width(zoom: f64) -> f64 {
     zoom * HEX_SIZE * SQRT3
 }
 
 /// Where the board point `point` lands on the stage (from its top-left).
-pub fn to_stage(point: (f64, f64), pose: Pose, center: (f64, f64), stage: Size) -> (f64, f64) {
+pub(crate) fn to_stage(
+    point: (f64, f64),
+    pose: Pose,
+    center: (f64, f64),
+    stage: Size,
+) -> (f64, f64) {
     (
         stage.width / 2.0 + pose.zoom * (point.0 - center.0 - pose.pan_x),
         stage.height / 2.0 + pose.zoom * (point.1 - center.1 - pose.pan_y),
@@ -112,7 +117,12 @@ pub fn to_stage(point: (f64, f64), pose: Pose, center: (f64, f64), stage: Size) 
 
 /// The board point drawn at `screen` on the stage: [`to_stage`]'s inverse.
 #[cfg(test)]
-pub fn to_board(screen: (f64, f64), pose: Pose, center: (f64, f64), stage: Size) -> (f64, f64) {
+pub(crate) fn to_board(
+    screen: (f64, f64),
+    pose: Pose,
+    center: (f64, f64),
+    stage: Size,
+) -> (f64, f64) {
     (
         (screen.0 - stage.width / 2.0) / pose.zoom + center.0 + pose.pan_x,
         (screen.1 - stage.height / 2.0) / pose.zoom + center.1 + pose.pan_y,
@@ -120,7 +130,7 @@ pub fn to_board(screen: (f64, f64), pose: Pose, center: (f64, f64), stage: Size)
 }
 
 /// Where the board rectangle `rect` lands on the stage.
-pub fn rect_to_stage(rect: Rect, pose: Pose, center: (f64, f64), stage: Size) -> Rect {
+pub(crate) fn rect_to_stage(rect: Rect, pose: Pose, center: (f64, f64), stage: Size) -> Rect {
     let (min_x, min_y) = to_stage((rect.min_x, rect.min_y), pose, center, stage);
     let (max_x, max_y) = to_stage((rect.max_x, rect.max_y), pose, center, stage);
     Rect::new(min_x, min_y, max_x, max_y)
@@ -128,7 +138,7 @@ pub fn rect_to_stage(rect: Rect, pose: Pose, center: (f64, f64), stage: Size) ->
 
 /// The pose that shows the board rectangle `view` whole and centred, with
 /// `pad` pixels to spare, the zoom kept within `min_zoom..=max_zoom`.
-pub fn fit(
+pub(crate) fn fit(
     view: Rect,
     center: (f64, f64),
     stage: Size,
@@ -148,7 +158,7 @@ pub fn fit(
 }
 
 /// Whether `view` is wholly on the stage (inside it by `pad`) at `pose`.
-pub fn shows(view: Rect, pose: Pose, center: (f64, f64), stage: Size, pad: f64) -> bool {
+pub(crate) fn shows(view: Rect, pose: Pose, center: (f64, f64), stage: Size, pad: f64) -> bool {
     stage_rect(stage, pad).contains(&rect_to_stage(view, pose, center, stage))
 }
 
@@ -158,7 +168,7 @@ fn stage_rect(stage: Size, pad: f64) -> Rect {
 
 /// `pose` panned so the board moves by (`dx`, `dy`) screen pixels: what a
 /// finger dragging the board does.
-pub fn pan_by(pose: Pose, dx: f64, dy: f64) -> Pose {
+pub(crate) fn pan_by(pose: Pose, dx: f64, dy: f64) -> Pose {
     Pose {
         pan_x: pose.pan_x - dx / pose.zoom,
         pan_y: pose.pan_y - dy / pose.zoom,
@@ -168,7 +178,14 @@ pub fn pan_by(pose: Pose, dx: f64, dy: f64) -> Pose {
 
 /// `pose` zoomed by `factor` about `pivot` (a stage point), so the board
 /// point under it stays under it. The zoom stays within `min..=max`.
-pub fn pinch(pose: Pose, pivot: (f64, f64), stage: Size, factor: f64, min: f64, max: f64) -> Pose {
+pub(crate) fn pinch(
+    pose: Pose,
+    pivot: (f64, f64),
+    stage: Size,
+    factor: f64,
+    min: f64,
+    max: f64,
+) -> Pose {
     let zoom = (pose.zoom * factor).clamp(min, max);
     let from_middle = (pivot.0 - stage.width / 2.0, pivot.1 - stage.height / 2.0);
     let k = 1.0 / pose.zoom - 1.0 / zoom;
@@ -184,7 +201,7 @@ pub fn pinch(pose: Pose, pivot: (f64, f64), stage: Size, factor: f64, min: f64, 
 /// tiles on the board. Leaves the camera alone while every spot is on the
 /// stage and wide enough to tap; otherwise it frames the tiles and the
 /// spots, and the spots alone when the tiles are too spread out to show.
-pub fn on_select(
+pub(crate) fn on_select(
     placed: Option<Rect>,
     spots: Rect,
     pose: Pose,
@@ -216,7 +233,7 @@ pub fn on_select(
 /// The camera once a move has been played, the placed tiles' rectangle
 /// being `placed`: back in the middle (the player's zoom stays) — zoomed
 /// out, never below [`MIN_SPOT_ZOOM`], when the board no longer fits.
-pub fn after_move(placed: Rect, zoom: f64, center: (f64, f64), stage: Size) -> Pose {
+pub(crate) fn after_move(placed: Rect, zoom: f64, center: (f64, f64), stage: Size) -> Pose {
     let pose = Pose::HOME.with_zoom(zoom);
     if shows(placed, pose, center, stage, FIT_PAD) {
         return pose;

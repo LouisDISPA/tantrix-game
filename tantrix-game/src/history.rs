@@ -13,7 +13,9 @@ use crate::{Color, DrawnTiles, Move, TurnStep};
 pub enum TurnEvent {
     /// `player`, at `step` of their turn, placed `m`.
     Played {
+        /// Who placed it.
         player: Color,
+        /// Their step of the turn before the move.
         step: TurnStep,
         /// The move as placed, with the board's `forced` flag.
         m: Move,
@@ -25,8 +27,16 @@ pub enum TurnEvent {
     /// `player`, at `step` of their turn, passed it
     /// ([`Game::skip_turn`](crate::Game::skip_turn), also called by
     /// [`Game::skip_stuck_players`](crate::Game::skip_stuck_players)).
-    Skipped { player: Color, step: TurnStep },
+    Skipped {
+        /// Who passed.
+        player: Color,
+        /// Their step of the turn when they passed.
+        step: TurnStep,
+    },
     /// `color` left the game ([`Game::retire_color`](crate::Game::retire_color)).
     /// Their hand is gone, so this cannot be undone.
-    Retired { color: Color },
+    Retired {
+        /// The color that left.
+        color: Color,
+    },
 }

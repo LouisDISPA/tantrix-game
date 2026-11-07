@@ -7,10 +7,10 @@ use futures_channel::mpsc::UnboundedSender;
 use tantrix_net::SessionCommand;
 
 #[derive(Clone)]
-pub struct CommandSender(UnboundedSender<SessionCommand>);
+pub(crate) struct CommandSender(UnboundedSender<SessionCommand>);
 
 impl CommandSender {
-    pub fn new(tx: UnboundedSender<SessionCommand>) -> Self {
+    pub(crate) fn new(tx: UnboundedSender<SessionCommand>) -> Self {
         Self(tx)
     }
 
@@ -18,7 +18,7 @@ impl CommandSender {
     /// driver has already exited — its disconnect event disables play and
     /// starts recovery (or shows the initial failure screen). Log the narrow
     /// race where a click lands between driver-exit and phase-update.
-    pub fn send(&self, cmd: SessionCommand) {
+    pub(crate) fn send(&self, cmd: SessionCommand) {
         if let Err(err) = self.0.unbounded_send(cmd) {
             log::warn!("online: dropped command, session receiver closed: {err}");
         }

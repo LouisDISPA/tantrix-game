@@ -15,5 +15,5 @@ mod shown_hand;
 mod tile_drag;
 mod turn_banner;
 
-pub use game_over::GameOver;
-pub use game_play::GamePlay;
+pub(crate) use game_over::GameOver;
+pub(crate) use game_play::GamePlay;

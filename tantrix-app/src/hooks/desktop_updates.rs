@@ -6,20 +6,20 @@ use futures::{FutureExt, StreamExt};
 use crate::state::desktop_updates::{self, UpdateStatus};
 
 #[derive(Clone, Copy)]
-pub struct DesktopUpdates {
+pub(crate) struct DesktopUpdates {
     pub status: ReadSignal<UpdateStatus>,
     commands: Coroutine<()>,
 }
 
 impl DesktopUpdates {
-    pub fn install(self) {
+    pub(crate) fn install(self) {
         if matches!(&*self.status.peek(), UpdateStatus::Ready { .. }) {
             self.commands.send(());
         }
     }
 }
 
-pub fn use_desktop_updates() {
+pub(crate) fn use_desktop_updates() {
     let mut status = use_signal(|| UpdateStatus::Checking);
     let commands = use_coroutine(move |mut commands: UnboundedReceiver<()>| async move {
         let (worker_tx, worker_rx) = std::sync::mpsc::channel();

@@ -13,19 +13,27 @@ use crate::{Board, Color, Hand, Move, TurnStep};
 /// bag of the AI's own, to play the game on from here.
 #[derive(Debug, Clone, Copy)]
 pub struct AiView<'a> {
+    /// The tiles placed so far.
     pub board: &'a Board,
+    /// Every color's hand.
     pub hands: &'a EnumMap<Color, Hand>,
+    /// The color the AI plays.
     pub current_player: Color,
     /// The colors in the game, in turn order.
     pub playing_colors: &'a [Color],
+    /// Where the AI is within its turn.
     pub turn_step: TurnStep,
+    /// How many tiles are left in the bag.
     pub bag_count: usize,
     /// The current player's legal moves; never empty.
     pub legal_moves: &'a [Move],
 }
 
+/// A computer player: picks one of the legal moves on its turn.
 pub trait TantrixAi: Send + Sync {
+    /// A short name for this AI; tournament configs pick AIs by it.
     fn name(&self) -> &str;
+    /// A boxed copy of this AI.
     fn clone_box(&self) -> Box<dyn TantrixAi>;
     /// A copy of this AI whose random choices, if it makes any, follow
     /// `seed`, so a game it plays can be played again. AIs without
@@ -43,9 +51,13 @@ impl Clone for Box<dyn TantrixAi> {
     }
 }
 
+/// Who plays a color.
 pub enum Player {
+    /// A person.
     Someone,
+    /// A computer player.
     Ai(Box<dyn TantrixAi>),
+    /// Nobody: the color is not in the game.
     None,
 }
 

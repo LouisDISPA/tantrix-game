@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::state::downloads::{Device, DownloadContext, InstallStatus};
 
-pub fn use_download_context() {
+pub(crate) fn use_download_context() {
     let device = use_signal(Device::default);
     let install_status = use_signal(InstallStatus::default);
     #[cfg(web_client)]

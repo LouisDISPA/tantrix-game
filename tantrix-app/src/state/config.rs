@@ -4,7 +4,7 @@ use tantrix_game::{Color, Player, TantrixAi};
 /// How well an AI seat plays: each level is a stronger AI than the last
 /// (Elo from the tournament in `doc/ai.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Difficulty {
+pub(crate) enum Difficulty {
     /// `Smart`, 1457.
     Easy,
     /// `Strategist`, 1593.
@@ -17,14 +17,14 @@ pub enum Difficulty {
 }
 
 impl Difficulty {
-    pub const ALL: [Difficulty; 4] = [
+    pub(crate) const ALL: [Difficulty; 4] = [
         Difficulty::Easy,
         Difficulty::Medium,
         Difficulty::Hard,
         Difficulty::Expert,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Difficulty::Easy => "Easy",
             Difficulty::Medium => "Medium",
@@ -44,14 +44,14 @@ impl Difficulty {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum PlayerKind {
+pub(crate) enum PlayerKind {
     Off,
     Human,
     Ai(Difficulty),
 }
 
 impl PlayerKind {
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             PlayerKind::Off => "Off",
             PlayerKind::Human => "Player",
@@ -59,7 +59,7 @@ impl PlayerKind {
         }
     }
 
-    pub fn next(self) -> Self {
+    pub(crate) fn next(self) -> Self {
         match self {
             PlayerKind::Off => PlayerKind::Human,
             PlayerKind::Human => PlayerKind::Ai(Difficulty::default()),
@@ -69,14 +69,14 @@ impl PlayerKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct GameConfig {
+pub(crate) struct GameConfig {
     pub players: [(Color, PlayerKind); 4],
     /// Deals the same bag and turn order every time (`/game?seed=N`).
     pub seed: Option<u64>,
 }
 
 impl GameConfig {
-    pub fn new(seed: Option<u64>) -> Self {
+    pub(crate) fn new(seed: Option<u64>) -> Self {
         GameConfig {
             players: [
                 (Color::Red, PlayerKind::Human),
@@ -88,7 +88,7 @@ impl GameConfig {
         }
     }
 
-    pub fn player_for(&self, color: Color) -> Player {
+    pub(crate) fn player_for(&self, color: Color) -> Player {
         match self.players.iter().find(|(c, _)| *c == color) {
             Some((_, PlayerKind::Human)) => Player::Someone,
             Some((_, PlayerKind::Ai(difficulty))) => Player::Ai(difficulty.ai()),
@@ -96,21 +96,21 @@ impl GameConfig {
         }
     }
 
-    pub fn active_count(&self) -> usize {
+    pub(crate) fn active_count(&self) -> usize {
         self.players
             .iter()
             .filter(|(_, k)| *k != PlayerKind::Off)
             .count()
     }
 
-    pub fn cycle_player(&mut self, color: Color) {
+    pub(crate) fn cycle_player(&mut self, color: Color) {
         if let Some((_, kind)) = self.players.iter_mut().find(|(c, _)| *c == color) {
             *kind = kind.next();
         }
     }
 
     /// Sets how well `color`'s AI seat plays.
-    pub fn set_difficulty(&mut self, color: Color, difficulty: Difficulty) {
+    pub(crate) fn set_difficulty(&mut self, color: Color, difficulty: Difficulty) {
         if let Some((_, kind)) = self.players.iter_mut().find(|(c, _)| *c == color) {
             *kind = PlayerKind::Ai(difficulty);
         }

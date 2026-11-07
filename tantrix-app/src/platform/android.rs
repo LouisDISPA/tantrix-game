@@ -7,7 +7,7 @@ use jni::{
     JavaVM,
 };
 
-pub fn settings_dir() -> Result<std::path::PathBuf, String> {
+pub(crate) fn settings_dir() -> Result<std::path::PathBuf, String> {
     let read = || -> jni::errors::Result<std::path::PathBuf> {
         let context = ndk_context::android_context();
         let vm = unsafe { JavaVM::from_raw(context.vm().cast())? };
@@ -26,7 +26,7 @@ pub fn settings_dir() -> Result<std::path::PathBuf, String> {
     read().map_err(|error| format!("Could not locate app settings: {error}"))
 }
 
-pub fn copy_text(text: &str) -> jni::errors::Result<()> {
+pub(crate) fn copy_text(text: &str) -> jni::errors::Result<()> {
     let context = ndk_context::android_context();
     let vm = unsafe { JavaVM::from_raw(context.vm().cast())? };
     let mut env = vm.attach_current_thread()?;
@@ -61,7 +61,7 @@ pub fn copy_text(text: &str) -> jni::errors::Result<()> {
 
 /// Read the effective app configuration, which includes Android's saved override.
 /// UiModeManager.getNightMode() would read the phone's global setting instead.
-pub fn current_theme() -> Theme {
+pub(crate) fn current_theme() -> Theme {
     let read = || -> jni::errors::Result<Theme> {
         let context = ndk_context::android_context();
         let vm = unsafe { JavaVM::from_raw(context.vm().cast())? };
@@ -93,7 +93,7 @@ pub fn current_theme() -> Theme {
 }
 
 /// Persist only this app's mode; Android applies it before the next launch.
-pub fn set_theme(theme: Theme) {
+pub(crate) fn set_theme(theme: Theme) {
     use jni::objects::JValue;
 
     dispatch(move |env, activity, _webview| {
@@ -126,7 +126,7 @@ pub fn set_theme(theme: Theme) {
     });
 }
 
-pub fn apply_system_bar_theme(theme: Theme) {
+pub(crate) fn apply_system_bar_theme(theme: Theme) {
     use jni::objects::JValue;
 
     dispatch(move |env, activity, webview| {
@@ -179,7 +179,7 @@ pub fn apply_system_bar_theme(theme: Theme) {
 }
 
 /// Returns false after opening permission settings; the downloaded APK stays ready.
-pub async fn install_update(path: std::path::PathBuf) -> Result<bool, String> {
+pub(crate) async fn install_update(path: std::path::PathBuf) -> Result<bool, String> {
     let (sender, receiver) = futures_channel::oneshot::channel();
     dispatch(move |env, activity, _webview| {
         let result = (|| -> jni::errors::Result<String> {

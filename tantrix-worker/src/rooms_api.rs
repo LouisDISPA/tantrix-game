@@ -11,7 +11,7 @@ use worker::{Env, Method, Request, Response, Result};
 const CREATION_LIMIT: &str = "ROOM_CREATION_LIMIT";
 const LOOKUP_LIMIT: &str = "CODE_LOOKUP_LIMIT";
 
-pub fn error(error: RoomApiError) -> Result<Response> {
+pub(crate) fn error(error: RoomApiError) -> Result<Response> {
     let mut response = Response::from_json(&error)?.with_status(error.status());
     response.headers_mut().set("Cache-Control", "no-store")?;
     Ok(response)
@@ -32,7 +32,7 @@ async fn allowed(req: &Request, env: &Env, binding: &str) -> Result<bool> {
     Ok(env.rate_limiter(binding)?.limit(key).await?.success)
 }
 
-pub async fn handle(mut req: Request, env: &Env) -> Result<Response> {
+pub(crate) async fn handle(mut req: Request, env: &Env) -> Result<Response> {
     let url = req.url()?;
     let path = url.path();
     if let Some(id) = path.strip_prefix("/room/") {

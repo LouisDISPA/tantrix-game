@@ -10,13 +10,13 @@ use crate::svg::paths::hex_polygon_points;
 const HEX: f64 = 38.0;
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum SpaceKind {
+pub(crate) enum SpaceKind {
     Forced,
     Blocked,
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub struct DiagramSpace {
+pub(crate) struct DiagramSpace {
     pub position: Position,
     pub label: &'static str,
     pub kind: SpaceKind,

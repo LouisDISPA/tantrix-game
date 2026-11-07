@@ -27,6 +27,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Bag, Board, Color, Hand, Move, Player, TurnEvent, TurnTracker};
 
+/// One game: board, bag, hands, players, turn order and history. Its
+/// methods play by the rules and record every change.
 #[derive(Debug, Clone)]
 pub struct Game {
     board: Board,

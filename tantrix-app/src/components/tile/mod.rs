@@ -7,14 +7,14 @@
 //! * [`HandTile`] — interactive tile in a player's hand.
 //! * [`FocusHex`] — the keyboard's focus ring round a tile or a spot.
 
-pub mod board_tile;
-pub mod empty_hex;
-pub mod focus_hex;
-pub mod hand_tile;
-pub mod hex_svg;
+pub(crate) mod board_tile;
+pub(crate) mod empty_hex;
+pub(crate) mod focus_hex;
+pub(crate) mod hand_tile;
+pub(crate) mod hex_svg;
 
-pub use board_tile::{BoardTile, BoardTileVariant};
-pub use empty_hex::{spot_id, EmptyHex};
-pub use focus_hex::FocusHex;
-pub use hand_tile::HandTile;
-pub use hex_svg::HexSvg;
+pub(crate) use board_tile::{BoardTile, BoardTileVariant};
+pub(crate) use empty_hex::{spot_id, EmptyHex};
+pub(crate) use focus_hex::FocusHex;
+pub(crate) use hand_tile::HandTile;
+pub(crate) use hex_svg::HexSvg;

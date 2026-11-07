@@ -2,7 +2,7 @@
 
 /// Native clients use their saved setting. Browsers use the current origin,
 /// unless a build-time TANTRIX_ROOM_URL points to another server's /room path.
-pub fn server_origin() -> String {
+pub(crate) fn server_origin() -> String {
     #[cfg(native_io)]
     return super::server_settings::server_address();
 
@@ -30,7 +30,7 @@ pub fn server_origin() -> String {
 
 /// `server` is the HTTP(S) origin used by the compatibility check and invites.
 /// The URL carries this client's online version, which the server checks.
-pub fn room_url(server: &str, game_id: &str) -> String {
+pub(crate) fn room_url(server: &str, game_id: &str) -> String {
     use tantrix_proto::{ONLINE_VERSION, ONLINE_VERSION_PARAM};
     let socket_origin = server.trim_end_matches('/').replacen("http", "ws", 1);
     format!("{socket_origin}/room/{game_id}?{ONLINE_VERSION_PARAM}={ONLINE_VERSION}")

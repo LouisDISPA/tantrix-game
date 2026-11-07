@@ -2,7 +2,7 @@
 
 use std::{fs, path::PathBuf};
 
-pub fn settings_dir() -> Result<PathBuf, String> {
+pub(crate) fn settings_dir() -> Result<PathBuf, String> {
     #[cfg(target_os = "android")]
     return crate::platform::android::settings_dir();
     #[cfg(not(target_os = "android"))]
@@ -11,11 +11,11 @@ pub fn settings_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "Could not locate the application settings directory.".into())
 }
 
-pub fn load(name: &str) -> Option<String> {
+pub(crate) fn load(name: &str) -> Option<String> {
     fs::read_to_string(settings_dir().ok()?.join(name)).ok()
 }
 
-pub fn save(name: &str, value: &str) -> Result<(), String> {
+pub(crate) fn save(name: &str, value: &str) -> Result<(), String> {
     let directory = settings_dir()?;
     fs::create_dir_all(&directory).map_err(|error| format!("Could not save settings: {error}"))?;
     let path = directory.join(name);

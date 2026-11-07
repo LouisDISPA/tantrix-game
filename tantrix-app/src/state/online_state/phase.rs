@@ -5,7 +5,7 @@ use tantrix_proto::{EndReason, GameSnapshot, LobbyState, RejectCode};
 
 /// Top-level lifecycle of the online session.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OnlinePhase {
+pub(crate) enum OnlinePhase {
     /// The room WebSocket is opening; no participant id yet.
     Connecting,
     /// Socket is live, we're in the lobby picking colors.
@@ -28,7 +28,7 @@ pub enum OnlinePhase {
 /// can pick the right heading (room rejection / transport) without
 /// sniffing substrings.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FailureReason {
+pub(crate) enum FailureReason {
     /// Server sent a structured rejection.
     Rejected(RejectCode),
     /// Transport-level failure (socket closed, network error, etc.).
@@ -38,7 +38,7 @@ pub enum FailureReason {
 }
 
 impl FailureReason {
-    pub fn display(&self) -> String {
+    pub(crate) fn display(&self) -> String {
         match self {
             FailureReason::Rejected(code) => reject_message(code).to_string(),
             FailureReason::Transport(msg) => msg.clone(),
@@ -49,13 +49,13 @@ impl FailureReason {
     }
 
     /// Whether trying again could plausibly help. A room rejection will repeat.
-    pub fn is_retryable(&self) -> bool {
+    pub(crate) fn is_retryable(&self) -> bool {
         !matches!(self, FailureReason::Rejected(_))
     }
 }
 
 /// Short user-facing sentence for each server rejection.
-pub fn reject_message(code: &RejectCode) -> &'static str {
+pub(crate) fn reject_message(code: &RejectCode) -> &'static str {
     match code {
         RejectCode::ColorTaken => "That color is taken.",
         RejectCode::NotYourTurn => "It's not your turn.",

@@ -3,7 +3,7 @@ use tantrix_game::{Color, Direction, Rotation, Tile};
 use super::geometry::{direction_edge, edge_midpoint, edge_separation, hex_vertices};
 
 /// Generate SVG polygon points string for a hex at (cx, cy).
-pub fn hex_polygon_points(cx: f64, cy: f64, size: f64) -> String {
+pub(crate) fn hex_polygon_points(cx: f64, cy: f64, size: f64) -> String {
     let verts = hex_vertices(cx, cy, size);
     verts
         .iter()
@@ -13,7 +13,10 @@ pub fn hex_polygon_points(cx: f64, cy: f64, size: f64) -> String {
 }
 
 /// Find the 3 pairs of directions sharing the same color on `tile` turned by `rotation`.
-pub fn find_color_pairs(tile: Tile, rotation: Rotation) -> [(Direction, Direction, Color); 3] {
+pub(crate) fn find_color_pairs(
+    tile: Tile,
+    rotation: Rotation,
+) -> [(Direction, Direction, Color); 3] {
     let dirs = [
         Direction::Left,
         Direction::TopLeft,
@@ -45,7 +48,7 @@ pub fn find_color_pairs(tile: Tile, rotation: Rotation) -> [(Direction, Directio
 }
 
 /// Generate an SVG path `d` attribute for a color link curve between two same-colored edges.
-pub fn color_link_path(cx: f64, cy: f64, d1: Direction, d2: Direction, size: f64) -> String {
+pub(crate) fn color_link_path(cx: f64, cy: f64, d1: Direction, d2: Direction, size: f64) -> String {
     let verts = hex_vertices(cx, cy, size);
     let m1 = edge_midpoint(&verts, d1);
     let m2 = edge_midpoint(&verts, d2);
@@ -89,7 +92,7 @@ pub fn color_link_path(cx: f64, cy: f64, d1: Direction, d2: Direction, size: f64
 }
 
 /// Lowercase color name for CSS class composition.
-pub fn color_name(color: Color) -> &'static str {
+pub(crate) fn color_name(color: Color) -> &'static str {
     match color {
         Color::Red => "red",
         Color::Blue => "blue",
@@ -99,7 +102,7 @@ pub fn color_name(color: Color) -> &'static str {
 }
 
 /// CSS class name for a game color.
-pub fn color_css_class(color: Color) -> &'static str {
+pub(crate) fn color_css_class(color: Color) -> &'static str {
     match color {
         Color::Red => "hex-curve-red",
         Color::Blue => "hex-curve-blue",

@@ -54,7 +54,7 @@ fn pending_request(server: &str) -> Result<String, String> {
     Ok(id)
 }
 
-pub async fn create(server: &str) -> Result<RoomReference, String> {
+pub(crate) async fn create(server: &str) -> Result<RoomReference, String> {
     let request = CreateRoom {
         request_id: pending_request(server)?,
     };
@@ -74,7 +74,7 @@ pub async fn create(server: &str) -> Result<RoomReference, String> {
     }
 }
 
-pub async fn resolve(server: &str, code: &str) -> Result<RoomReference, String> {
+pub(crate) async fn resolve(server: &str, code: &str) -> Result<RoomReference, String> {
     decode_response(request_http(server, &format!("/api/rooms/code/{code}"), None).await?)
         .map_err(|error| error.message().into())
 }

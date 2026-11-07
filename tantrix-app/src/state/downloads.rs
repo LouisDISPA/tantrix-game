@@ -7,20 +7,20 @@
 use dioxus::prelude::*;
 
 #[cfg(web_client)]
-pub mod browser;
+pub(crate) mod browser;
 
 use super::releases::Package;
-pub use super::releases::{Architecture, DownloadAsset, Platform, Release, RELEASES_URL};
+pub(crate) use super::releases::{Architecture, DownloadAsset, Platform, Release, RELEASES_URL};
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub struct Device {
+pub(crate) struct Device {
     pub platform: Platform,
     pub architecture: Option<Architecture>,
     pub safari: bool,
 }
 
 impl Device {
-    pub fn detect(user_agent: &str, touch_points: i32) -> Self {
+    pub(crate) fn detect(user_agent: &str, touch_points: i32) -> Self {
         let contains = |names: &[&str]| names.iter().any(|name| user_agent.contains(name));
         let platform = if contains(&["iPhone", "iPad", "iPod"])
             || (user_agent.contains("Mac") && touch_points > 1)
@@ -47,7 +47,7 @@ impl Device {
 }
 
 impl Release {
-    pub fn preferred(choices: &[DownloadAsset], device: Device) -> Option<String> {
+    pub(crate) fn preferred(choices: &[DownloadAsset], device: Device) -> Option<String> {
         let platform = match device.platform {
             Platform::Mac | Platform::Windows | Platform::Linux | Platform::Android => {
                 device.platform
@@ -69,7 +69,7 @@ impl Release {
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub enum InstallStatus {
+pub(crate) enum InstallStatus {
     #[default]
     Unavailable,
     Available,
@@ -77,7 +77,7 @@ pub enum InstallStatus {
 }
 
 #[derive(Clone, Copy)]
-pub struct DownloadContext {
+pub(crate) struct DownloadContext {
     pub device: Signal<Device>,
     pub install_status: Signal<InstallStatus>,
     #[cfg(web_client)]
@@ -85,7 +85,7 @@ pub struct DownloadContext {
 }
 
 impl DownloadContext {
-    pub fn install(self) {
+    pub(crate) fn install(self) {
         #[cfg(web_client)]
         browser::install(self);
     }

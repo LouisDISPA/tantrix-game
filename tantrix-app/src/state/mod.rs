@@ -1,31 +1,31 @@
-pub mod actions;
-pub mod ai_service;
+pub(crate) mod actions;
+pub(crate) mod ai_service;
 #[cfg(feature = "android")]
-pub mod android_updates;
-pub mod config;
+pub(crate) mod android_updates;
+pub(crate) mod config;
 #[cfg(feature = "desktop")]
-pub mod desktop_updates;
+pub(crate) mod desktop_updates;
 #[cfg(not(native_client))]
-pub mod downloads;
-pub mod game_driver;
-pub mod game_state;
-pub mod gesture;
-pub mod keyboard;
-pub mod nickname;
-pub mod online_compatibility;
-pub mod online_state;
+pub(crate) mod downloads;
+pub(crate) mod game_driver;
+pub(crate) mod game_state;
+pub(crate) mod gesture;
+pub(crate) mod keyboard;
+pub(crate) mod nickname;
+pub(crate) mod online_compatibility;
+pub(crate) mod online_state;
 #[cfg(any(feature = "android", not(feature = "desktop")))]
-pub mod releases;
-pub mod room_api;
-pub mod room_connection;
-pub mod server_endpoints;
+pub(crate) mod releases;
+pub(crate) mod room_api;
+pub(crate) mod room_connection;
+pub(crate) mod server_endpoints;
 #[cfg(native_client)]
-pub mod server_settings;
+pub(crate) mod server_settings;
 #[cfg(test)]
-pub mod test_games;
-pub mod theme;
-pub mod tile_drag;
-pub mod ui_state;
+pub(crate) mod test_games;
+pub(crate) mod theme;
+pub(crate) mod tile_drag;
+pub(crate) mod ui_state;
 
 #[cfg(native_client)]
-pub mod native_settings;
+pub(crate) mod native_settings;

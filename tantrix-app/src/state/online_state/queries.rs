@@ -13,7 +13,7 @@ use tantrix_proto::PeerId;
 use super::phase::OnlinePhase;
 use super::state::{OnlineState, OnlineStateStoreExt};
 
-pub fn match_id_of(state: Store<OnlineState>) -> u32 {
+pub(crate) fn match_id_of(state: Store<OnlineState>) -> u32 {
     match &*state.phase().read() {
         OnlinePhase::Lobby { lobby } => lobby.match_id,
         OnlinePhase::Playing { snapshot, .. } | OnlinePhase::Ended { snapshot, .. } => {
@@ -24,7 +24,7 @@ pub fn match_id_of(state: Store<OnlineState>) -> u32 {
 }
 
 /// Which color this peer currently occupies, if any.
-pub fn my_color(phase: &OnlinePhase, me: Option<&PeerId>) -> Option<Color> {
+pub(crate) fn my_color(phase: &OnlinePhase, me: Option<&PeerId>) -> Option<Color> {
     let me = me?;
     let seats = match phase {
         OnlinePhase::Lobby { lobby } => &lobby.seats,
@@ -46,7 +46,7 @@ pub fn my_color(phase: &OnlinePhase, me: Option<&PeerId>) -> Option<Color> {
 // Store-aware wrappers
 // ---------------------------------------------------------------------------
 
-pub fn my_color_of(state: Store<OnlineState>) -> Option<Color> {
+pub(crate) fn my_color_of(state: Store<OnlineState>) -> Option<Color> {
     let phase = state.phase();
     let phase = phase.read();
     let me = state.my_peer_id();

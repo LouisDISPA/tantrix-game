@@ -8,19 +8,19 @@
 /// How far a pointer may move and still be a tap, in pixels. A finger
 /// always wobbles, a mouse hardly does; past this the board follows the
 /// pointer and the lift is no click.
-pub const TOUCH_SLOP: f64 = 10.0;
-pub const MOUSE_SLOP: f64 = 5.0;
+pub(crate) const TOUCH_SLOP: f64 = 10.0;
+pub(crate) const MOUSE_SLOP: f64 = 5.0;
 
 /// A pointer at a position.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Pointer {
+pub(crate) struct Pointer {
     pub id: i32,
     pub x: f64,
     pub y: f64,
 }
 
 impl Pointer {
-    pub fn new(id: i32, x: f64, y: f64) -> Self {
+    pub(crate) fn new(id: i32, x: f64, y: f64) -> Self {
         Self { id, x, y }
     }
 
@@ -35,7 +35,7 @@ impl Pointer {
 
 /// What is going on at the board.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum Gesture {
+pub(crate) enum Gesture {
     #[default]
     Idle,
     /// One pointer is down, where it last was. It pans the board once it
@@ -52,7 +52,7 @@ pub enum Gesture {
 
 /// What a pointer move asks of the camera.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Step {
+pub(crate) enum Step {
     None,
     /// Move the board by (`dx`, `dy`) screen pixels.
     Pan {
@@ -72,7 +72,7 @@ impl Gesture {
     /// `slop` pixels and still be a tap), the second turns it into a pinch,
     /// a third is ignored. The same pointer going down again means its lift
     /// was lost: it starts over.
-    pub fn down(self, pointer: Pointer, slop: f64) -> Gesture {
+    pub(crate) fn down(self, pointer: Pointer, slop: f64) -> Gesture {
         let pan = Gesture::Pan {
             pointer,
             start: (pointer.x, pointer.y),
@@ -94,7 +94,7 @@ impl Gesture {
     /// A pan that has just passed the slop catches up with the whole
     /// distance from where the pointer went down, so the board does not
     /// jump behind the finger.
-    pub fn moved(self, to: Pointer) -> (Gesture, Step) {
+    pub(crate) fn moved(self, to: Pointer) -> (Gesture, Step) {
         match self {
             Gesture::Pan {
                 pointer,
@@ -145,7 +145,7 @@ impl Gesture {
 
     /// A pointer lifted or was cancelled. Lifting one of two fingers leaves
     /// the other panning, with no jump.
-    pub fn up(self, id: i32) -> Gesture {
+    pub(crate) fn up(self, id: i32) -> Gesture {
         match self {
             Gesture::Pan { pointer, .. } if pointer.id == id => Gesture::Idle,
             Gesture::Pinch { a, b } if a.id == id || b.id == id => {
@@ -164,7 +164,7 @@ impl Gesture {
     /// Whether the board is being moved: a pan past the slop, or a pinch.
     /// A pointer lifted at the end of one is not a click on what is under
     /// it.
-    pub fn is_drag(&self) -> bool {
+    pub(crate) fn is_drag(&self) -> bool {
         matches!(
             self,
             Gesture::Pan { moved: true, .. } | Gesture::Pinch { .. }

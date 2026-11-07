@@ -1,7 +1,7 @@
 //! Build a shareable URL of the shape `<origin>/online/game/ID`. Falls back to
 //! a relative path for SSR. Desktop uses the room's captured server origin.
 
-pub fn share_link(id: &str) -> String {
+pub(super) fn share_link(id: &str) -> String {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(win) = web_sys::window() {

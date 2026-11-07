@@ -20,6 +20,7 @@ pub enum TurnStep {
     AfterFreeMove,
 }
 
+/// The turn order, and whose turn it is.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnTracker {
     currently_playing: usize,
@@ -51,20 +52,24 @@ impl TurnTracker {
         })
     }
 
+    /// Whose turn it is.
     pub fn current(&self) -> Color {
         self.color_cycle[self.currently_playing]
     }
 
+    /// Where the current player is within their turn.
     pub fn step(&self) -> TurnStep {
         self.step
     }
 
+    /// Pass to the next color in turn order, at the start of their turn.
     pub fn next(&mut self) {
         self.currently_playing += 1;
         self.currently_playing %= self.color_cycle.len();
         self.step = TurnStep::default();
     }
 
+    /// The colors in the game, in turn order.
     pub fn playing_colors(&self) -> &[Color] {
         &self.color_cycle
     }

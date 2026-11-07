@@ -8,7 +8,9 @@
 //! stay legible when shared verbally. 23⁶ ≈ 148 M values — plenty for the
 //! concurrent-room scales we care about.
 
+/// The letters a room code may contain.
 pub const ROOM_CODE_ALPHABET: &[u8] = b"ABCDEFGHJKLMNPRSTUVWXYZ";
+/// Number of letters in a room code.
 pub const ROOM_CODE_LEN: usize = 6;
 
 /// Validate a code the user typed. Returns the normalized (uppercased) form

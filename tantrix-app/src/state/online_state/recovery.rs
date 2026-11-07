@@ -6,21 +6,21 @@ const ATTEMPT_DEADLINE: u64 = 20_000;
 const STABLE_CONNECTION: u64 = 30_000;
 
 #[derive(Debug, Default)]
-pub struct Recovery {
+pub(crate) struct Recovery {
     started: Option<u64>,
     connected: Option<u64>,
     attempts: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Retry {
+pub(crate) struct Retry {
     pub number: usize,
     pub start: u64,
     pub deadline: u64,
 }
 
 impl Recovery {
-    pub fn synchronized(&mut self, now: u64) {
+    pub(crate) fn synchronized(&mut self, now: u64) {
         self.connected.get_or_insert(now);
     }
 
@@ -30,7 +30,7 @@ impl Recovery {
     /// `jitter` ([`random_jitter`]) shortens the delay by up to half, so the
     /// clients a server restart dropped together don't all reconnect at the
     /// same instant. Delays only get shorter, so every bound still holds.
-    pub fn disconnected(&mut self, now: u64, jitter: u16) -> Option<Retry> {
+    pub(crate) fn disconnected(&mut self, now: u64, jitter: u16) -> Option<Retry> {
         if self
             .connected
             .take()
@@ -56,7 +56,7 @@ impl Recovery {
 
 /// A random [`Recovery::disconnected`] jitter, or none if the platform has
 /// no randomness to give.
-pub fn random_jitter() -> u16 {
+pub(crate) fn random_jitter() -> u16 {
     let mut bytes = [0; 2];
     getrandom::fill(&mut bytes).map_or(0, |()| u16::from_le_bytes(bytes))
 }

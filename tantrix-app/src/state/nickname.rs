@@ -12,7 +12,7 @@ use getrandom::fill;
 
 /// The longest nickname, in characters: the lobby's editor stops there, and
 /// the room refuses longer ones (`tantrix-room`).
-pub const MAX_CHARS: u32 = 24;
+pub(crate) const MAX_CHARS: u32 = 24;
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const STORAGE_KEY: &str = "tantrix-nickname-v2";
@@ -79,7 +79,7 @@ const NOUNS: &[&str] = &[
 ///
 /// Uses 32 bits of entropy per pick from `getrandom` — the modulo bias
 /// against a list of ~40 entries is ~2⁻²⁷, effectively zero.
-pub fn generate() -> String {
+pub(crate) fn generate() -> String {
     let adj = ADJECTIVES[pick_index(ADJECTIVES.len())];
     let noun = NOUNS[pick_index(NOUNS.len())];
     format!("{adj} {noun}")
@@ -94,7 +94,7 @@ fn pick_index(len: usize) -> usize {
 /// Return the user's previously-committed nickname (from `localStorage`)
 /// or a fresh random one. Auto-generated names are *not* cached here —
 /// only names the user explicitly edited in the lobby land in storage.
-pub fn load_or_generate() -> String {
+pub(crate) fn load_or_generate() -> String {
     clear_legacy();
     if let Some(stored) = load_stored() {
         if !stored.trim().is_empty() {
@@ -107,7 +107,7 @@ pub fn load_or_generate() -> String {
 /// Cache the nickname in `localStorage` for next session. Silent no-op off
 /// the web or when storage is unavailable (e.g. private browsing on some
 /// browsers).
-pub fn persist(nickname: &str) {
+pub(crate) fn persist(nickname: &str) {
     #[cfg(target_arch = "wasm32")]
     {
         if let Some(storage) = local_storage() {

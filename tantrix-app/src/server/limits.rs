@@ -9,14 +9,14 @@ use axum::http::HeaderMap;
 use tantrix_room::rate_limit::{self, RateLimiter};
 
 /// Counts room requests per client in memory, so a restart forgets them.
-pub struct RoomLimits {
+pub(super) struct RoomLimits {
     started: Instant,
     creation: Mutex<RateLimiter>,
     lookup: Mutex<RateLimiter>,
 }
 
 impl RoomLimits {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             started: Instant::now(),
             creation: Mutex::new(RateLimiter::new(rate_limit::ROOM_CREATION)),
@@ -25,12 +25,12 @@ impl RoomLimits {
     }
 
     /// Whether `client` may create one more room now.
-    pub fn allow_creation(&self, client: IpAddr) -> bool {
+    pub(super) fn allow_creation(&self, client: IpAddr) -> bool {
         self.allow(&self.creation, client)
     }
 
     /// Whether `client` may look up one more invitation code now.
-    pub fn allow_lookup(&self, client: IpAddr) -> bool {
+    pub(super) fn allow_lookup(&self, client: IpAddr) -> bool {
         self.allow(&self.lookup, client)
     }
 
@@ -49,7 +49,7 @@ impl RoomLimits {
 /// The client's address: the socket's peer or, behind a trusted reverse
 /// proxy, the address that proxy appended to `X-Forwarded-For`. Only the
 /// last entry is the proxy's; the client may have sent the ones before it.
-pub fn client_ip(peer: IpAddr, headers: &HeaderMap, trust_forwarded: bool) -> IpAddr {
+pub(super) fn client_ip(peer: IpAddr, headers: &HeaderMap, trust_forwarded: bool) -> IpAddr {
     if !trust_forwarded {
         return peer;
     }

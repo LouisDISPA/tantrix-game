@@ -12,14 +12,14 @@ use crate::svg::camera_math::{spot_width, to_stage, Size};
 use crate::svg::geometry::{axial_to_pixel, board_center, Rect, HEX_SIZE};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DragPhase {
+pub(crate) enum DragPhase {
     Pressed,
     Dragging,
     Returning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DragTarget {
+pub(crate) struct DragTarget {
     pub position: Position,
     pub center: (f64, f64),
     pub width: f64,
@@ -27,7 +27,7 @@ pub struct DragTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TileDrag {
+pub(crate) struct TileDrag {
     pub color: Color,
     pub index: usize,
     pub tile: Tile,
@@ -41,16 +41,16 @@ pub struct TileDrag {
 }
 
 impl TileDrag {
-    pub fn is_dragging(self) -> bool {
+    pub(crate) fn is_dragging(self) -> bool {
         self.phase == DragPhase::Dragging
     }
 
-    pub fn holds_pointer(self) -> bool {
+    pub(crate) fn holds_pointer(self) -> bool {
         self.phase != DragPhase::Returning
     }
 
     /// A snapshot must still describe the hand and turn we picked up from.
-    pub fn is_current(self, game: &GameState) -> bool {
+    pub(crate) fn is_current(self, game: &GameState) -> bool {
         game.current_player() == self.color
             && game.board().len() == self.board_len
             && game.hand(self.color).get(self.index) == Some(&self.tile)
@@ -58,7 +58,7 @@ impl TileDrag {
 }
 
 /// Arm the gesture without selecting, auto-playing, or moving the camera.
-pub fn press_tile(
+pub(crate) fn press_tile(
     ctx: GameCtx,
     color: Color,
     index: usize,
@@ -104,7 +104,7 @@ pub fn press_tile(
     }));
 }
 
-pub fn move_tile(ctx: GameCtx, pointer: Pointer) {
+pub(crate) fn move_tile(ctx: GameCtx, pointer: Pointer) {
     let mut ui = ctx.ui_state;
     let Some(mut drag) = *ui.tile_drag().peek() else {
         return;
@@ -132,7 +132,7 @@ pub fn move_tile(ctx: GameCtx, pointer: Pointer) {
 
 /// Release uses the same position/rotation decision as a click. A tap leaves
 /// that decision to the browser's ensuing click; a drag consumes that click.
-pub fn drop_tile(ctx: GameCtx, pointer: Pointer) {
+pub(crate) fn drop_tile(ctx: GameCtx, pointer: Pointer) {
     move_tile(ctx, pointer);
     let ui = ctx.ui_state;
     let Some(drag) = *ui.tile_drag().peek() else {
@@ -161,7 +161,7 @@ pub fn drop_tile(ctx: GameCtx, pointer: Pointer) {
     }
 }
 
-pub fn cancel_tile_drag(ctx: GameCtx) {
+pub(crate) fn cancel_tile_drag(ctx: GameCtx) {
     let mut ui = ctx.ui_state;
     let Some(mut drag) = *ui.tile_drag().peek() else {
         return;
@@ -180,7 +180,7 @@ pub fn cancel_tile_drag(ctx: GameCtx) {
     }
 }
 
-pub fn holds_tile_pointer(ctx: GameCtx) -> bool {
+pub(crate) fn holds_tile_pointer(ctx: GameCtx) -> bool {
     ctx.ui_state
         .tile_drag()
         .peek()

@@ -9,7 +9,7 @@ use crate::svg::paths::color_name as color_slug;
 
 /// Mutually-exclusive visual states for a color chip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorChipState {
+pub(crate) enum ColorChipState {
     /// Nobody has claimed this color.
     Free,
     /// The local viewer owns this seat.

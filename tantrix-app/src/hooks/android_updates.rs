@@ -5,7 +5,7 @@ use futures::StreamExt;
 use std::path::PathBuf;
 
 #[derive(Clone, PartialEq)]
-pub enum DownloadStatus {
+pub(crate) enum DownloadStatus {
     Idle,
     Downloading(u8),
     Ready {
@@ -16,7 +16,7 @@ pub enum DownloadStatus {
 }
 
 #[derive(Clone, Copy)]
-pub struct AndroidUpdates {
+pub(crate) struct AndroidUpdates {
     pub release: Resource<Result<Option<Update>, String>>,
     pub status: ReadSignal<DownloadStatus>,
     commands: Coroutine<()>,
@@ -24,19 +24,19 @@ pub struct AndroidUpdates {
 }
 
 impl AndroidUpdates {
-    pub fn install(mut self) {
+    pub(crate) fn install(mut self) {
         if !*self.busy.peek() {
             self.busy.set(true);
             self.commands.send(());
         }
     }
 
-    pub fn is_busy(self) -> bool {
+    pub(crate) fn is_busy(self) -> bool {
         *self.busy.read()
     }
 }
 
-pub fn use_android_updates() {
+pub(crate) fn use_android_updates() {
     let release = use_resource(|| async {
         let result = android_updates::check().await;
         if let Err(error) = &result {

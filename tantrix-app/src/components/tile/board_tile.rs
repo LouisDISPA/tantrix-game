@@ -9,7 +9,7 @@ use crate::svg::geometry::{hex_position_style, TILE_CX, TILE_CY, TILE_HEX, TILE_
 /// `Placed` is a committed move already on the board (may be dimmed/highlighted);
 /// `Preview` is the translucent ghost shown before the move is confirmed.
 #[derive(Debug, Clone, PartialEq)]
-pub enum BoardTileVariant {
+pub(crate) enum BoardTileVariant {
     Placed,
     Preview,
 }

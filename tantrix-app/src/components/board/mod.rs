@@ -42,11 +42,11 @@ use crate::hooks::{
 use crate::svg::geometry::Rect;
 use crate::svg::paths::color_name as color_slug;
 
-pub use controls::{EndGameButton, ZoomControls};
-pub use empty_layer::{BoardEmptyLayer, BoardPreview};
-pub use orientation_picker::OrientationPicker;
-pub use tiles_layer::BoardTilesLayer;
-pub use viewport::BoardViewport;
+pub(crate) use controls::{EndGameButton, ZoomControls};
+pub(crate) use empty_layer::{BoardEmptyLayer, BoardPreview};
+pub(crate) use orientation_picker::OrientationPicker;
+pub(crate) use tiles_layer::BoardTilesLayer;
+pub(crate) use viewport::BoardViewport;
 
 /// The board's box. Its class carries the colour of whoever moves
 /// (`--turn-color`: the legal spots, the card), so a change of turn re-renders

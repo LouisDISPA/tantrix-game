@@ -9,9 +9,12 @@ use tantrix_proto::{ONLINE_VERSION, ONLINE_VERSION_PARAM};
 /// moves past this, those clients are refused as out of date.
 pub const UNVERSIONED_CLIENT: u32 = 3;
 
+/// Why a socket upgrade is turned down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refusal {
+    /// The URL names no well-formed game ID.
     InvalidCode,
+    /// The room could not be loaded from storage.
     StorageUnavailable,
     /// A page on another site tried to open a socket with the visitor's
     /// session cookie.
@@ -34,6 +37,8 @@ impl Refusal {
         }
     }
 
+    /// Text for the player: the body of a refused upgrade, or the close
+    /// reason when [`Self::closes_socket`].
     pub fn message(self) -> &'static str {
         match self {
             Self::InvalidCode => "invalid game ID",
@@ -79,15 +84,20 @@ impl SiteOrigin<'_> {
 /// What a socket upgrade to `/room/{id}` carries.
 #[derive(Debug, Clone, Copy)]
 pub struct Upgrade<'a> {
+    /// The room's game ID from the URL path, not yet checked.
     pub id: &'a str,
     /// The `Origin` header. Browsers always send one; the desktop and
     /// Android apps send none, so a missing origin is allowed.
     pub origin: Option<&'a str>,
+    /// The page origin this server accepts.
     pub site: SiteOrigin<'a>,
     /// The URL's query string, which carries the client's online version.
     pub query: Option<&'a str>,
 }
 
+/// Whether `upgrade` may reach its room. The origin is checked first, so a
+/// foreign page learns nothing about the room it named, then the game ID,
+/// then the client's online version.
 pub fn check(upgrade: &Upgrade) -> Result<(), Refusal> {
     if upgrade
         .origin

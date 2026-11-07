@@ -3,5 +3,5 @@
 mod connecting;
 mod failed;
 
-pub use connecting::ConnectingView;
-pub use failed::FailedView;
+pub(super) use connecting::ConnectingView;
+pub(super) use failed::FailedView;

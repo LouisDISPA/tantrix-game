@@ -14,13 +14,13 @@ use super::game_state::GameState;
 const FIXTURE: &str = include_str!("../../../e2e/fixtures/forced-after-free-move.json");
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Fixture {
+pub(crate) struct Fixture {
     pub seed: u64,
     pub moves: Vec<FixtureMove>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FixtureMove {
+pub(crate) struct FixtureMove {
     pub player: Color,
     pub tile: Tile,
     pub position: Position,
@@ -31,7 +31,7 @@ pub struct FixtureMove {
 }
 
 impl FixtureMove {
-    pub fn placement(&self) -> Placement {
+    pub(crate) fn placement(&self) -> Placement {
         Placement {
             tile: self.tile,
             position: self.position,
@@ -41,18 +41,18 @@ impl FixtureMove {
 }
 
 /// A new two-player game (Red and Blue, both human) dealt from `seed`.
-pub fn seeded(seed: u64) -> GameState {
+pub(crate) fn seeded(seed: u64) -> GameState {
     GameState::new(&GameConfig::new(Some(seed)))
 }
 
-pub fn fixture() -> Fixture {
+pub(crate) fn fixture() -> Fixture {
     serde_json::from_str(FIXTURE).unwrap()
 }
 
 /// The fixture's game after its first `moves` moves. After three, Red has
 /// played their free move and must fill the forced space it made, at
 /// (-1, -1), with `Tile::GYYBGB`.
-pub fn fixture_after(moves: usize) -> GameState {
+pub(crate) fn fixture_after(moves: usize) -> GameState {
     let fixture = fixture();
     let mut game = seeded(fixture.seed);
     for step in &fixture.moves[..moves] {
@@ -64,7 +64,7 @@ pub fn fixture_after(moves: usize) -> GameState {
 /// The first game, over seeds and then turns, in which `find` finds what
 /// it looks for, with what it found. Each seeded two-player game is played
 /// with the first legal move each turn.
-pub fn find_game<T>(mut find: impl FnMut(&GameState) -> Option<T>) -> (GameState, T) {
+pub(crate) fn find_game<T>(mut find: impl FnMut(&GameState) -> Option<T>) -> (GameState, T) {
     (0..100)
         .find_map(|seed| {
             let mut game = seeded(seed);
@@ -82,7 +82,9 @@ pub fn find_game<T>(mut find: impl FnMut(&GameState) -> Option<T>) -> (GameState
 /// A game under way (a tile on the board) whose player to move holds a
 /// tile — at the index found — that fits at several positions, one of
 /// which (found too) takes the rotations `fits` asks for.
-pub fn tile_with_positions(fits: impl Fn(&[Rotation]) -> bool) -> (GameState, usize, Position) {
+pub(crate) fn tile_with_positions(
+    fits: impl Fn(&[Rotation]) -> bool,
+) -> (GameState, usize, Position) {
     let (game, (idx, at)) = find_game(|game| {
         if game.board().is_empty() {
             return None;
@@ -100,7 +102,7 @@ pub fn tile_with_positions(fits: impl Fn(&[Rotation]) -> bool) -> (GameState, us
 
 /// A game under way whose player to move holds a tile with exactly one
 /// legal move: its index, and that move.
-pub fn tile_with_one_move() -> (GameState, usize, Placement) {
+pub(crate) fn tile_with_one_move() -> (GameState, usize, Placement) {
     let (game, (idx, only)) = find_game(|game| {
         if game.board().is_empty() {
             return None;

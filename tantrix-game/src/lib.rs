@@ -17,6 +17,8 @@
 //! | `history` | [`TurnEvent`]: the recorded moves and skips, for undo and replay |
 //! | `error` | [`MoveError`], [`BoardError`], [`RetireError`], [`SetupError`], [`EventError`], [`ReplayError`] |
 
+#![warn(missing_docs)]
+
 mod bag;
 mod board;
 mod coordinate_system;

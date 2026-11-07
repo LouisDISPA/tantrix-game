@@ -99,7 +99,7 @@ impl<Lens> Store<UiState, Lens> {
 
 ```rust
 #[derive(Debug, Clone, PartialEq, Store)]
-pub struct UiState { pub phase: TurnPhase, pub zoom: f64, /* … */ }
+pub(crate) struct UiState { pub phase: TurnPhase, pub zoom: f64, /* … */ }
 ```
 
 `GameState` wraps the core `Game` (board, bag, hands, turn, legal moves)
@@ -109,7 +109,7 @@ together.
 
 ```rust
 #[derive(Debug, Clone)]    // ← no Store derive
-pub struct GameState { ... }
+pub(crate) struct GameState { ... }
 
 // In context:
 pub game_state: Signal<GameState>,

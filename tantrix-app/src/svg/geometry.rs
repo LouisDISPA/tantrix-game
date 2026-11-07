@@ -1,20 +1,20 @@
 use tantrix_game::{Direction, Position};
 
-pub const HEX_SIZE: f64 = 50.0;
-pub const SQRT3: f64 = 1.732_050_808;
+pub(crate) const HEX_SIZE: f64 = 50.0;
+pub(crate) const SQRT3: f64 = 1.732_050_808;
 
 /// Hex radius used inside each tile's inline SVG viewBox.
-pub const TILE_HEX: f64 = 30.0;
+pub(crate) const TILE_HEX: f64 = 30.0;
 /// ViewBox dimensions: tight fit around the hex bounding box.
-pub const TILE_VB_W: f64 = TILE_HEX * SQRT3;
-pub const TILE_VB_H: f64 = TILE_HEX * 2.0;
+pub(crate) const TILE_VB_W: f64 = TILE_HEX * SQRT3;
+pub(crate) const TILE_VB_H: f64 = TILE_HEX * 2.0;
 /// Hex center within the viewBox.
-pub const TILE_CX: f64 = TILE_VB_W / 2.0;
-pub const TILE_CY: f64 = TILE_VB_H / 2.0;
+pub(crate) const TILE_CX: f64 = TILE_VB_W / 2.0;
+pub(crate) const TILE_CY: f64 = TILE_VB_H / 2.0;
 
 /// Convert axial hex coordinates to pixel coordinates.
 /// SVG y-axis points down, game y-axis points up (TopLeft = +y), so we negate y.
-pub fn axial_to_pixel(pos: Position, hex_size: f64) -> (f64, f64) {
+pub(crate) fn axial_to_pixel(pos: Position, hex_size: f64) -> (f64, f64) {
     let x = (pos.x() as f64 - pos.y() as f64 * 0.5) * SQRT3 * hex_size;
     let y = -(pos.y() as f64) * 1.5 * hex_size;
     (x, y)
@@ -23,7 +23,7 @@ pub fn axial_to_pixel(pos: Position, hex_size: f64) -> (f64, f64) {
 /// Compute the 6 vertices of a pointy-top hexagon centered at (cx, cy).
 /// Order: top, upper-right, lower-right, bottom, lower-left, upper-left.
 /// In SVG coords: top = cy - size (up), bottom = cy + size (down).
-pub fn hex_vertices(cx: f64, cy: f64, size: f64) -> [(f64, f64); 6] {
+pub(crate) fn hex_vertices(cx: f64, cy: f64, size: f64) -> [(f64, f64); 6] {
     let w = size * SQRT3 / 2.0;
     [
         (cx, cy - size),           // 0: top
@@ -43,7 +43,7 @@ pub fn hex_vertices(cx: f64, cy: f64, size: f64) -> [(f64, f64); 6] {
 ///   BottomLeft → edge between bottom (3) and lower-left (4)
 ///   Left → edge between lower-left (4) and upper-left (5)
 ///   TopLeft → edge between upper-left (5) and top (0)
-pub fn direction_edge(dir: Direction) -> (usize, usize) {
+pub(crate) fn direction_edge(dir: Direction) -> (usize, usize) {
     match dir {
         Direction::TopRight => (0, 1),
         Direction::Right => (1, 2),
@@ -55,7 +55,7 @@ pub fn direction_edge(dir: Direction) -> (usize, usize) {
 }
 
 /// Midpoint of an edge given the hex vertices and direction.
-pub fn edge_midpoint(verts: &[(f64, f64); 6], dir: Direction) -> (f64, f64) {
+pub(crate) fn edge_midpoint(verts: &[(f64, f64); 6], dir: Direction) -> (f64, f64) {
     let (i, j) = direction_edge(dir);
     (
         (verts[i].0 + verts[j].0) / 2.0,
@@ -64,14 +64,14 @@ pub fn edge_midpoint(verts: &[(f64, f64); 6], dir: Direction) -> (f64, f64) {
 }
 
 /// Angular separation between two hex directions (1=adjacent, 2=skip-one, 3=opposite).
-pub fn edge_separation(d1: Direction, d2: Direction) -> usize {
+pub(crate) fn edge_separation(d1: Direction, d2: Direction) -> usize {
     let diff = ((d2 as i8) - (d1 as i8)).rem_euclid(6) as usize;
     diff.min(6 - diff)
 }
 
 /// CSS custom properties that anchor a hex tile div at its board position.
 /// Paired with `.board-tile`/`.board-empty` CSS which reads `--hx/--hy/--hw/--hh`.
-pub fn hex_position_style(position: Position, hex_size: f64) -> String {
+pub(crate) fn hex_position_style(position: Position, hex_size: f64) -> String {
     let (px, py) = axial_to_pixel(position, hex_size);
     let half_w = hex_size * SQRT3 / 2.0;
     let half_h = hex_size;
@@ -86,19 +86,22 @@ pub fn hex_position_style(position: Position, hex_size: f64) -> String {
 
 /// Compute the bounding box of all placed tiles in pixel coordinates.
 /// Returns (min_x, min_y, max_x, max_y) or None if no tiles.
-pub fn board_bounding_box(positions: &[Position], hex_size: f64) -> Option<(f64, f64, f64, f64)> {
+pub(crate) fn board_bounding_box(
+    positions: &[Position],
+    hex_size: f64,
+) -> Option<(f64, f64, f64, f64)> {
     hexes_rect(positions, hex_size).map(|r| (r.min_x, r.min_y, r.max_x, r.max_y))
 }
 
 /// The centre of the placed tiles' bounding box, or the origin on an empty
 /// board: the point the board's layer is centred on.
-pub fn board_center(positions: &[Position], hex_size: f64) -> (f64, f64) {
+pub(crate) fn board_center(positions: &[Position], hex_size: f64) -> (f64, f64) {
     hexes_rect(positions, hex_size).map_or((0.0, 0.0), |bounds| bounds.center())
 }
 
 /// An axis-aligned rectangle in pixels (y grows downwards).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Rect {
+pub(crate) struct Rect {
     pub min_x: f64,
     pub min_y: f64,
     pub max_x: f64,
@@ -106,7 +109,7 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn new(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
+    pub(crate) fn new(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Self {
         Self {
             min_x,
             min_y,
@@ -116,19 +119,19 @@ impl Rect {
     }
 
     /// The rectangle `width` × `height` whose top-left corner is (`x`, `y`).
-    pub fn at(x: f64, y: f64, width: f64, height: f64) -> Self {
+    pub(crate) fn at(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self::new(x, y, x + width, y + height)
     }
 
-    pub fn width(&self) -> f64 {
+    pub(crate) fn width(&self) -> f64 {
         self.max_x - self.min_x
     }
 
-    pub fn height(&self) -> f64 {
+    pub(crate) fn height(&self) -> f64 {
         self.max_y - self.min_y
     }
 
-    pub fn center(&self) -> (f64, f64) {
+    pub(crate) fn center(&self) -> (f64, f64) {
         (
             (self.min_x + self.max_x) / 2.0,
             (self.min_y + self.max_y) / 2.0,
@@ -136,7 +139,7 @@ impl Rect {
     }
 
     /// The smallest rectangle holding both.
-    pub fn union(self, other: Rect) -> Rect {
+    pub(crate) fn union(self, other: Rect) -> Rect {
         Rect::new(
             self.min_x.min(other.min_x),
             self.min_y.min(other.min_y),
@@ -147,7 +150,7 @@ impl Rect {
 
     /// Each side moved in by `fraction` of the rectangle's width (left and
     /// right) or height (top and bottom).
-    pub fn shrunk(self, fraction: f64) -> Rect {
+    pub(crate) fn shrunk(self, fraction: f64) -> Rect {
         let (dx, dy) = (self.width() * fraction, self.height() * fraction);
         Rect::new(
             self.min_x + dx,
@@ -158,14 +161,14 @@ impl Rect {
     }
 
     /// The area the two share (zero when they only touch or are apart).
-    pub fn overlap_area(self, other: Rect) -> f64 {
+    pub(crate) fn overlap_area(self, other: Rect) -> f64 {
         let w = self.max_x.min(other.max_x) - self.min_x.max(other.min_x);
         let h = self.max_y.min(other.max_y) - self.min_y.max(other.min_y);
         w.max(0.0) * h.max(0.0)
     }
 
     /// Whether `other` lies wholly inside this rectangle.
-    pub fn contains(&self, other: &Rect) -> bool {
+    pub(crate) fn contains(&self, other: &Rect) -> bool {
         other.min_x >= self.min_x
             && other.max_x <= self.max_x
             && other.min_y >= self.min_y
@@ -174,7 +177,7 @@ impl Rect {
 }
 
 /// The pixel box of the hex at `pos`: the tile's bounding rectangle.
-pub fn hex_rect(pos: Position, hex_size: f64) -> Rect {
+pub(crate) fn hex_rect(pos: Position, hex_size: f64) -> Rect {
     let (px, py) = axial_to_pixel(pos, hex_size);
     let half_w = hex_size * SQRT3 / 2.0;
     Rect::new(px - half_w, py - hex_size, px + half_w, py + hex_size)
@@ -182,7 +185,7 @@ pub fn hex_rect(pos: Position, hex_size: f64) -> Rect {
 
 /// The bounding box of the hexes at `positions` in pixel coordinates, or
 /// `None` for none.
-pub fn hexes_rect(positions: &[Position], hex_size: f64) -> Option<Rect> {
+pub(crate) fn hexes_rect(positions: &[Position], hex_size: f64) -> Option<Rect> {
     positions
         .iter()
         .map(|&pos| hex_rect(pos, hex_size))

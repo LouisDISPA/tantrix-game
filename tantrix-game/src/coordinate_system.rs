@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(
     Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Serialize, Deserialize,
 )]
+/// A hex on the board, in axial coordinates.
 pub struct Position {
     x: i8,
     y: i8,
@@ -46,25 +47,34 @@ impl Sub<Position> for Position {
 }
 
 impl Position {
+    /// The six neighboring positions, each with the direction it lies in.
     pub fn around(self) -> impl Iterator<Item = (Position, Direction)> {
         repeat(self)
             .zip(enum_iterator::all::<Direction>())
             .map(|(pos, dir)| (pos.neighbor(dir), dir))
     }
 
+    /// The position next to this one in `dir`.
     pub fn neighbor(self, dir: Direction) -> Self {
         self + dir.delta()
     }
 }
 
+/// How far a tile is turned clockwise, in steps of 60°.
 #[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(i8)]
 pub enum Rotation {
+    /// Not turned.
     None = 0,
+    /// 60° clockwise.
     R60,
+    /// 120° clockwise.
     R120,
+    /// Half a turn.
     R180,
+    /// 240° clockwise.
     R240,
+    /// 300° clockwise (60° counterclockwise).
     R300,
 }
 
@@ -72,8 +82,10 @@ impl Rotation {
     const COUNT: i8 = enum_iterator::cardinality::<Self>() as i8;
 }
 
+/// A side of a hex, and the neighbor across it, clockwise from `Left`.
 #[derive(Enum, Sequence, Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(i8)]
+#[expect(missing_docs, reason = "the variants name the sides")]
 pub enum Direction {
     Left = 0,
     TopLeft,
@@ -117,10 +129,12 @@ impl Direction {
         }
     }
 
+    /// The direction's place in clockwise order, from 0 (`Left`) to 5.
     pub fn index(self) -> usize {
         self as usize
     }
 
+    /// The direction pointing the other way.
     pub fn opposite(self) -> Self {
         (self as i8 + Self::COUNT / 2).into()
     }
@@ -167,16 +181,19 @@ impl Sub<Rotation> for Direction {
 }
 
 impl Position {
+    /// Where the first tile goes.
     pub const CENTER: Position = Position { x: 0, y: 0 };
 
     pub(crate) fn new(x: i8, y: i8) -> Self {
         Position { x, y }
     }
 
+    /// The axial coordinate that grows toward [`Direction::Right`].
     pub fn x(self) -> i8 {
         self.x
     }
 
+    /// The axial coordinate that grows toward [`Direction::TopLeft`].
     pub fn y(self) -> i8 {
         self.y
     }

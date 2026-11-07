@@ -14,7 +14,7 @@ use crate::pages::not_found::NotFound;
 use crate::pages::online::{JoinRoom, OnlineEntry, OnlineRoom};
 
 #[derive(Routable, Clone, PartialEq)]
-pub enum Route {
+pub(crate) enum Route {
     #[layout(AppLayout)]
     #[route("/")]
     MainMenu {},
@@ -38,7 +38,7 @@ pub enum Route {
 }
 
 #[derive(Clone, Copy)]
-pub struct MenuVisit {
+pub(crate) struct MenuVisit {
     pub has_seen_main: Signal<bool>,
 }
 

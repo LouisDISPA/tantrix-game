@@ -46,6 +46,7 @@ Prefer a check over prose when a rule can be detected:
 |------|-------|
 | Randomness is seeded | `clippy.toml` → `disallowed-methods` (`rand::rng`, `rand::random*`); intentional sites use `#[expect(clippy::disallowed_methods, reason = "…")]` |
 | `components/` never touches session state | `tantrix-app/src/components/tier_tests.rs` |
+| `pub` only for other crates; library crates documented | root `Cargo.toml` → `[workspace.lints]` (`unreachable_pub`); `#![warn(missing_docs)]` in game, proto, room |
 
 Name the check in the rule's line so a reader knows it is enforced.
 

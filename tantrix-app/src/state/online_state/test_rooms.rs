@@ -7,9 +7,9 @@ use tantrix_proto::{GameSnapshot, LobbyState, Participant, ParticipantRole, Peer
 use crate::state::game_state::GameState;
 
 /// A seated player: their color, nickname and whether they are connected.
-pub type Sitter = (Color, &'static str, bool);
+pub(crate) type Sitter = (Color, &'static str, bool);
 
-pub fn seat(name: &str) -> Seat {
+pub(crate) fn seat(name: &str) -> Seat {
     Seat {
         peer_id: PeerId::new(name),
         nickname: name.to_string(),
@@ -43,7 +43,7 @@ fn participants(seated: &[Sitter], unseated: &[&str]) -> Vec<Participant> {
 }
 
 /// A lobby with `seated` at their colors and `unseated` waiting.
-pub fn lobby(seated: &[Sitter], unseated: &[&str]) -> LobbyState {
+pub(crate) fn lobby(seated: &[Sitter], unseated: &[&str]) -> LobbyState {
     LobbyState {
         match_id: 0,
         seats: seats(seated),
@@ -54,7 +54,7 @@ pub fn lobby(seated: &[Sitter], unseated: &[&str]) -> LobbyState {
 
 /// A game just started by `seated` (in that turn order), with `watching`
 /// in the room too.
-pub fn snapshot(seated: &[Sitter], watching: &[&str]) -> GameSnapshot {
+pub(crate) fn snapshot(seated: &[Sitter], watching: &[&str]) -> GameSnapshot {
     GameSnapshot {
         match_id: 0,
         board: Board::default(),
@@ -69,7 +69,7 @@ pub fn snapshot(seated: &[Sitter], watching: &[&str]) -> GameSnapshot {
 }
 
 /// What a room would send for `game` (watched: no seats).
-pub fn snapshot_of(game: &GameState) -> GameSnapshot {
+pub(crate) fn snapshot_of(game: &GameState) -> GameSnapshot {
     GameSnapshot {
         match_id: 0,
         board: game.board().clone(),

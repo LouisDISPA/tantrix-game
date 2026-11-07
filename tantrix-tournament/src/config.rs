@@ -10,7 +10,7 @@ use tantrix_game::{AiView, Move, TantrixAi};
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub(crate) struct Config {
     pub seed: Option<u64>,
     /// Games per pairing.
     pub games: Option<usize>,
@@ -25,7 +25,7 @@ pub struct Config {
 /// One AI of the tournament.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AiConfig {
+pub(crate) struct AiConfig {
     /// Which AI: a name `--list` shows, in any case.
     pub kind: String,
     /// What the tournament calls it: the kind's name by default.
@@ -45,7 +45,7 @@ pub struct AiConfig {
 /// [`Weights`], each optional.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WeightsConfig {
+pub(crate) struct WeightsConfig {
     pub open_end: Option<f32>,
     pub forced_end: Option<f32>,
     pub ready_end: Option<f32>,
@@ -55,18 +55,18 @@ pub struct WeightsConfig {
 }
 
 impl Config {
-    pub fn load(path: &Path) -> Result<Self, String> {
+    pub(crate) fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
         Self::parse(&text).map_err(|error| format!("{}: {error}", path.display()))
     }
 
-    pub fn parse(text: &str) -> Result<Self, String> {
+    pub(crate) fn parse(text: &str) -> Result<Self, String> {
         toml::from_str(text).map_err(|error| error.to_string())
     }
 
     /// The AIs the config lists, in order, or every AI if it lists none.
-    pub fn build_ais(&self) -> Result<Vec<Box<dyn TantrixAi>>, String> {
+    pub(crate) fn build_ais(&self) -> Result<Vec<Box<dyn TantrixAi>>, String> {
         if self.ais.is_empty() {
             return Ok(all_ais());
         }
@@ -75,7 +75,7 @@ impl Config {
 }
 
 impl AiConfig {
-    pub fn build(&self) -> Result<Box<dyn TantrixAi>, String> {
+    pub(crate) fn build(&self) -> Result<Box<dyn TantrixAi>, String> {
         let base = all_ais()
             .into_iter()
             .find(|ai| ai.name().eq_ignore_ascii_case(self.kind.trim()))

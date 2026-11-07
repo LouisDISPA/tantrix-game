@@ -17,7 +17,7 @@ use crate::util::sleep;
 
 /// This task belongs to OnlineRoom, so navigation cancels the socket,
 /// pending backoff and deadlines together. A manual restart cancels it first.
-pub fn spawn_session(
+pub(super) fn spawn_session(
     store: Store<OnlineState>,
     mut sender: Signal<Option<CommandSender>>,
     generation: Signal<u32>,

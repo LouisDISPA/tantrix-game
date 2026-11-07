@@ -8,17 +8,25 @@ use crate::grid::Grid;
 use crate::tiles::NUMBER_OF_TILE;
 use crate::{Board, Color, Direction, Move, Position};
 
+/// One color's score on the board as it stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PlayerScore {
+    /// Tiles in the color's longest line.
     pub longest_line: usize,
+    /// Tiles in its longest loop; 0 without one.
     pub longest_loop: usize,
+    /// The points: the longest line, or twice the longest loop if more.
     pub score: usize,
 }
 
+/// The line or loop that gives one color its score.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ScoringPath {
+    /// Its tiles' positions, from one end to the other.
     pub positions: Vec<Position>,
+    /// Whether it closes into a loop.
     pub is_loop: bool,
+    /// Its points: 1 per tile, 2 for a loop; 0 for a color with no tile.
     pub score: usize,
 }
 
@@ -42,8 +50,11 @@ fn color_link(m: &Move, color: Color) -> Option<(Direction, Direction)> {
 /// One line or loop of one color on the board ([`Board::lines`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {
+    /// The line's color.
     pub color: Color,
+    /// How many tiles it runs through.
     pub tiles: usize,
+    /// Whether it closes into a loop.
     pub is_loop: bool,
     /// Where each end of a line leads; `None` for a loop.
     pub ends: [Option<LineEnd>; 2],
@@ -54,6 +65,7 @@ pub struct Line {
 /// rule, so it extends it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LineEnd {
+    /// The empty position the line leads into.
     pub position: Position,
     /// From `position` to the line's last tile.
     pub toward: Direction,

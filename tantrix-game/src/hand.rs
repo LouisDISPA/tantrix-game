@@ -7,12 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Bag, MoveError, Tile};
 
+/// How many tiles a full hand holds.
 pub const TILES_IN_HAND: usize = 6;
 
 /// The tiles a play drew from the bag, in draw order: one while the bag
 /// lasts, none after (more only for a hand that was not full).
 pub type DrawnTiles = ArrayVec<Tile, TILES_IN_HAND>;
 
+/// A player's tiles, face up, in hand order.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hand {
     tiles: ArrayVec<Tile, TILES_IN_HAND>,

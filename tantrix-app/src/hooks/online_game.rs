@@ -28,7 +28,7 @@ use crate::state::ui_state::{
 /// snapshot and kept live via reactive effects on the surrounding online
 /// store + sender. Call it once the room has sent a snapshot (in the
 /// Playing or Ended phase).
-pub fn use_online_game_ctx(
+pub(crate) fn use_online_game_ctx(
     state: Store<OnlineState>,
     sender: Signal<Option<CommandSender>>,
 ) -> GameCtx {

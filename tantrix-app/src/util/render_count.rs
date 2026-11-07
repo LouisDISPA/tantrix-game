@@ -21,7 +21,7 @@ thread_local! {
 
 /// Count one render of `component`; `instance` tells its copies apart
 /// (`()` for a component shown once).
-pub fn record(component: &'static str, instance: impl Debug) {
+pub(crate) fn record(component: &'static str, instance: impl Debug) {
     RENDERS.with(|renders| {
         *renders
             .borrow_mut()
@@ -31,7 +31,7 @@ pub fn record(component: &'static str, instance: impl Debug) {
 }
 
 /// Renders of `component`'s copy `instance` since the last [`reset`].
-pub fn of(component: &str, instance: impl Debug) -> usize {
+pub(crate) fn of(component: &str, instance: impl Debug) -> usize {
     let instance = format!("{instance:?}");
     RENDERS.with(|renders| {
         renders
@@ -43,7 +43,7 @@ pub fn of(component: &str, instance: impl Debug) -> usize {
 }
 
 /// Renders of every copy of `component` since the last [`reset`].
-pub fn total(component: &str) -> usize {
+pub(crate) fn total(component: &str) -> usize {
     RENDERS.with(|renders| {
         renders
             .borrow()
@@ -55,6 +55,6 @@ pub fn total(component: &str) -> usize {
 }
 
 /// Forget every count so far.
-pub fn reset() {
+pub(crate) fn reset() {
     RENDERS.with(|renders| renders.borrow_mut().clear());
 }
