@@ -258,6 +258,10 @@ with `RoomEngine::run`, the same on both servers:
 - **Restarts.** A room loaded from storage forgets members without a seat
   whose sockets are gone; seated players keep their seats.
 
+`tantrix-room/src/engine/model_tests.rs` checks these rules, all but the
+native timeouts, after random event sequences, failed saves, restarts and
+hibernation included.
+
 ## Inactivity and persistence
 
 `tantrix_room::lifecycle` owns the shared policy and recoverable allocation steps.

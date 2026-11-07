@@ -21,3 +21,4 @@ rand.workspace = true
 [dev-dependencies]
 serde_json.workspace = true
 futures.workspace = true
+proptest.workspace = true

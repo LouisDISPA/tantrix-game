@@ -14,6 +14,8 @@
 
 mod ai;
 mod history;
+#[cfg(test)]
+mod model_tests;
 mod queries;
 mod setup;
 #[cfg(test)]

@@ -69,6 +69,34 @@ fn is_modifier(c: char) -> bool {
     )
 }
 
+/// What shuffles a match's bag and turn order. The hidden bag order is the
+/// game's secret, so it is the OS-seeded thread RNG (ChaCha12), not a 64-bit
+/// seed, and no seed is kept. Nothing needs one: `GameData` keeps the bag
+/// and the full history, and undoing the history gives back the deal.
+/// Snapshots carry neither.
+#[cfg(not(test))]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "online deals stay secret: no seed exists"
+)]
+fn deal_rng(_match_id: u32) -> impl rand::Rng {
+    rand::rng()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Unit tests deal match `n` from this seed plus `n`, so a test plays
+    /// the same every run, and each can pick its own deals.
+    pub(crate) static DEAL_SEED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn deal_rng(match_id: u32) -> impl rand::Rng {
+    use rand::SeedableRng;
+    let seed = DEAL_SEED.get().wrapping_add(match_id.into());
+    rand::rngs::Xoshiro256PlusPlus::seed_from_u64(seed)
+}
+
 /// A room member, seated or not.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerRecord {
@@ -394,16 +422,7 @@ impl RoomData {
                         Player::None
                     }
                 });
-                // The hidden bag order is the game's secret, so it is shuffled
-                // by the OS-seeded thread RNG (ChaCha12), not from a 64-bit
-                // seed, and no seed is kept. Nothing needs one: `GameData`
-                // keeps the bag and the full history, and undoing the history
-                // gives back the deal. Snapshots carry neither.
-                #[expect(
-                    clippy::disallowed_methods,
-                    reason = "online deals stay secret: no seed exists"
-                )]
-                let mut game = Game::from_players_with_rng(players, &mut rand::rng())
+                let mut game = Game::from_players_with_rng(players, &mut deal_rng(self.match_id))
                     .map_err(|e| (RejectCode::InvalidMove, e.to_string()))?;
                 game.skip_stuck_players();
                 self.ended = game.status() != GameStatus::Playing;
