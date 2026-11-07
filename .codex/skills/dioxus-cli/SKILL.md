@@ -39,7 +39,7 @@ Useful raw `dx` commands: `dx check`, `dx doctor`, `dx build --keep-names`
 | `bundle` | Release/desktop packaging switches |
 | `worker` | SSR inside the Cloudflare Worker (`tantrix-worker`) |
 | `android` | Android build: `mobile` WebView UI + native sockets and installer updates |
-| `mobile`, `native`, `liveview` | Renderers (`android` pulls in `mobile`) |
+| `mobile` | Mobile WebView renderer (`android` pulls it in) |
 
 ## Configuration (`tantrix-app/Dioxus.toml`)
 

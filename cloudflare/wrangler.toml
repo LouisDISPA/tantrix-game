@@ -8,9 +8,9 @@ workers_dev = false
 pattern = "tantrix.louis-dispa.fr"
 custom_domain = true
 
-# The web client built by `just worker-client`. Its index.html is excluded by
-# the `.assetsignore` that recipe writes. Application routes run through the
-# SSR Worker; unmatched navigations use the static 404 page.
+# The web client built by the `worker-client-build` recipe. Its index.html is
+# excluded by the `.assetsignore` that recipe writes. Application routes run
+# through the SSR Worker; unmatched navigations use the static 404 page.
 [assets]
 directory = "../target/dx/tantrix/release/web/public"
 binding = "ASSETS"

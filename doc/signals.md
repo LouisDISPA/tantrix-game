@@ -6,14 +6,15 @@ Paths below are relative to `tantrix-app/src/`.
 
 | State | Shape / owner | Purpose |
 |---|---|---|
-| `THEME` | `GlobalSignal<Theme>`; `state/theme.rs` | App-wide light/dark choice |
+| `THEME` | `GlobalStore<Theme>`; `state/theme.rs` | App-wide light/dark choice |
 | `screen` | `Signal<Screen>`; `LocalGame` | Setup or playing |
 | `game_state` | `Signal<GameState>`; `GameCtx` | Atomic game + legal-hand-move cache |
 | `ui_state` | `Store<UiState>`; `GameCtx` | Independently changing interaction/camera fields |
-| `OnlineState` | `Store`; online room | Room code, peer ID, phase/snapshot, last error |
-| `RoomLink` | Plain `Copy` data; `GameDriver::Online` | Command sender + seat/name memos |
+| `OnlineState` | `Store`; online room | Game ID, room code, peer ID, phase/snapshot, connection, seat change, last error |
+| `RoomLink` | Plain `Copy` data; `GameDriver::Online` | Command sender + match, seat, name and connected memos |
 | Downloads | App context; `hooks/downloads.rs` | Release/device/install state; browser builds |
 | Desktop updates | App context; `hooks/desktop_updates.rs` | Update status + install commands; survives navigation |
+| Android updates | App context; `hooks/android_updates.rs` | Latest release check + download/install state |
 
 `hooks/game_ctx.rs::use_game_ctx` creates/provides `GameCtx` and installs the
 local AI effect. `GameDriver::Local` runs every seat here;

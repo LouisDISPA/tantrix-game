@@ -148,15 +148,13 @@ This project uses CSS custom properties with OKLCH colors:
 }
 ```
 
-Toggle theme via global signal:
+Toggle the theme through the global store (`state/theme.rs`):
 ```rust
-static THEME: GlobalSignal<Theme> = Signal::global(|| Theme::Light);
+pub static THEME: GlobalStore<Theme> = Global::new(initial_theme);
 
-fn toggle_theme() {
-    *THEME.write() = match THEME() {
-        Theme::Light => Theme::Dark,
-        Theme::Dark => Theme::Light,
-    };
+pub fn toggle_theme() {
+    let next = THEME.resolve().read().toggle();
+    THEME.resolve().set(next);
 }
 ```
 

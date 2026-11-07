@@ -40,10 +40,11 @@ so it is worth its best line, counting what that line can still become:
   rule, any tile placed at a line's end extends it, whoever plays it;
 - more per such end on a forced space (`forced_end`): someone must fill it
   soon, extending the line;
-- more per end a tile of the owner's hand fits (`ready_end`);
-- a line whose two ends lead into one space a tile can close:
-  `closable_loop` × the loop's points; two lines whose ends meet in one
-  fillable space: `joinable` × their joined length.
+- more per end a tile of the owner's hand fits (`ready_end`).
+
+A fillable space where two ends meet counts instead when worth more:
+`closable_loop` × the loop's points (one line's ends) or `joinable` × the
+joined length (two lines' ends).
 
 A position is worth the player's value less `opponent` × the best
 opponent's. `Weights::BALANCED` came out of two tuning rounds (below);
@@ -59,7 +60,7 @@ drawn tiles are omitted.
 ### MonteCarlo
 
 Keeps `width` (default 16) candidates by line evaluation and spends
-`width × playouts` simulations (`playouts` defaults to 16). Each candidate
+candidates × `playouts` simulations (`playouts` defaults to 16). Each candidate
 uses the same randomized deals to reduce draw noise. Greedy playouts
 maximize each player's score gain (`IndexedBoard::score_after`), breaking
 ties randomly. Reward is final margin against the best opponent, plus 5
@@ -187,9 +188,10 @@ Strategist variants, one weight changed at a time, 1000 games per pairing
 
 ## Performance
 
-The engine got about twice as fast without changing a single move
-(`cargo run --release -p tantrix-ai --example seeded_games` prints a
-checksum of every game's history and scores, unchanged throughout):
+The engine got about twice as fast without changing a single move: the
+seeded-game checksum never changed. `cargo run --release -p tantrix-ai
+--example seeded_games [GAMES_PER_PAIR]` prints it; it now plays every AI
+(20 games per pairing by default), so its timings differ from the table:
 
 | | Before | After |
 |---|---|---|
