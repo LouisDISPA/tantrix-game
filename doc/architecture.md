@@ -75,10 +75,12 @@ is the same for both servers:
   the frames and keepalives.
 - `hooks/online_game.rs` turns each snapshot into `GameState` and UI changes.
 
-On the server, `tantrix_room::engine::RoomEngine` turns socket events into a
-room to save and messages to send; `room_logic` applies intents to the game.
-Each server's adapter supplies sockets, keepalives and storage, and runs
-`RoomEngine::run` ([rules](MULTIPLAYER.md#room-engine-rules)).
+On the server, `tantrix_room::service::RoomService` runs each room: it owns
+the room record and a `tantrix_room::engine::RoomEngine`, which turns socket
+events into a room to save and messages to send; `room_logic` applies intents
+to the game. Each server is a thin adapter: it supplies sockets, keepalives
+and storage through `ServiceHost` and calls the service once per event
+([rules](MULTIPLAYER.md#room-engine-rules), [events](MULTIPLAYER.md#room-servers)).
 
 ### Native server
 
@@ -91,7 +93,7 @@ sequenceDiagram
     participant C as Client
     participant S as Axum (server.rs)
     participant R as Rooms (server/room.rs)
-    participant E as RoomEngine
+    participant E as RoomService
     participant DB as SQLite (server/store.rs)
     Note over C,S: the first response sets the session cookie
     C->>S: POST /api/rooms {request_id}
@@ -103,8 +105,8 @@ sequenceDiagram
     S->>R: open the room, start a socket task
     R-->>C: RoomInfo
     C->>R: Hello, then PlayMove, Rematch…
-    R->>E: on_open / on_text / on_close
-    E-->>R: Step: room to save, effects
+    R->>E: open / text / close events
+    E-->>R: record to save, effects to deliver (ServiceHost)
     R->>DB: save
     R-->>C: Welcome, snapshots to every socket
 ```
@@ -123,7 +125,7 @@ sequenceDiagram
     participant W as tantrix-worker
     participant RC as RoomCodes object
     participant R as Room object
-    participant E as RoomEngine
+    participant E as RoomService
     Note over C,W: the first response sets the session cookie
     C->>W: POST /api/rooms {request_id}
     W->>R: /create/{id}
@@ -134,7 +136,7 @@ sequenceDiagram
     R->>R: handshake::check, load storage, accept a hibernatable socket
     R-->>C: RoomInfo
     C->>R: Hello, then PlayMove, Rematch…
-    R->>E: on_open / on_text / on_close
+    R->>E: open / text / close events
     R->>R: save to object storage
     R-->>C: Welcome, snapshots to every socket
 ```

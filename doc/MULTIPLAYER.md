@@ -191,41 +191,6 @@ socket sends `RoomInfo` with the current code, then the normal Hello/Welcome
 exchange. Missing games reject Welcome with `RoomNotFound`; expired lobbies
 use `RoomExpired` (HTTP APIs return 410).
 
-### Room engine rules
-
-`RoomEngine::run` applies these rules on both servers:
-
-- **Save first.** A changed room is saved before the step is committed and
-  before anyone hears of it. If the save fails, nothing is committed and
-  every socket is closed with *Room storage is unavailable.*; the room is
-  loaded from storage again for the next visitor.
-- **Slow sockets.** A socket the server cannot hand a message to (the native
-  64-message queue is full, or the socket is gone) is closed with
-  *Connection is too slow.* and leaves the room as a disconnect would.
-- **Hello once.** A socket must say `Hello` before anything else (*say hello
-  first*), and only once (*already joined*). A refused `Hello` (full room,
-  bad nickname) gets a rejected `Welcome` and the socket is closed;
-  anything else it sends is ignored, so a retry needs a new connection.
-- **Frames.** Binary frames, frames over 8 KiB and invalid JSON are
-  answered with an error and change nothing. The native server drops frames
-  over 64 KiB before they reach the room.
-- **Rate limit.** A socket may send 20 frames at once, then 2 per second on
-  average; one that sends faster is closed with *Too many messages.* and
-  leaves the room as a disconnect would. The allowance is kept in memory, so
-  a restart or a hibernated Durable Object refills it.
-- **Socket cap.** A room keeps at most 64 sockets (twice the member limit).
-  A new socket in a full room closes the oldest one that never said `Hello`
-  (*Too many connections to this room.*).
-- **Timeouts (native).** A socket must send something other than a keepalive
-  within 10 seconds of opening, then some frame at least every 75 seconds,
-  or it is closed with *Connection timed out.* A peer that stops reading for
-  10 seconds is dropped. The Worker relies on the runtime and the socket cap.
-- **Nicknames.** Control characters, text-direction overrides and invisible
-  fillers are removed; a name with no visible character is refused. Setting
-  the same name again saves and broadcasts nothing.
-- **Restarts.** A room loaded from storage forgets members without a seat
-  whose sockets are gone; seated players keep their seats.
-
 ### Request limits
 
 Invitation codes are short enough to scan, so both servers count room
@@ -251,7 +216,7 @@ Permanent-ID requests are not counted; each socket has its own frame limit.
   must match `tantrix_room::rate_limit`. Cloudflare counts per location and
   approximately.
 
-### Room events
+### Room engine rules
 
 The engine turns each socket event into a `Step`: an optional room to
 persist and send, broadcast or close effects. The service carries it out
