@@ -36,7 +36,7 @@ use crate::state::ui_state::{
 /// (`UiState::focus_request`); the component that shows the target takes the
 /// focus once it can, and clears the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FocusTarget {
+pub(crate) enum FocusTarget {
     /// A tile of the hand to move, on this device: this one if it can be
     /// played, else the first that can.
     Hand(Option<usize>),
@@ -56,7 +56,12 @@ impl FocusTarget {
     /// which `playable` says which tiles can be played (the hand to move's,
     /// on a device that plays it) at `phase`, with `placed` tiles on the
     /// board. `None` when the focus is not for the hand, or not yet.
-    pub fn hand_tile(self, phase: TurnPhase, placed: usize, playable: &[bool]) -> Option<usize> {
+    pub(crate) fn hand_tile(
+        self,
+        phase: TurnPhase,
+        placed: usize,
+        playable: &[bool],
+    ) -> Option<usize> {
         let wanted = match self {
             Self::Hand(at) if is_choosing(phase) => at,
             Self::NextTurn { placed: before }
@@ -80,7 +85,7 @@ fn is_choosing(phase: TurnPhase) -> bool {
 
 /// A move between the choices of a step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Nav {
+pub(crate) enum Nav {
     Prev,
     Next,
     Up,
@@ -93,7 +98,7 @@ impl Nav {
     /// The move `key` asks for: the arrow keys, Home and End. `None` for any
     /// other key, and for any key held with Ctrl, Alt or Meta — those are
     /// the browser's and the system's shortcuts.
-    pub fn of(key: &Key, modifiers: Modifiers) -> Option<Self> {
+    pub(crate) fn of(key: &Key, modifiers: Modifiers) -> Option<Self> {
         if modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META) {
             return None;
         }
@@ -110,7 +115,7 @@ impl Nav {
 
     /// The move `key` asks for on the card of options, a single row: any
     /// arrow steps along it, and R turns the tile on (Shift+R back).
-    pub fn of_rotation(key: &Key, modifiers: Modifiers) -> Option<Self> {
+    pub(crate) fn of_rotation(key: &Key, modifiers: Modifiers) -> Option<Self> {
         if let Key::Character(c) = key {
             let plain =
                 !modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META);
@@ -132,7 +137,7 @@ impl Nav {
 
 /// Whether `key` takes the choice in focus: Enter or Space, not held with
 /// Ctrl, Alt or Meta.
-pub fn is_choice(key: &Key, modifiers: Modifiers) -> bool {
+pub(crate) fn is_choice(key: &Key, modifiers: Modifiers) -> bool {
     !modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META)
         && (matches!(key, Key::Named(NamedKey::Enter))
             || matches!(key, Key::Character(c) if c == " "))
@@ -140,14 +145,14 @@ pub fn is_choice(key: &Key, modifiers: Modifiers) -> bool {
 
 /// Whether the player is on the keys (`UiState::keyboard`): a focus then
 /// previews, and a click moves the focus on, as a key would.
-pub fn keys_in_use(ctx: GameCtx) -> bool {
+pub(crate) fn keys_in_use(ctx: GameCtx) -> bool {
     *ctx.ui_state.keyboard().peek()
 }
 
 /// Where `nav` goes in a row of `len` choices from the one at `at` (none:
 /// the row's start): ← and → round from one end to the other, Home and End
 /// to the ends. `None` for ↑ and ↓, which leave a row, and in an empty row.
-pub fn step_in(len: usize, at: Option<usize>, nav: Nav) -> Option<usize> {
+pub(crate) fn step_in(len: usize, at: Option<usize>, nav: Nav) -> Option<usize> {
     let last = len.checked_sub(1)?;
     Some(match (nav, at) {
         (Nav::First, _) | (Nav::Next, None) => 0,
@@ -165,12 +170,12 @@ fn column(at: Position) -> i32 {
 
 /// Where `at` comes as the keys read the board: by row from the top of the
 /// screen (the game's y grows upwards), then left to right.
-pub fn reading_key(at: Position) -> (i32, i32) {
+pub(crate) fn reading_key(at: Position) -> (i32, i32) {
     (-i32::from(at.y()), column(at))
 }
 
 /// `spots` in [`reading_key`] order.
-pub fn spot_order(spots: impl IntoIterator<Item = Position>) -> Vec<Position> {
+pub(crate) fn spot_order(spots: impl IntoIterator<Item = Position>) -> Vec<Position> {
     let mut order: Vec<Position> = spots.into_iter().collect();
     order.sort_by_key(|&at| reading_key(at));
     order
@@ -179,7 +184,7 @@ pub fn spot_order(spots: impl IntoIterator<Item = Position>) -> Vec<Position> {
 /// The spot `nav` goes to from `from` among `order` (read in
 /// [`spot_order`]). With no spot active yet, the first (the last for ← and
 /// End). ↑ and ↓ keep to the spot when no row above or below has one.
-pub fn step_spot(order: &[Position], from: Option<Position>, nav: Nav) -> Option<Position> {
+pub(crate) fn step_spot(order: &[Position], from: Option<Position>, nav: Nav) -> Option<Position> {
     let at = from.and_then(|from| order.iter().position(|&spot| spot == from));
     let from = match (at, nav) {
         (Some(at), Nav::Up | Nav::Down) => order[at],
@@ -204,13 +209,13 @@ pub fn step_spot(order: &[Position], from: Option<Position>, nav: Nav) -> Option
 /// Which of the hand to move's tiles can be played: those with a move.
 /// While a forced space can be filled the rules offer only the moves that
 /// fill one, so the other tiles have none.
-pub fn playable_tiles(infos: &[TileMoveInfo]) -> Vec<bool> {
+pub(crate) fn playable_tiles(infos: &[TileMoveInfo]) -> Vec<bool> {
     infos.iter().map(TileMoveInfo::has_moves).collect()
 }
 
 /// The tile the hand's focus goes to: `wanted` if it can be played, else
 /// the first that can.
-pub fn hand_focus(playable: &[bool], wanted: Option<usize>) -> Option<usize> {
+pub(crate) fn hand_focus(playable: &[bool], wanted: Option<usize>) -> Option<usize> {
     wanted
         .filter(|&at| playable.get(at) == Some(&true))
         .or_else(|| playable.iter().position(|&can| can))
@@ -218,7 +223,7 @@ pub fn hand_focus(playable: &[bool], wanted: Option<usize>) -> Option<usize> {
 
 /// The playable tile `nav` goes to from the tile at `from` (← and → round
 /// the hand, Home and End), skipping the tiles that cannot be played.
-pub fn step_tile(playable: &[bool], from: usize, nav: Nav) -> Option<usize> {
+pub(crate) fn step_tile(playable: &[bool], from: usize, nav: Nav) -> Option<usize> {
     let tiles: Vec<usize> = (0..playable.len()).filter(|&i| playable[i]).collect();
     let at = tiles.iter().position(|&i| i == from);
     step_in(tiles.len(), at, nav).map(|i| tiles[i])
@@ -226,7 +231,7 @@ pub fn step_tile(playable: &[bool], from: usize, nav: Nav) -> Option<usize> {
 
 /// How the card of options names a way round: as the tile is turned from
 /// the way the hand shows it (a rotation turns it clockwise on screen).
-pub fn rotation_label(rotation: Rotation) -> &'static str {
+pub(crate) fn rotation_label(rotation: Rotation) -> &'static str {
     match rotation {
         Rotation::None => "Place it as in your hand",
         Rotation::R60 => "Place it turned 60° clockwise",
@@ -238,7 +243,7 @@ pub fn rotation_label(rotation: Rotation) -> &'static str {
 }
 
 /// The keyboard's place at each step: the hand, the spots, the card.
-pub fn step_focus(phase: TurnPhase) -> Option<FocusTarget> {
+pub(crate) fn step_focus(phase: TurnPhase) -> Option<FocusTarget> {
     match phase {
         TurnPhase::SelectTile => Some(FocusTarget::Hand(None)),
         TurnPhase::SelectPosition => Some(FocusTarget::Spots),
@@ -248,7 +253,7 @@ pub fn step_focus(phase: TurnPhase) -> Option<FocusTarget> {
 }
 
 /// Ask for the keyboard's focus to go to `target`.
-pub fn request_focus(ctx: GameCtx, target: FocusTarget) {
+pub(crate) fn request_focus(ctx: GameCtx, target: FocusTarget) {
     set_if_changed(ctx.ui_state.focus_request(), Some(target));
 }
 
@@ -258,7 +263,7 @@ fn placed(ctx: GameCtx) -> usize {
 }
 
 /// The spots of the selected tile, in [`spot_order`].
-pub fn selected_spots(ctx: GameCtx) -> Vec<Position> {
+pub(crate) fn selected_spots(ctx: GameCtx) -> Vec<Position> {
     let Some(idx) = *ctx.ui_state.selected_tile().peek() else {
         return Vec::new();
     };
@@ -288,7 +293,7 @@ fn activate_spot(ctx: GameCtx, at: Position) {
 /// The spots took the keyboard's focus: the keys go on from the spot
 /// already hovered (the one just stepped back from), else the one whose
 /// card is open, else the first.
-pub fn focus_spots(ctx: GameCtx) {
+pub(crate) fn focus_spots(ctx: GameCtx) {
     let spots = selected_spots(ctx);
     let open = (*ctx.ui_state.selected_position().peek()).filter(|at| spots.contains(at));
     let at = active_spot(ctx, &spots)
@@ -300,7 +305,7 @@ pub fn focus_spots(ctx: GameCtx) {
 }
 
 /// An arrow key, Home or End on the spots.
-pub fn move_spot(ctx: GameCtx, nav: Nav) {
+pub(crate) fn move_spot(ctx: GameCtx, nav: Nav) {
     let spots = selected_spots(ctx);
     if let Some(at) = step_spot(&spots, active_spot(ctx, &spots), nav) {
         activate_spot(ctx, at);
@@ -310,7 +315,7 @@ pub fn move_spot(ctx: GameCtx, nav: Nav) {
 /// Enter on the spots: take the active spot, as a click would. A spot that
 /// takes the tile two ways opens the card, which takes the focus; a move
 /// played sends it on to the next turn.
-pub fn choose_spot(ctx: GameCtx) {
+pub(crate) fn choose_spot(ctx: GameCtx) {
     let spots = selected_spots(ctx);
     let Some(at) = active_spot(ctx, &spots) else {
         return;
@@ -323,7 +328,7 @@ pub fn choose_spot(ctx: GameCtx) {
 /// Enter on `color`'s hand tile at `idx`: as a click, then the focus on to
 /// the spots, or to the next turn when the tile played itself. Enter on the
 /// selected tile puts it back; the focus stays, previewing it again.
-pub fn choose_tile(ctx: GameCtx, color: Color, idx: usize) {
+pub(crate) fn choose_tile(ctx: GameCtx, color: Color, idx: usize) {
     let was_selected = is_choosing(*ctx.ui_state.phase().peek())
         && *ctx.ui_state.selected_tile().peek() == Some(idx);
     let before = placed(ctx);
@@ -338,7 +343,7 @@ pub fn choose_tile(ctx: GameCtx, color: Color, idx: usize) {
 
 /// An arrow key, Home or End on the hand tile at `idx`: the focus goes to
 /// the playable tile it points at.
-pub fn step_hand(ctx: GameCtx, idx: usize, nav: Nav) {
+pub(crate) fn step_hand(ctx: GameCtx, idx: usize, nav: Nav) {
     let playable = playable_tiles(ctx.game_state.peek().hand_info());
     if let Some(next) = step_tile(&playable, idx, nav) {
         request_focus(ctx, FocusTarget::Hand(Some(next)));
@@ -347,7 +352,7 @@ pub fn step_hand(ctx: GameCtx, idx: usize, nav: Nav) {
 
 /// Enter on an option of the card: play it, and the focus on to the next
 /// turn.
-pub fn choose_rotation(ctx: GameCtx, rotation: Rotation) {
+pub(crate) fn choose_rotation(ctx: GameCtx, rotation: Rotation) {
     let before = placed(ctx);
     pick_rotation(ctx, rotation);
     after_choice(ctx, before);
@@ -373,7 +378,7 @@ fn after_choice(ctx: GameCtx, before: usize) {
 
 /// Escape: one step back through the turn, and the focus with it — from the
 /// card to its spot, from the spots to the tile.
-pub fn step_back(ctx: GameCtx) {
+pub(crate) fn step_back(ctx: GameCtx) {
     let mut ui = ctx.ui_state;
     let phase = *ui.phase().peek();
     let tile = *ui.selected_tile().peek();
@@ -393,7 +398,7 @@ pub fn step_back(ctx: GameCtx) {
 
 /// A key on the game screen itself, nothing in it focused: the turn's step
 /// takes the focus (on this device's turn).
-pub fn enter_turn(ctx: GameCtx) {
+pub(crate) fn enter_turn(ctx: GameCtx) {
     let mover = ctx.game_state.peek().current_player();
     if !ctx.driver.controls(mover) {
         return;

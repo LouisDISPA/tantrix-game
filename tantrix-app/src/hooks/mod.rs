@@ -26,7 +26,9 @@ pub(crate) mod phase_view;
 pub(crate) mod scoring;
 
 pub(crate) use camera::use_board_camera;
-pub(crate) use derived::{use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves};
+pub(crate) use derived::{
+    use_current_player, use_has_forced_move, use_is_game_over, use_placed_moves,
+};
 pub(crate) use game_ctx::use_game_ctx;
 pub(crate) use keyboard::use_take_focus;
 pub(crate) use online_game::use_online_game_ctx;

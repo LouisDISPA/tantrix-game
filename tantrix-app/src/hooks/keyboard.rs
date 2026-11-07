@@ -11,7 +11,7 @@ use crate::state::ui_state::UiStateStoreExt;
 /// Give `element` (the `MountedData` its `onmounted` stores) the keyboard's
 /// focus whenever `wants` (a reactive closure: is the pending request for
 /// this element?) turns true, and clear the request.
-pub fn use_take_focus(
+pub(crate) fn use_take_focus(
     element: Signal<Option<Rc<MountedData>>>,
     wants: impl FnMut() -> bool + 'static,
 ) {

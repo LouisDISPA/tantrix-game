@@ -139,7 +139,11 @@ impl RoomManager {
         }
     }
 
-    pub(super) async fn resolve(&self, code: &str, now: u64) -> Result<RoomReference, RoomApiError> {
+    pub(super) async fn resolve(
+        &self,
+        code: &str,
+        now: u64,
+    ) -> Result<RoomReference, RoomApiError> {
         let id =
             store::unavailable(self.store.find_code(code).await)?.ok_or(RoomApiError::NotFound)?;
         let reference = self.reference(&id, now, false).await?;

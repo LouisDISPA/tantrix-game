@@ -56,8 +56,10 @@ pub const ROOM_DELETED: &str = "Room deleted.";
 /// The I/O a server does for a [`RoomService`]: its [`Catalog`] (room
 /// records and invitation codes), match archives, and sockets.
 pub trait ServiceHost {
+    /// Where room records and invitation codes are stored.
     type Catalog: Catalog;
 
+    /// The host's catalog, for lifecycle cleanup and code allocation.
     fn catalog(&mut self) -> &mut Self::Catalog;
 
     /// Like [`Catalog::save`], with the archive of the match `record`'s
@@ -85,7 +87,10 @@ pub enum Cleanup {
     CodeReleased,
     /// Retention deleted the record: a tombstone, or a room that still had
     /// its state.
-    Deleted { tombstone: bool },
+    Deleted {
+        /// Only a tombstone was left; otherwise the room still had state.
+        tombstone: bool,
+    },
 }
 
 /// A room record and the engine serving its sockets. See the
@@ -118,6 +123,7 @@ impl RoomService {
         }
     }
 
+    /// The room record as this service last saved or loaded it.
     pub fn record(&self) -> &RoomRecord {
         &self.record
     }

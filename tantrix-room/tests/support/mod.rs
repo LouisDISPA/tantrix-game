@@ -9,25 +9,25 @@ use tantrix_room::engine::Effect;
 use tantrix_room::session_cookie::SessionToken;
 
 /// The fake hosts never wait, so one poll finishes a call.
-pub fn now<F: Future>(future: F) -> F::Output {
+pub(crate) fn now<F: Future>(future: F) -> F::Output {
     match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
         Poll::Ready(output) => output,
         Poll::Pending => panic!("the fake host never waits"),
     }
 }
 
-pub fn token(name: &str) -> SessionToken {
+pub(crate) fn token(name: &str) -> SessionToken {
     SessionToken::new(format!("secret-{name}-0123456789"))
 }
 
-pub fn hello(nickname: &str) -> PeerMessage {
+pub(crate) fn hello(nickname: &str) -> PeerMessage {
     PeerMessage::Hello {
         nickname: nickname.into(),
     }
 }
 
 /// The sockets `effects` close, with their reasons.
-pub fn closes(effects: &[Effect]) -> Vec<(u64, &'static str)> {
+pub(crate) fn closes(effects: &[Effect]) -> Vec<(u64, &'static str)> {
     effects
         .iter()
         .filter_map(|effect| match effect {

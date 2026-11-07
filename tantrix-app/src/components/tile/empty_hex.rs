@@ -10,7 +10,7 @@ use crate::svg::paths::hex_polygon_points;
 
 /// The element id of the empty hex at `at`: the board's spots name the one
 /// the keys are on by it (`aria-activedescendant`).
-pub fn spot_id(at: Position) -> String {
+pub(crate) fn spot_id(at: Position) -> String {
     format!("spot{}_{}", at.x(), at.y())
 }
 
