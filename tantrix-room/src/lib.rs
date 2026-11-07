@@ -1,6 +1,8 @@
 //! Room rules, orchestration and browser identity shared by the Worker and
 //! the native server: [`room_logic`] applies intents to a room,
 //! [`engine`] turns socket events into effects without I/O,
+//! [`lifecycle`] keeps records, invitation codes and retention,
+//! [`service`] drives a room through both for its server,
 //! [`handshake`] and [`session_cookie`] check the socket upgrade, and
 //! [`rate_limit`] throttles the room HTTP endpoints per client.
 
@@ -9,4 +11,5 @@ pub mod handshake;
 pub mod lifecycle;
 pub mod rate_limit;
 pub mod room_logic;
+pub mod service;
 pub mod session_cookie;
